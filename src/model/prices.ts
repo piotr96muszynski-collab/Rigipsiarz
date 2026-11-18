@@ -32,3 +32,14 @@ export function storeSearchUrl(name: string): string {
 
 export const formatPLN = (v: number) =>
   v.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN', minimumFractionDigits: 2 });
+
+/** Przenosi ceny i odhaczenia zapisane pod starymi identyfikatorami produktów (np. UD 27 → UD 30) */
+export function migrateKeys<T>(book: Record<string, T>, aliases: Record<string, string>): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(book)) {
+    let key = k;
+    for (const [from, to] of Object.entries(aliases)) key = key.replace(new RegExp(`(^|-)${from}(-|$)`), `$1${to}$2`);
+    if (!(key in out) || key === k) out[key] = v;
+  }
+  return out;
+}

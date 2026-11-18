@@ -3,9 +3,13 @@ import {
   PRODUCTS,
   STOCK_LENGTHS,
   boardById,
+  ceilingMaxSpan,
   ceilingSystemById,
+  wallMaxHeight,
   wallSystemById,
+  type CeilingSystem,
   type Product,
+  type WallSystem,
   type Unit,
 } from '../catalog/rigips';
 import {
@@ -20,6 +24,7 @@ import {
   type WallJunctions,
 } from '../geometry/geometry';
 import type { Ceiling, Project, Wall } from '../model/types';
+import { createCeiling, createProject, createWall } from '../model/factory';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -42,6 +47,8 @@ export interface Requirement {
   area: Record<string, number>;
 }
 
+const fmtLen = (m: number) => m.toFixed(2).replace('.', ',');
+
 const emptyReq = (): Requirement => ({ pieces: {}, boardArea: {}, counts: {}, meters: {}, kg: {}, area: {} });
 
 const add = (rec: Record<string, number>, key: string, v: number) => {
@@ -60,8 +67,59 @@ export function pickBoardLength(boardId: string, heightCm: number): number {
 
 const TAPE_FOR_PROFILE: Record<number, string> = { 50: 'TASMA_USZ50', 75: 'TASMA_USZ70', 100: 'TASMA_USZ95' };
 
-/** Kołki co max 80 cm, minimum 3 na odcinek */
-export const anchorsFor = (lenM: number) => (lenM <= 0.05 ? 0 : Math.max(3, Math.ceil(lenM / 0.8) + 1));
+/** Kołki co max 100 cm (karty Rigips 3.40/3.41), minimum 2 na odcinek */
+export const anchorsFor = (lenM: number, spacingM = 1.0) =>
+  lenM <= 0.05 ? 0 : Math.max(2, Math.ceil(lenM / spacingM - 1e-9) + 1);
+
+const SCREW_LENGTHS = [25, 35, 45, 55, 70];
+
+/**
+ * Wkręt do płyt dla warstwy, której spód leży na głębokości `depthMm` od profilu:
+ * wkręt musi wejść min. 10 mm w profil (25 mm dla 1×12,5; 35 mm dla 2×12,5; 45 mm dla 2×15…).
+ */
+export function screwFor(depthMm: number, cement = false): string {
+  const need = depthMm + 10;
+  const len = SCREW_LENGTHS.find((l) => l >= need - 0.01) ?? 70;
+  if (cement) return len <= 25 ? 'AQ25' : 'AQ35';
+  return `TN${len}`;
+}
+
+/** Wkręty do kolejnych warstw płyt: wewnętrzne rzadziej, zewnętrzna gęsto */
+function addBoardScrews(
+  req: Requirement,
+  area: number,
+  layers: number,
+  boardId: string,
+  outerPerM2: number,
+  innerPerM2: number,
+) {
+  const b = boardById(boardId);
+  for (let i = 1; i <= layers; i++) {
+    const k = i === layers ? outerPerM2 : innerPerM2;
+    add(req.counts, screwFor(b.thickness * i, b.kind === 'cement'), area * k);
+  }
+}
+
+/**
+ * Spoinowanie wg kart Rigips: taśma spoinowa na warstwie zewnętrznej, masa konstrukcyjna
+ * 0,25 kg/m² na każdą warstwę, masa wykończeniowa 0,10 kg/m².
+ */
+function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number) {
+  if (boardById(boardId).kind === 'cement') {
+    add(req.meters, 'TASMA_AQ', area * tapePerM2);
+    add(req.kg, 'MASA_AQ', area * (0.5 + 0.25 * (layers - 1)));
+    return;
+  }
+  add(req.meters, 'TASMA_SPOIN', area * tapePerM2);
+  add(req.kg, 'MASA', area * 0.25 * layers);
+  add(req.kg, 'MASA_WYK', area * 0.1);
+}
+
+/** Wkręty na m² jednej strony ściany przy rozstawie 60 cm (karta 3.40.05: 9 + 24 szt. na 2 strony) */
+const WALL_SCREWS_OUTER = 12;
+const WALL_SCREWS_INNER = 4.5;
+/** Klej gipsowy pod płytę klejoną (placki), kg/m² – orientacyjnie */
+const GLUE_PER_M2 = 4;
 
 export interface WallBreakdown {
   lengthM: number;
@@ -70,17 +128,27 @@ export interface WallBreakdown {
   studPositions: number[]; // m od początku ściany (pełne i skrócone)
   jambPositions: number[];
   junctions: WallJunctions;
+  /** Ostrzeżenia, np. przekroczona wysokość systemu */
+  warnings: string[];
 }
 
-export function wallRequirement(p: Project, w: Wall, j: WallJunctions): { req: Requirement; info: WallBreakdown } {
+export function wallRequirement(
+  p: Project,
+  w: Wall,
+  j: WallJunctions,
+  sys: WallSystem = wallSystemById(w.systemId),
+): { req: Requirement; info: WallBreakdown } {
   const req = emptyReq();
-  const sys = wallSystemById(w.systemId);
   const L = wallLength(p, w) / 100;
   const H = w.height / 100;
   const s = w.studSpacing / 100;
-  const cw = `CW${sys.profile}`;
-  const uw = `UW${sys.profile}`;
-  const ua = `UA${sys.profile}`;
+  const warnings: string[] = [];
+
+  const maxH = wallMaxHeight(sys, w.studSpacing);
+  if (maxH && w.height > maxH + 0.5)
+    warnings.push(
+      `Wysokość ${fmtLen(H)} m przekracza ${fmtLen(maxH / 100)} m dopuszczalne dla tego systemu przy rozstawie ${w.studSpacing} cm – zagęść słupki lub wybierz mocniejszy system.`,
+    );
 
   // Otwory przycięte do ściany, w metrach
   const openings = w.openings
@@ -93,64 +161,95 @@ export function wallRequirement(p: Project, w: Wall, j: WallJunctions): { req: R
     })
     .filter((o) => o.w > 0.05 && o.h > 0.05);
 
-  // --- Słupki ---
-  const positions: number[] = [];
-  for (let x = 0; x < L - 0.1; x += s) positions.push(x);
-  positions.push(L);
+  const isCD = sys.frame === 'cd-lining';
+  const rows = sys.frame === 'glued' ? 0 : sys.frame === 'double' || sys.frame === 'separate' ? 2 : 1;
+  const stud = isCD ? 'CD60' : `CW${sys.profile}`;
+  const track = isCD ? 'UD30' : `UW${sys.profile}`;
+  const tape = isCD ? 'TASMA_USZ30' : TAPE_FOR_PROFILE[sys.profile];
+  const bracketM = (sys.bracketSpacing ?? 100) / 100;
+
+  /** Słupek (CW) lub pionowy CD; CD okładziny mocujemy do ściany uchwytami ES */
+  const addStud = (product: string, len: number) => {
+    if (len <= 0.01) return;
+    addPiece(req, product, len);
+    if (isCD) {
+      const brackets = Math.max(1, Math.ceil(len / bracketM - 1e-9));
+      add(req.counts, 'WIESZAK_ES', brackets);
+      add(req.counts, 'LN9', brackets * 2);
+      add(req.counts, 'KOLEK', brackets);
+    }
+  };
+
+  // --- Ruszt (jeden lub dwa rzędy) ---
   const studPositions: number[] = [];
-  for (const x of positions) {
-    const op = openings.find((o) => x > o.x0 - 0.05 && x < o.x1 + 0.05);
-    if (!op) {
-      addPiece(req, cw, H);
-      studPositions.push(x);
-    } else if (x > op.x0 + 0.05 && x < op.x1 - 0.05) {
-      // słupek w świetle otworu → krótkie odcinki nad i pod otworem
-      addPiece(req, cw, H - op.top);
-      addPiece(req, cw, op.sill);
-      studPositions.push(x);
-    }
-    // słupki pokrywające się z ościeżem zastępuje słupek ościeżnicowy
-  }
-  for (let i = 0; i < j.extraStuds; i++) addPiece(req, cw, H);
-
-  // --- Ościeża, nadproża, podokienniki ---
   const jambPositions: number[] = [];
-  for (const o of openings) {
-    jambPositions.push(o.x0, o.x1);
-    const useUA = o.reinforced;
-    for (let k = 0; k < 2; k++) addPiece(req, useUA ? ua : cw, H);
-    if (useUA) {
-      add(req.counts, 'KATUA', 4);
-      add(req.counts, 'KOLEK', 8);
+  const positions: number[] = [];
+  if (rows > 0) {
+    for (let x = 0; x < L - 0.1; x += s) positions.push(x);
+    positions.push(L);
+  }
+  for (let row = 0; row < rows; row++) {
+    for (const x of positions) {
+      const op = openings.find((o) => x > o.x0 - 0.05 && x < o.x1 + 0.05);
+      if (!op) {
+        addStud(stud, H);
+        if (row === 0) studPositions.push(x);
+      } else if (x > op.x0 + 0.05 && x < op.x1 - 0.05) {
+        // słupek w świetle otworu → krótkie odcinki nad i pod otworem
+        addStud(stud, H - op.top);
+        addStud(stud, op.sill);
+        if (row === 0) studPositions.push(x);
+      }
+      // słupki pokrywające się z ościeżem zastępuje słupek ościeżnicowy
     }
-    // nadproże z UW z zagiętymi końcami (+15 cm na stronę)
-    if (o.top < H - 0.05) addPiece(req, uw, o.w + 0.3);
-    if (o.sill > 0.05) addPiece(req, uw, o.w + 0.3);
-    add(req.counts, 'LN9', 8 + (o.sill > 0.05 ? 4 : 0));
+    for (let i = 0; i < j.extraStuds; i++) addStud(stud, H);
+
+    // --- Ościeża, nadproża, podokienniki ---
+    for (const o of openings) {
+      if (row === 0) jambPositions.push(o.x0, o.x1);
+      const useUA = o.reinforced && !isCD;
+      for (let k = 0; k < 2; k++) addStud(useUA ? `UA${sys.profile}` : stud, H);
+      if (useUA) {
+        add(req.counts, 'KATUA', 4);
+        add(req.counts, 'KOLEK', 8);
+      }
+      // nadproże z UW/UD z zagiętymi końcami (+15 cm na stronę)
+      if (o.top < H - 0.05) addPiece(req, track, o.w + 0.3);
+      if (o.sill > 0.05) addPiece(req, track, o.w + 0.3);
+      add(req.counts, 'LN9', 8 + (o.sill > 0.05 ? 4 : 0));
+    }
+
+    // --- Profile UW/UD (posadzka i strop) ---
+    const floorRuns: number[] = [];
+    let cursor = 0;
+    for (const o of [...openings].filter((o) => o.sill <= 0.01).sort((a, b) => a.x0 - b.x0)) {
+      floorRuns.push(o.x0 - cursor);
+      cursor = o.x1;
+    }
+    floorRuns.push(L - cursor);
+    const runs = [...floorRuns.filter((r) => r > 0.05), L];
+    for (const r of runs) {
+      addPiece(req, track, r);
+      add(req.counts, 'KOLEK', anchorsFor(r));
+    }
+    add(req.meters, tape, runs.reduce((a, b) => a + b, 0));
+
+    // końce przy istniejącej ścianie: słupek kotwiony + taśma
+    for (const end of [j.endA, j.endB]) {
+      if (end === 'existing-wall') {
+        add(req.counts, 'KOLEK', anchorsFor(H));
+        add(req.meters, tape, H);
+      }
+    }
   }
 
-  // --- Profile UW (posadzka i strop) ---
-  const floorRuns: number[] = [];
-  let cursor = 0;
-  for (const o of [...openings].filter((o) => o.sill <= 0.01).sort((a, b) => a.x0 - b.x0)) {
-    floorRuns.push(o.x0 - cursor);
-    cursor = o.x1;
-  }
-  floorRuns.push(L - cursor);
-  const runs = [...floorRuns.filter((r) => r > 0.05), L];
-  for (const r of runs) {
-    addPiece(req, uw, r);
-    add(req.counts, 'KOLEK', anchorsFor(r));
-  }
-  const tape = TAPE_FOR_PROFILE[sys.profile];
-  add(req.meters, tape, runs.reduce((a, b) => a + b, 0));
-
-  // końce przy istniejącej ścianie: słupek kotwiony + taśma
-  for (const end of [j.endA, j.endB]) {
-    if (end === 'existing-wall') {
-      add(req.counts, 'KOLEK', anchorsFor(H));
-      add(req.meters, tape, H);
-    }
+  // --- Ściana instalacyjna: rzędy łączone paskami płyty (ok. 30 cm) co ~1/3 wysokości ---
+  if (sys.frame === 'separate') {
+    const perStud = Math.max(2, Math.ceil(H / 1.2) - 1);
+    const strips = positions.length * perStud;
+    const stripArea = 0.3 * ((sys.gap ?? 10) / 100 + (2 * sys.profile) / 1000);
+    add(req.boardArea, `${w.boardId}|${pickBoardLength(w.boardId, w.height)}`, strips * stripArea);
+    add(req.counts, screwFor(boardById(w.boardId).thickness), strips * 4);
   }
 
   // --- Płyty ---
@@ -161,17 +260,16 @@ export function wallRequirement(p: Project, w: Wall, j: WallJunctions): { req: R
   const faceArea = net * sys.sides;
   add(req.boardArea, sheetKey, faceArea * sys.layers);
 
-  // --- Wkręty ---
-  if (sys.layers === 1) {
-    add(req.counts, 'TN25', faceArea * 17);
+  // --- Wkręty lub klej ---
+  if (sys.frame === 'glued') {
+    add(req.kg, 'KLEJ', faceArea * GLUE_PER_M2);
   } else {
-    add(req.counts, 'TN25', faceArea * 7);
-    add(req.counts, 'TN35', faceArea * 17);
+    const f = 0.6 / Math.max(0.2, s);
+    addBoardScrews(req, faceArea, sys.layers, w.boardId, WALL_SCREWS_OUTER * f, WALL_SCREWS_INNER * f);
   }
 
   // --- Spoinowanie ---
-  add(req.meters, 'TASMA_SPOIN', faceArea * 1.0);
-  add(req.kg, 'MASA', faceArea * 0.35 + faceArea * (sys.layers - 1) * 0.2);
+  addJointing(req, faceArea, sys.layers, w.boardId, 1.4);
 
   // --- Narożniki ochronne: krawędzie zewnętrzne + ościeża otworów ---
   for (let i = 0; i < j.externalEdges; i++) addPiece(req, 'NAROZNIK', H);
@@ -184,12 +282,15 @@ export function wallRequirement(p: Project, w: Wall, j: WallJunctions): { req: R
     }
   }
 
-  // --- Wełna ---
-  if (w.insulation) add(req.area, `WELNA${sys.profile}`, net);
+  // --- Wełna (w ścianie na podwójnym ruszcie w obu rzędach, wg karty 3.41.01) ---
+  if (w.insulation && sys.frame !== 'glued') {
+    const wool = isCD ? 'WELNA50' : `WELNA${sys.profile}`;
+    add(req.area, wool, net * (sys.frame === 'double' ? 2 : 1));
+  }
 
   return {
     req,
-    info: { lengthM: L, heightM: H, netAreaM2: net, studPositions, jambPositions, junctions: j },
+    info: { lengthM: L, heightM: H, netAreaM2: net, studPositions, jambPositions, junctions: j, warnings },
   };
 }
 
@@ -202,8 +303,7 @@ export interface CeilingGridLine {
 }
 
 /** Linie rusztu sufitowego (współrzędne w cm) – wspólne dla wyliczeń i rysunku/3D */
-export function ceilingGrid(c: Ceiling): CeilingGridLine[] {
-  const sys = ceilingSystemById(c.systemId);
+export function ceilingGrid(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c.systemId)): CeilingGridLine[] {
   const bb = bbox(c.points);
   const lines: CeilingGridLine[] = [];
   // profile nośne biegną wzdłuż osi „mainAxis”, rozstawione w osi poprzecznej
@@ -222,57 +322,91 @@ export function ceilingGrid(c: Ceiling): CeilingGridLine[] {
     }
   };
 
-  if (sys.kind === 'two-level') {
-    place(mainAxis, sys.mainSpacing, 'main', Math.min(sys.mainSpacing / 2, 40));
-    place(crossAxis, sys.secondarySpacing, 'secondary', sys.secondarySpacing);
-  } else if (sys.kind === 'one-level') {
-    place(mainAxis, sys.mainSpacing, 'main', Math.min(sys.mainSpacing / 2, 40));
-    place(crossAxis, sys.secondarySpacing, 'secondary', sys.secondarySpacing);
-  } else {
-    place(crossAxis, sys.secondarySpacing, 'main', sys.secondarySpacing);
+  switch (sys.kind) {
+    case 'two-level':
+    case 'one-level':
+    case 'ua-span':
+      place(mainAxis, sys.mainSpacing, 'main', Math.min(sys.mainSpacing / 2, 40));
+      place(crossAxis, sys.secondarySpacing, 'secondary', sys.secondarySpacing);
+      break;
+    case 'cw-span':
+      // CW oparte na ścianach, biegną wzdłuż kierunku „nośnego”
+      place(mainAxis, sys.secondarySpacing, 'main', sys.secondarySpacing);
+      break;
+    default:
+      place(crossAxis, sys.secondarySpacing, 'main', sys.secondarySpacing);
   }
   return lines;
 }
 
-export function ceilingRequirement(c: Ceiling): { req: Requirement; areaM2: number; perimeterM: number } {
+export interface CeilingResult {
+  req: Requirement;
+  areaM2: number;
+  perimeterM: number;
+  warnings: string[];
+}
+
+export function ceilingRequirement(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c.systemId)): CeilingResult {
   const req = emptyReq();
-  const sys = ceilingSystemById(c.systemId);
   const A = polygonArea(c.points) / 10000;
   const edges = polygonPerimeterEdges(c.points).map((e) => e / 100);
   const P = edges.reduce((a, b) => a + b, 0);
+  const warnings: string[] = [];
 
-  // obwodowe UD
+  // obwodowe UD 30 (w suficie na CW: UW o szerokości profilu)
+  const cwSpan = sys.kind === 'cw-span';
+  const profile = sys.profile ?? 50;
+  const perimeterProfile = cwSpan ? `UW${profile}` : 'UD30';
   for (const e of edges) {
-    addPiece(req, 'UD27', e);
-    add(req.counts, 'KOLEK', Math.max(3, Math.ceil(e / 0.6) + 1));
+    addPiece(req, perimeterProfile, e);
+    add(req.counts, 'KOLEK', anchorsFor(e, 0.8));
   }
-  add(req.meters, 'TASMA_USZ30', P);
+  add(req.meters, cwSpan ? TAPE_FOR_PROFILE[profile] : 'TASMA_USZ30', P);
 
-  const grid = ceilingGrid(c);
+  const grid = ceilingGrid(c, sys);
   const mains = grid.filter((g) => g.level === 'main');
   const secs = grid.filter((g) => g.level === 'secondary');
+  const mainProduct = sys.kind === 'ua-span' ? 'UA50' : cwSpan ? `CW${profile}` : 'CD60';
 
+  let longestMain = 0;
   for (const g of grid) {
     for (const [s0, s1] of g.segments) {
       const run = (s1 - s0) / 100;
-      addPiece(req, 'CD60', run);
-      add(req.counts, 'LACZNIK_WZDL', Math.max(0, Math.ceil(run / 4) - 1));
-      if (g.level === 'main') {
-        const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100)));
-        if (sys.kind === 'direct') {
-          add(req.counts, 'WIESZAK_ES', hangers);
-          add(req.counts, 'LN9', hangers * 2);
-        } else {
-          add(req.counts, 'WIESZAK_NONIUSZ', hangers);
-          add(req.counts, 'ZAWLECZKA', hangers * 2);
-        }
-        add(req.counts, 'KOTWA', hangers);
+      const product = g.level === 'main' ? mainProduct : 'CD60';
+      addPiece(req, product, run);
+      if (product === 'CD60') add(req.counts, 'LACZNIK_WZDL', Math.max(0, Math.ceil(run / 4 - 1e-9) - 1));
+      if (g.level !== 'main') continue;
+      longestMain = Math.max(longestMain, run);
+      if (sys.kind === 'ua-span') {
+        // UA oparte na ścianach – kątownik specjalny na każdym końcu
+        add(req.counts, 'KATOWNIK_UA', 2);
+        add(req.counts, 'KOLEK', 4);
+        continue;
       }
+      if (cwSpan) {
+        add(req.counts, 'LN9', 2);
+        continue;
+      }
+      const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100) - 1e-9));
+      if (sys.kind === 'direct') {
+        add(req.counts, sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : 'WIESZAK_ES', hangers);
+        add(req.counts, 'LN9', hangers * 4);
+      } else {
+        add(req.counts, 'WIESZAK_NONIUSZ', hangers);
+        add(req.counts, 'ZAWLECZKA', hangers * 2);
+      }
+      add(req.counts, 'KOTWA', hangers);
     }
   }
 
+  const maxSpan = ceilingMaxSpan(sys);
+  if (maxSpan && longestMain * 100 > maxSpan + 0.5)
+    warnings.push(
+      `Rozpiętość ${fmtLen(longestMain)} m przekracza ${fmtLen(maxSpan / 100)} m dopuszczalne dla tego sufitu przęsłowego – zmień kierunek profili, zagęść rozstaw albo wybierz sufit podwieszany.`,
+    );
+
   // skrzyżowania profili nośnych i montażowych
-  if (sys.kind !== 'direct') {
+  if (secs.length) {
     let crossings = 0;
     for (const m of mains) {
       for (const sl of secs) {
@@ -281,23 +415,20 @@ export function ceilingRequirement(c: Ceiling): { req: Requirement; areaM2: numb
       }
     }
     if (sys.kind === 'two-level') add(req.counts, 'LACZNIK_KRZ', crossings);
-    else add(req.counts, 'LACZNIK_JEDNO', crossings * 2);
+    else if (sys.kind === 'one-level') add(req.counts, 'LACZNIK_JEDNO', crossings * 2);
+    else if (sys.kind === 'ua-span') add(req.counts, 'LACZNIK_UA_CD', crossings * 2);
   }
 
   // płyty
-  const longSide = Math.max(bbox(c.points).maxX - bbox(c.points).minX, bbox(c.points).maxY - bbox(c.points).minY);
+  const bb = bbox(c.points);
+  const longSide = Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY);
   const sheetLen = pickBoardLength(c.boardId, Math.min(longSide, 300));
   add(req.boardArea, `${c.boardId}|${sheetLen}`, A * sys.layers);
-  if (sys.layers === 1) add(req.counts, 'TN25', A * 20);
-  else {
-    add(req.counts, 'TN25', A * 10);
-    add(req.counts, 'TN35', A * 20);
-  }
-  add(req.meters, 'TASMA_SPOIN', A * 1.2);
-  add(req.kg, 'MASA', A * 0.4 + A * (sys.layers - 1) * 0.2);
+  addBoardScrews(req, A, sys.layers, c.boardId, sys.screwsOuter, sys.screwsInner);
+  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2);
   if (c.insulation) add(req.area, 'WELNA100', A);
 
-  return { req, areaM2: A, perimeterM: P };
+  return { req, areaM2: A, perimeterM: P, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +506,6 @@ export interface MaterialLine {
 
 const GROUP_ORDER: Product['group'][] = ['Płyty', 'Profile', 'Akcesoria do sufitów', 'Mocowanie', 'Izolacja', 'Wykończenie'];
 
-const fmtLen = (m: number) => m.toFixed(2).replace('.', ',');
 
 export function summarize(reqs: Requirement[], wastePct: number): MaterialLine[] {
   const waste = 1 + wastePct / 100;
@@ -434,7 +564,7 @@ export function summarize(reqs: Requirement[], wastePct: number): MaterialLine[]
     return line;
   };
 
-  for (const [pid, v] of Object.entries(merged.counts)) lines.push(withPacks(pid, Math.ceil(v * (pid.startsWith('T') || pid === 'LN9' ? waste : 1) - 1e-9), 'szt.'));
+  for (const [pid, v] of Object.entries(merged.counts)) lines.push(withPacks(pid, Math.ceil(v * (pid.startsWith('T') || pid.startsWith('AQ') || pid === 'LN9' ? waste : 1) - 1e-9), 'szt.'));
   for (const [pid, v] of Object.entries(merged.meters)) lines.push(withPacks(pid, Math.ceil(v * waste - 1e-9), 'mb'));
   for (const [pid, v] of Object.entries(merged.kg)) lines.push(withPacks(pid, Math.ceil(v * waste - 1e-9), 'kg'));
   for (const [pid, v] of Object.entries(merged.area)) lines.push(withPacks(pid, Math.ceil(v * waste * 10 - 1e-9) / 10, 'm²'));
@@ -446,7 +576,7 @@ export function summarize(reqs: Requirement[], wastePct: number): MaterialLine[]
 
 export interface ProjectCalc {
   walls: Map<string, { req: Requirement; info: WallBreakdown }>;
-  ceilings: Map<string, { req: Requirement; areaM2: number; perimeterM: number }>;
+  ceilings: Map<string, CeilingResult>;
   total: MaterialLine[];
   stats: { wallLengthM: number; wallAreaM2: number; ceilingAreaM2: number; openings: number };
 }
@@ -466,7 +596,7 @@ export function calculateProject(p: Project): ProjectCalc {
     wallAreaM2 += r.info.netAreaM2;
     openings += w.openings.length;
   }
-  const ceilings = new Map<string, { req: Requirement; areaM2: number; perimeterM: number }>();
+  const ceilings = new Map<string, CeilingResult>();
   let ceilingAreaM2 = 0;
   for (const c of p.ceilings) {
     if (c.points.length < 3) continue;
@@ -494,4 +624,84 @@ export function materialsToCsv(lines: MaterialLine[]): string {
       l.note ?? '',
     ]);
   return rows.map((r) => r.map(esc).join(';')).join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Zużycie materiałów na 1 m² systemu (tabela w katalogu i testy z kartami Rigips)
+// ---------------------------------------------------------------------------
+
+export interface ConsumptionLine {
+  /** Id produktu albo `board:<id>` dla płyt */
+  key: string;
+  name: string;
+  qty: number;
+  unit: Unit;
+}
+
+/** Element odniesienia: ściana 5,00 × 2,75 m między istniejącymi ścianami, bez otworów */
+export const REF_WALL = { lengthCm: 500, heightCm: 275 };
+/** Element odniesienia: sufit 10 × 8 m (obwód typowy dla kart Rigips ok. 0,4 mb UD/m²) */
+export const REF_CEILING = { lengthCm: 1000, widthCm: 800 };
+
+function perM2(req: Requirement, area: number): ConsumptionLine[] {
+  const out: ConsumptionLine[] = [];
+  const boards = new Map<string, number>();
+  for (const [k, v] of Object.entries(req.boardArea)) {
+    const id = k.split('|')[0];
+    boards.set(id, (boards.get(id) ?? 0) + v);
+  }
+  for (const [id, v] of boards) out.push({ key: `board:${id}`, name: boardById(id).name, qty: v / area, unit: 'm²' });
+  for (const [pid, pieces] of Object.entries(req.pieces))
+    out.push({ key: pid, name: PRODUCTS[pid].name, qty: pieces.reduce((a, b) => a + b, 0) / area, unit: 'mb' });
+  const simple: [Record<string, number>, Unit][] = [
+    [req.counts, 'szt.'],
+    [req.meters, 'mb'],
+    [req.kg, 'kg'],
+    [req.area, 'm²'],
+  ];
+  for (const [rec, unit] of simple)
+    for (const [pid, v] of Object.entries(rec)) out.push({ key: pid, name: PRODUCTS[pid].name, qty: v / area, unit });
+  return out;
+}
+
+/** Zużycie na 1 m² ściany (powierzchnia ściany, nie płyt) dla wybranego systemu */
+export function wallConsumption(sys: WallSystem, studSpacing = sys.studSpacing, insulation = true): ConsumptionLine[] {
+  const p = createProject();
+  p.nodes = [
+    { id: 'a', x: 0, y: 0 },
+    { id: 'b', x: REF_WALL.lengthCm, y: 0 },
+  ];
+  p.walls = [
+    createWall(p, 'a', 'b', {
+      systemId: sys.id,
+      boardId: sys.defaultBoard,
+      height: REF_WALL.heightCm,
+      studSpacing,
+      insulation,
+    }),
+  ];
+  const j = analyzeJunctions(p).get(p.walls[0].id)!;
+  const { req, info } = wallRequirement(p, p.walls[0], j, sys);
+  return perM2(req, info.netAreaM2);
+}
+
+/** Zużycie na 1 m² sufitu dla wybranego systemu */
+export function ceilingConsumption(sys: CeilingSystem, insulation = false): ConsumptionLine[] {
+  const p = createProject();
+  const { lengthCm: l, widthCm: w } = REF_CEILING;
+  // sufit przęsłowy liczymy na pasie o dopuszczalnej rozpiętości
+  const span = ceilingMaxSpan(sys);
+  const width = span ? Math.min(w, Math.floor(span / 10) * 10) : w;
+  const c = createCeiling(
+    p,
+    [
+      { x: 0, y: 0 },
+      { x: l, y: 0 },
+      { x: l, y: width },
+      { x: 0, y: width },
+    ],
+    { systemId: sys.id, boardId: sys.defaultBoard, insulation, direction: span ? 90 : 0 },
+  );
+  const r = ceilingRequirement(c, sys);
+  return perM2(r.req, r.areaM2);
 }

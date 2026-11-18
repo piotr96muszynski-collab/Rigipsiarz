@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculateProject } from '../calc/materials';
+import { PRODUCT_ALIASES, setCustomSystems, type CustomCatalog } from '../catalog/rigips';
 import { createProject, sampleProject } from '../model/factory';
-import type { PriceBook } from '../model/prices';
+import { migrateKeys, type PriceBook } from '../model/prices';
 import type { Project } from '../model/types';
 import { deleteProject, getKV, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
+import { CatalogView } from './CatalogView';
 import { ElementsPanel } from './ElementsPanel';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
@@ -16,13 +18,27 @@ export function App() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [quick, setQuick] = useState(false);
   const [prices, setPrices] = useState<PriceBook>({});
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  /** Zmienia się po każdej zmianie systemów własnych – odświeża wyliczenia */
+  const [catalogVersion, setCatalogVersion] = useState(0);
 
   const refresh = useCallback(() => listProjects().then(setProjects).catch(() => setProjects([])), []);
   useEffect(() => {
     refresh();
     requestPersistence();
-    getKV<PriceBook>('prices').then((p) => p && setPrices(p));
+    getKV<PriceBook>('prices').then((p) => p && setPrices(migrateKeys(p, PRODUCT_ALIASES)));
+    getKV<CustomCatalog>('customSystems').then((c) => {
+      if (!c) return;
+      setCustomSystems(c);
+      setCatalogVersion((v) => v + 1);
+    });
   }, [refresh]);
+
+  const saveCustom = (c: CustomCatalog) => {
+    setCustomSystems(c);
+    setKV('customSystems', c);
+    setCatalogVersion((v) => v + 1);
+  };
 
   const setPrice = (key: string, value: number | undefined) =>
     setPrices((prev) => {
@@ -44,12 +60,16 @@ export function App() {
 
   return (
     <div className="app">
+      {catalogOpen && <CatalogView onClose={() => setCatalogOpen(false)} onSave={saveCustom} />}
+      <div hidden={catalogOpen}>
       {current ? (
         <ProjectView
           key={current.id}
           initial={current}
           prices={prices}
           setPrice={setPrice}
+          catalogVersion={catalogVersion}
+          onOpenCatalog={() => setCatalogOpen(true)}
           onClose={() => {
             setOpenId(null);
             refresh();
@@ -61,8 +81,16 @@ export function App() {
           }}
         />
       ) : (
-        <Home projects={projects} quick={quick} setQuick={setQuick} onOpen={open} onSelect={setOpenId} />
+        <Home
+          projects={projects}
+          quick={quick}
+          setQuick={setQuick}
+          onOpen={open}
+          onSelect={setOpenId}
+          onOpenCatalog={() => setCatalogOpen(true)}
+        />
       )}
+      </div>
       <UpdatePrompt />
     </div>
   );
@@ -74,8 +102,10 @@ function Home({
   setQuick,
   onOpen,
   onSelect,
+  onOpenCatalog,
 }: {
   projects: Project[] | null;
+  onOpenCatalog: () => void;
   quick: boolean;
   setQuick: (v: boolean) => void;
   onOpen: (p: Project) => void;
@@ -109,6 +139,10 @@ function Home({
           <button className="tile" onClick={() => onOpen(createProject())}>
             <strong>Nowy projekt</strong>
             <span>Pusty projekt, elementy dodasz ręcznie</span>
+          </button>
+          <button className="tile" onClick={onOpenCatalog}>
+            <strong>Katalog systemów</strong>
+            <span>Ściany i sufity Rigips, zużycie na m², systemy własne</span>
           </button>
         </div>
       )}
@@ -149,10 +183,14 @@ function ProjectView({
   initial,
   prices,
   setPrice,
+  catalogVersion,
+  onOpenCatalog,
   onClose,
   onDelete,
 }: {
   initial: Project;
+  catalogVersion: number;
+  onOpenCatalog: () => void;
   prices: PriceBook;
   setPrice: (k: string, v: number | undefined) => void;
   onClose: () => void;
@@ -160,7 +198,9 @@ function ProjectView({
 }) {
   const { project, update, undo, redo, canUndo, canRedo } = useHistory(initial);
   const [tab, setTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'elements');
-  const calc = useMemo(() => calculateProject(project), [project]);
+  // catalogVersion: przelicz po zmianie systemów własnych
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const calc = useMemo(() => calculateProject(project), [project, catalogVersion]);
 
   // autozapis
   const first = useRef(true);
@@ -300,6 +340,10 @@ function ProjectView({
               </div>
               <small className="hint">Dotyczy płyt, wkrętów, taśm, masy i wełny. Profile liczone są z rozkroju.</small>
             </div>
+            <hr />
+            <button className="btn" onClick={onOpenCatalog}>
+              Katalog systemów i systemy własne
+            </button>
             <hr />
             <button className="btn danger" onClick={() => confirm('Usunąć projekt z tego urządzenia?') && onDelete()}>
               Usuń projekt
