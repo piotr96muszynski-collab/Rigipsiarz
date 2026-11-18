@@ -4,7 +4,7 @@
 // Jednostki: ściany w metrach (jak w wyliczeniach), sufity w centymetrach (jak ceilingGrid).
 
 import { boardById, ceilingSystemById, wallSystemById, type WallFrame } from '../catalog/rigips';
-import { bbox, nodeMap, projectOnSegment, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
+import { bbox, isNewWall, nodeMap, projectOnSegment, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Opening, Project, Wall } from '../model/types';
 
 // ---------------------------------------------------------------------------
@@ -78,13 +78,15 @@ export function junctionStudPositions(p: Project, w: Wall, j: WallJunctions): nu
   const xs: number[] = [];
   // ściany dochodzące do środka tej ściany (trójnik „na styk”)
   const [a, b] = wallEnds(p, w, nodes);
-  for (const o of p.walls) {
+  // istniejące ściany (obrys) nie dają słupków połączeń
+  const fresh = p.walls.filter(isNewWall);
+  for (const o of fresh) {
     if (o.id === w.id) continue;
     for (const nid of [o.a, o.b]) {
       if (nid === w.a || nid === w.b) continue;
       const n = nodes.get(nid);
       if (!n) continue;
-      const shared = p.walls.some((x) => x.id !== o.id && (x.a === nid || x.b === nid));
+      const shared = fresh.some((x) => x.id !== o.id && (x.a === nid || x.b === nid));
       if (shared) continue;
       const pr = projectOnSegment(n, a, b);
       if (pr.d < 2 && pr.t > 0.001 && pr.t < 0.999) xs.push(pr.t * L);
@@ -95,7 +97,7 @@ export function junctionStudPositions(p: Project, w: Wall, j: WallJunctions): nu
     [w.a, 0, j.endA],
     [w.b, L, j.endB],
   ] as const) {
-    const others = p.walls.filter((o) => o.id !== w.id && (o.a === nid || o.b === nid));
+    const others = fresh.filter((o) => o.id !== w.id && (o.a === nid || o.b === nid));
     if (kind === 'corner' && others.length === 1 && w.id < others[0].id) xs.push(x);
     const owner = [w, ...others].sort((m, n) => (m.id < n.id ? -1 : 1))[0];
     if (kind === 'tee-through' && owner.id === w.id) xs.push(x);

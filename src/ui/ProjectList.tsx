@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Project } from '../model/types';
+import { useBack } from './back';
 
 /** Ułamek szerokości wiersza, po którym puszczenie palca usuwa projekt */
 const DELETE_RATIO = 0.4;
@@ -141,7 +142,7 @@ function SwipeRow({
         >
           <strong>{p.name}</strong>
           <span className="muted small">
-            {p.walls.length} ścian · {p.ceilings.length} sufitów · {new Date(p.updatedAt).toLocaleDateString('pl-PL')}
+            {p.walls.filter((w) => w.kind !== 'existing').length} ścian · {p.ceilings.length} sufitów · {new Date(p.updatedAt).toLocaleDateString('pl-PL')}
           </span>
         </button>
         <button className="icon-btn row-menu" aria-label={`Opcje projektu ${p.name}`} onClick={onMenu}>
@@ -158,6 +159,7 @@ function SwipeRow({
 
 function RenameRow({ project, onDone }: { project: Project; onDone: (name: string | null) => void }) {
   const [name, setName] = useState(project.name);
+  useBack(true, () => onDone(null));
   return (
     <form
       className="rename-row"
@@ -197,6 +199,7 @@ function ProjectMenu({
   onDuplicate: (p: Project) => void;
   onDelete: (p: Project) => void;
 }) {
+  useBack(true, onClose);
   if (!project) return null;
   const act = (fn: (p: Project) => void) => () => {
     onClose();
