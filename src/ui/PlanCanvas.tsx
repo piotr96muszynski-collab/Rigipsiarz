@@ -5,6 +5,7 @@ import { findRoomAt } from '../geometry/rooms';
 import { createCeiling, createOpening } from '../model/factory';
 import { addWall, hitWall, mergeNodeIfOverlaps, offsetAlongWall, snapPoint, type SnapResult } from '../model/ops';
 import type { Point, Project } from '../model/types';
+import { awayFromFinger, BUBBLE_H, BUBBLE_W } from './labelPlace';
 import { fmtCm, liningThickness, wallColor, wallThickness } from './wallStyle';
 
 export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'ceiling';
@@ -781,26 +782,35 @@ export function PlanCanvas(props: Props) {
             })}
           {preview &&
             (() => {
-              const s = toScreen(preview.b);
-              return (
-                <g>
-                  <rect x={s.x + 14} y={s.y - 34} width={86} height={26} rx={6} className="dim-bubble" />
-                  <text x={s.x + 57} y={s.y - 16} className="dim-bubble-text">
-                    {fmtCm(dist(preview.a, preview.b))}
-                  </text>
-                </g>
-              );
+              const fa = toScreen(preview.a);
+              const fb = toScreen(preview.b);
+              // środek odcinka, odsunięty w bok – palec jest na końcu B
+              const len = Math.hypot(fb.x - fa.x, fb.y - fa.y) || 1;
+              let nx = -(fb.y - fa.y) / len;
+              let ny = (fb.x - fa.x) / len;
+              if (ny > 0) {
+                nx = -nx;
+                ny = -ny;
+              }
+              const target = { x: (fa.x + fb.x) / 2 + nx * 30, y: (fa.y + fb.y) / 2 + ny * 30 };
+              return <DimBubble at={awayFromFinger(fb, target, fa, size, insetBottom)} text={fmtCm(dist(preview.a, preview.b))} />;
             })()}
           {g?.kind === 'rect' &&
             (() => {
-              const s = toScreen(g.end);
+              const fs = toScreen(g.start);
+              const fe = toScreen(g.end);
+              const midX = (fs.x + fe.x) / 2;
+              const midY = (fs.y + fe.y) / 2;
+              // wymiary przy krawędziach po stronie punktu początkowego, z dala od palca
+              const sy = fs.y + (fs.y <= fe.y ? -22 : 22);
+              const sx = fs.x + (fs.x <= fe.x ? -50 : 50);
+              const wTxt = `${Math.round(Math.abs(g.end.x - g.start.x))} cm`;
+              const hTxt = `${Math.round(Math.abs(g.end.y - g.start.y))} cm`;
               return (
-                <g>
-                  <rect x={s.x + 14} y={s.y - 34} width={130} height={26} rx={6} className="dim-bubble" />
-                  <text x={s.x + 79} y={s.y - 16} className="dim-bubble-text">
-                    {Math.round(Math.abs(g.end.x - g.start.x))} × {Math.round(Math.abs(g.end.y - g.start.y))} cm
-                  </text>
-                </g>
+                <>
+                  <DimBubble at={awayFromFinger(fe, { x: midX, y: sy }, fs, size, insetBottom)} text={wTxt} />
+                  <DimBubble at={awayFromFinger(fe, { x: sx, y: midY }, fs, size, insetBottom)} text={hTxt} />
+                </>
               );
             })()}
         </g>
@@ -812,6 +822,17 @@ export function PlanCanvas(props: Props) {
       )}
       <ScaleBar z={view.z} />
     </div>
+  );
+}
+
+function DimBubble({ at, text }: { at: Point; text: string }) {
+  return (
+    <g>
+      <rect x={at.x - BUBBLE_W / 2} y={at.y - BUBBLE_H / 2} width={BUBBLE_W} height={BUBBLE_H} rx={6} className="dim-bubble" />
+      <text x={at.x} y={at.y + 5} className="dim-bubble-text">
+        {text}
+      </text>
+    </g>
   );
 }
 
