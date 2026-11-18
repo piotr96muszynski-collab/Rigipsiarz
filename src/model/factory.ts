@@ -1,0 +1,161 @@
+import { boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
+import type { Ceiling, Opening, OpeningKind, Point, Project, Wall } from './types';
+
+export const uid = () =>
+  (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).slice(0, 12);
+
+export function createProject(name = 'Nowy projekt'): Project {
+  const now = Date.now();
+  return {
+    id: uid(),
+    name,
+    createdAt: now,
+    updatedAt: now,
+    nodes: [],
+    walls: [],
+    ceilings: [],
+    bought: {},
+    settings: {
+      wasteEnabled: true,
+      waste: 10,
+      defaultHeight: 260,
+      defaultWallSystem: 'W-CW75-1',
+      defaultCeilingSystem: 'S-CD-2P-1',
+      gridSnap: 5,
+    },
+  };
+}
+
+export function createWall(p: Project, a: string, b: string, overrides: Partial<Wall> = {}): Wall {
+  const sys = wallSystemById(overrides.systemId ?? p.settings.defaultWallSystem);
+  return {
+    id: uid(),
+    a,
+    b,
+    height: p.settings.defaultHeight,
+    systemId: sys.id,
+    boardId: sys.defaultBoard,
+    studSpacing: sys.defaultBoard === 'RBI12.5' ? 40 : 60,
+    insulation: sys.insulationDefault,
+    endA: 'existing-wall',
+    endB: 'existing-wall',
+    openings: [],
+    ...overrides,
+  };
+}
+
+export function createOpening(kind: OpeningKind, offset: number, overrides: Partial<Opening> = {}): Opening {
+  return kind === 'door'
+    ? { id: uid(), kind, offset, width: 90, height: 205, sill: 0, reinforced: true, ...overrides }
+    : { id: uid(), kind, offset, width: 120, height: 120, sill: 90, reinforced: false, ...overrides };
+}
+
+export function createCeiling(p: Project, points: Point[], overrides: Partial<Ceiling> = {}): Ceiling {
+  const sys = ceilingSystemById(overrides.systemId ?? p.settings.defaultCeilingSystem);
+  return {
+    id: uid(),
+    points,
+    systemId: sys.id,
+    boardId: boardById(sys.defaultBoard).id,
+    insulation: false,
+    direction: 0,
+    height: p.settings.defaultHeight,
+    ...overrides,
+  };
+}
+
+/** Projekt przykładowy – pokój z działówką i drzwiami */
+export function sampleProject(): Project {
+  const p = createProject('Przykład: pokój z garderobą');
+  const pts = [
+    { x: 0, y: 0 },
+    { x: 400, y: 0 },
+    { x: 400, y: 300 },
+    { x: 0, y: 300 },
+  ];
+  p.nodes = pts.map((pt) => ({ id: uid(), ...pt }));
+  const [n0, n1, n2, n3] = p.nodes;
+  const w1 = createWall(p, n0.id, n1.id, { systemId: 'O-CW50-1', boardId: 'RB12.5', insulation: false });
+  const w2 = createWall(p, n1.id, n2.id);
+  w2.openings.push(createOpening('door', 100));
+  const w3 = createWall(p, n2.id, n3.id, { systemId: 'O-CW50-1', boardId: 'RB12.5', insulation: false });
+  w3.openings.push(createOpening('window', 140));
+  p.walls = [w1, w2, w3];
+  p.ceilings = [createCeiling(p, pts)];
+  return p;
+}
+
+export interface QuickInput {
+  mode: 'wall' | 'room' | 'ceiling';
+  /** cm */
+  length: number;
+  width: number;
+  height: number;
+  wallSystemId: string;
+  ceilingSystemId: string;
+  withCeiling: boolean;
+  doors: number;
+  windows: number;
+}
+
+/** Szybkie wyliczenie: pojedyncza ściana, pomieszczenie (4 ściany + opcjonalny sufit) albo sam sufit */
+export function quickProject(q: QuickInput): Project {
+  const label =
+    q.mode === 'wall'
+      ? `Ściana ${q.length / 100} m × ${q.height / 100} m`
+      : q.mode === 'room'
+        ? `Pomieszczenie ${q.width / 100}×${q.length / 100} m, wys. ${q.height / 100} m`
+        : `Sufit ${q.width / 100}×${q.length / 100} m`;
+  const p = createProject(label);
+  p.settings.defaultHeight = q.height;
+  p.settings.defaultWallSystem = q.wallSystemId;
+  p.settings.defaultCeilingSystem = q.ceilingSystemId;
+  const rect = [
+    { x: 0, y: 0 },
+    { x: q.length, y: 0 },
+    { x: q.length, y: q.width },
+    { x: 0, y: q.width },
+  ];
+  if (q.mode === 'wall') {
+    p.nodes = [
+      { id: uid(), ...rect[0] },
+      { id: uid(), ...rect[1] },
+    ];
+    const w = createWall(p, p.nodes[0].id, p.nodes[1].id);
+    distributeOpenings(w, q.length, q.doors, q.windows);
+    p.walls = [w];
+  } else {
+    if (q.mode === 'room') {
+      p.nodes = rect.map((pt) => ({ id: uid(), ...pt }));
+      p.walls = p.nodes.map((n, i) => createWall(p, n.id, p.nodes[(i + 1) % 4].id));
+      // drzwi i okna rozdzielamy po kolei na ściany
+      let d = q.doors;
+      let win = q.windows;
+      p.walls.forEach((w, i) => {
+        const len = i % 2 === 0 ? q.length : q.width;
+        const dd = d > 0 ? 1 : 0;
+        const ww = win > 0 && (i >= 1 || q.windows > 3) ? 1 : 0;
+        d -= dd;
+        win -= ww;
+        distributeOpenings(w, len, dd, ww);
+      });
+    }
+    if (q.mode === 'ceiling' || q.withCeiling) p.ceilings = [createCeiling(p, rect, { height: q.height })];
+  }
+  return p;
+}
+
+function distributeOpenings(w: Wall, lengthCm: number, doors: number, windows: number) {
+  const items: Opening[] = [];
+  for (let i = 0; i < doors; i++) items.push(createOpening('door', 0));
+  for (let i = 0; i < windows; i++) items.push(createOpening('window', 0));
+  const total = items.reduce((a, o) => a + o.width, 0);
+  const gap = (lengthCm - total) / (items.length + 1);
+  if (gap < 10) return;
+  let x = gap;
+  for (const o of items) {
+    o.offset = Math.round(x);
+    x += o.width + gap;
+  }
+  w.openings = items;
+}

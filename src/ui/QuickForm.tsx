@@ -1,0 +1,142 @@
+import { useState } from 'react';
+import { CEILING_SYSTEMS, WALL_SYSTEMS } from '../catalog/rigips';
+import { quickProject, type QuickInput } from '../model/factory';
+import type { Project } from '../model/types';
+import { DimInput } from './DimInput';
+
+interface Props {
+  onCreate: (p: Project) => void;
+  onCancel: () => void;
+}
+
+const MODES: { id: QuickInput['mode']; label: string; hint: string }[] = [
+  { id: 'wall', label: 'Ściana', hint: 'Jedna ściana działowa lub obudowa' },
+  { id: 'room', label: 'Pomieszczenie', hint: '4 ściany, opcjonalnie z sufitem' },
+  { id: 'ceiling', label: 'Sufit', hint: 'Sufit podwieszany na profilach CD' },
+];
+
+export function QuickForm({ onCreate, onCancel }: Props) {
+  const [q, setQ] = useState<QuickInput>({
+    mode: 'ceiling',
+    length: 600,
+    width: 200,
+    height: 300,
+    wallSystemId: 'W-CW75-1',
+    ceilingSystemId: 'S-CD-2P-1',
+    withCeiling: true,
+    doors: 1,
+    windows: 0,
+  });
+  const set = (patch: Partial<QuickInput>) => setQ((s) => ({ ...s, ...patch }));
+  const showWalls = q.mode !== 'ceiling';
+  const showCeiling = q.mode === 'ceiling' || (q.mode === 'room' && q.withCeiling);
+
+  return (
+    <form
+      className="card quick"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onCreate(quickProject(q));
+      }}
+    >
+      <div className="card-head">
+        <h2>Szybkie wyliczenie</h2>
+        <p className="muted">Wpisz wymiary, a dostaniesz listę materiałów. Wymiary możesz podać w metrach (2,5) lub centymetrach (250).</p>
+      </div>
+
+      <div className="segmented" role="radiogroup" aria-label="Co liczymy">
+        {MODES.map((m) => (
+          <button
+            type="button"
+            key={m.id}
+            role="radio"
+            aria-checked={q.mode === m.id}
+            className={q.mode === m.id ? 'on' : ''}
+            onClick={() => set({ mode: m.id })}
+          >
+            <strong>{m.label}</strong>
+            <small>{m.hint}</small>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid-3">
+        <DimInput label={q.mode === 'wall' ? 'Długość ściany' : 'Długość'} unit="m" value={q.length} onChange={(v) => set({ length: v })} min={20} />
+        {q.mode !== 'wall' && <DimInput label="Szerokość" unit="m" value={q.width} onChange={(v) => set({ width: v })} min={20} />}
+        <DimInput
+          label={q.mode === 'ceiling' ? 'Wysokość sufitu' : 'Wysokość'}
+          unit="m"
+          value={q.height}
+          onChange={(v) => set({ height: v })}
+          min={50}
+          max={1000}
+        />
+      </div>
+
+      {showWalls && (
+        <>
+          <div className="field">
+            <label htmlFor="q-wall">System ściany</label>
+            <select id="q-wall" value={q.wallSystemId} onChange={(e) => set({ wallSystemId: e.target.value })}>
+              {WALL_SYSTEMS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid-3">
+            <Stepper label="Drzwi" value={q.doors} onChange={(v) => set({ doors: v })} />
+            <Stepper label="Okna" value={q.windows} onChange={(v) => set({ windows: v })} />
+          </div>
+        </>
+      )}
+
+      {q.mode === 'room' && (
+        <label className="check">
+          <input type="checkbox" checked={q.withCeiling} onChange={(e) => set({ withCeiling: e.target.checked })} />
+          Dolicz sufit podwieszany
+        </label>
+      )}
+
+      {showCeiling && (
+        <div className="field">
+          <label htmlFor="q-ceil">System sufitu</label>
+          <select id="q-ceil" value={q.ceilingSystemId} onChange={(e) => set({ ceilingSystemId: e.target.value })}>
+            {CEILING_SYSTEMS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="actions">
+        <button type="button" className="btn ghost" onClick={onCancel}>
+          Anuluj
+        </button>
+        <button type="submit" className="btn primary">
+          Wylicz materiały
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function Stepper({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="field">
+      <span className="label">{label}</span>
+      <div className="stepper">
+        <button type="button" aria-label={`Mniej: ${label}`} onClick={() => onChange(Math.max(0, value - 1))}>
+          −
+        </button>
+        <output aria-live="polite">{value}</output>
+        <button type="button" aria-label={`Więcej: ${label}`} onClick={() => onChange(Math.min(8, value + 1))}>
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
