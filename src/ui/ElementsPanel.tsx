@@ -114,7 +114,7 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
         <DimInput label="Długość" unit="m" value={L} min={10} onChange={(v) => edit((w, d) => setWallLength(d, w, v))} />
         <DimInput label="Wysokość" unit="m" value={wall.height} min={30} max={1000} onChange={(v) => edit((w) => void (w.height = v))} />
         <div className="field">
-          <label htmlFor={`sp-${wall.id}`}>Rozstaw CW</label>
+          <label htmlFor={`sp-${wall.id}`}>{sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW'}</label>
           <select
             id={`sp-${wall.id}`}
             value={wall.studSpacing}
