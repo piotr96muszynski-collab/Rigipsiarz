@@ -80,7 +80,8 @@ describe('zużycie na m² zgodne z kartami Rigips (±25%)', () => {
     });
   for (const s of CEILING_SYSTEMS.filter((x) => x.reference))
     it(`sufit ${s.code} ${s.name}`, () => {
-      expect(compare(s.id, ceilingConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(4);
+      // masa wykończeniowa z karty (gładź) jest poza zakresem – spoinowanie liczymy do Q1
+      expect(compare(s.id, ceilingConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(3);
     });
 });
 
@@ -92,7 +93,7 @@ describe('ściany – dokładne wartości na m²', () => {
     expect(q(c, 'TN25')).toBeCloseTo(9);
     expect(q(c, 'TN35')).toBeCloseTo(24);
     expect(q(c, 'MASA')).toBeCloseTo(1);
-    expect(q(c, 'MASA_WYK')).toBeCloseTo(0.2);
+    expect(q(c, 'MASA_WYK')).toBe(0); // gładź poza zakresem (Q1)
     expect(q(c, 'TASMA_SPOIN')).toBeCloseTo(2.8);
   });
   it('rozstaw 40 cm zwiększa wkręty o 50% (3.40.051: 14 + 36 szt./m²)', () => {
@@ -122,7 +123,7 @@ describe('ściany – dokładne wartości na m²', () => {
   });
   it('płyta klejona: tylko płyta, klej i spoinowanie – bez profili i wkrętów', () => {
     const c = wallConsumption(wallSystemById('O-KLEJ'));
-    expect(c.map((l) => l.key).sort()).toEqual(['KLEJ', 'MASA', 'MASA_WYK', 'TASMA_SPOIN', 'board:RB12.5']);
+    expect(c.map((l) => l.key).sort()).toEqual(['KLEJ', 'MASA', 'TASMA_SPOIN', 'board:RB12.5']);
     expect(q(c, 'KLEJ')).toBeCloseTo(4);
   });
   it('Aquaroc: wkręty i masa do płyt cementowych', () => {

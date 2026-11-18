@@ -6,6 +6,8 @@
 // przyjęto typowe wartości z wytycznych montażowych. Przed zamówieniem do obiektów
 // z wymaganiami ogniowymi lub akustycznymi zawsze sprawdź aktualną kartę systemu.
 
+import { CORNER_STOCK_LENGTHS, FINISHING_PRODUCTS } from './finishing';
+
 export type Unit = 'szt.' | 'mb' | 'm²' | 'kg' | 'opak.' | 'rolka' | 'worek';
 
 export interface Product {
@@ -35,7 +37,7 @@ export const STOCK_LENGTHS: Record<string, number[]> = {
   UA: [3, 2.6, 4],
   CD: [4, 3],
   UD: [3, 4],
-  NAROZNIK: [3, 2.5],
+  ...CORNER_STOCK_LENGTHS,
 };
 
 // ---------------------------------------------------------------------------
@@ -309,24 +311,17 @@ export const PRODUCTS: Record<string, Product> = {
   TASMA_USZ70: { id: 'TASMA_USZ70', name: 'Taśma uszczelniająca 70 mm', group: 'Wykończenie', unit: 'mb', pack: 30, packUnit: 'rolka' },
   TASMA_USZ95: { id: 'TASMA_USZ95', name: 'Taśma uszczelniająca 95 mm', group: 'Wykończenie', unit: 'mb', pack: 30, packUnit: 'rolka' },
   TASMA_USZ30: { id: 'TASMA_USZ30', name: 'Taśma uszczelniająca 30 mm (pod UD)', group: 'Wykończenie', unit: 'mb', pack: 30, packUnit: 'rolka' },
-  TASMA_SPOIN: {
-    id: 'TASMA_SPOIN',
-    name: 'Taśma spoinowa z włókna szklanego',
-    group: 'Wykończenie',
-    unit: 'mb',
-    pack: 90,
-    packUnit: 'rolka',
-  },
-  MASA: { id: 'MASA', name: 'Masa szpachlowa konstrukcyjna Rigips Vario', group: 'Wykończenie', unit: 'kg', pack: 25, packUnit: 'worek' },
+  // gładź (Q2+) – poza zakresem wyliczeń (spoinowanie liczone do Q1), zostaje dla porównań z kartami
   MASA_WYK: { id: 'MASA_WYK', name: 'Masa szpachlowa wykończeniowa (gotowa)', group: 'Wykończenie', unit: 'kg', pack: 20, packUnit: 'opak.' },
   MASA_AQ: { id: 'MASA_AQ', name: 'Masa do spoinowania płyt Aquaroc', group: 'Wykończenie', unit: 'kg', pack: 20, packUnit: 'worek' },
   TASMA_AQ: { id: 'TASMA_AQ', name: 'Taśma z siatki do płyt Aquaroc', group: 'Wykończenie', unit: 'mb', pack: 50, packUnit: 'rolka' },
   KLEJ: { id: 'KLEJ', name: 'Klej gipsowy do płyt g-k', group: 'Mocowanie', unit: 'kg', pack: 25, packUnit: 'worek' },
-  NAROZNIK: { id: 'NAROZNIK', name: 'Narożnik ochronny aluminiowy', group: 'Wykończenie', unit: 'szt.', length: 3 },
   // Izolacja
   WELNA50: { id: 'WELNA50', name: 'Wełna mineralna 50 mm', group: 'Izolacja', unit: 'm²' },
   WELNA75: { id: 'WELNA75', name: 'Wełna mineralna 75 mm', group: 'Izolacja', unit: 'm²' },
   WELNA100: { id: 'WELNA100', name: 'Wełna mineralna 100 mm', group: 'Izolacja', unit: 'm²' },
+  // masy, taśmy spoinowe, narożniki i materiały na styki – src/catalog/finishing.ts
+  ...FINISHING_PRODUCTS,
 };
 
 /** Stare identyfikatory produktów (zapisane ceny i odhaczenia) → nowe */

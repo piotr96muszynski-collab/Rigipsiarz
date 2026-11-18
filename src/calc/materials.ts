@@ -25,6 +25,8 @@ import {
 } from '../geometry/geometry';
 import type { Ceiling, Project, Wall } from '../model/types';
 import { createCeiling, createProject, createWall } from '../model/factory';
+import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
+import { analyzeJoints, type Joint } from './joints';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -101,18 +103,19 @@ function addBoardScrews(
 }
 
 /**
- * Spoinowanie wg kart Rigips: taśma spoinowa na warstwie zewnętrznej, masa konstrukcyjna
- * 0,25 kg/m² na każdą warstwę, masa wykończeniowa 0,10 kg/m².
+ * Spoinowanie do poziomu Q1 (karty Rigips): taśma spoinowa na warstwie zewnętrznej,
+ * masa wg karty wybranej masy na każdą warstwę płyt (warstwy wewnętrzne tylko wypełnione).
+ * Gładzie (Q2–Q4) nie są liczone.
  */
-function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number) {
+function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number, fin: FinishingSettings) {
   if (boardById(boardId).kind === 'cement') {
     add(req.meters, 'TASMA_AQ', area * tapePerM2);
     add(req.kg, 'MASA_AQ', area * (0.5 + 0.25 * (layers - 1)));
     return;
   }
-  add(req.meters, 'TASMA_SPOIN', area * tapePerM2);
-  add(req.kg, 'MASA', area * 0.25 * layers);
-  add(req.kg, 'MASA_WYK', area * 0.1);
+  add(req.meters, tapeById(fin.tape).product, area * tapePerM2);
+  const c = compoundById(fin.compound);
+  add(req.kg, c.product, area * c.kgPerM2 * layers);
 }
 
 /** Wkręty na m² jednej strony ściany przy rozstawie 60 cm (karta 3.40.05: 9 + 24 szt. na 2 strony) */
@@ -269,18 +272,9 @@ export function wallRequirement(
   }
 
   // --- Spoinowanie ---
-  addJointing(req, faceArea, sys.layers, w.boardId, 1.4);
+  addJointing(req, faceArea, sys.layers, w.boardId, 1.4, resolveFinishing(p.settings.finishing));
 
-  // --- Narożniki ochronne: krawędzie zewnętrzne + ościeża otworów ---
-  for (let i = 0; i < j.externalEdges; i++) addPiece(req, 'NAROZNIK', H);
-  for (const o of openings) {
-    for (let side = 0; side < sys.sides; side++) {
-      addPiece(req, 'NAROZNIK', o.h);
-      addPiece(req, 'NAROZNIK', o.h);
-      if (o.top < H - 0.01) addPiece(req, 'NAROZNIK', o.w);
-      if (o.sill > 0.01) addPiece(req, 'NAROZNIK', o.w);
-    }
-  }
+  // Narożniki, kąty wewnętrzne i styki liczy analyzeJoints (src/calc/joints.ts)
 
   // --- Wełna (w ścianie na podwójnym ruszcie w obu rzędach, wg karty 3.41.01) ---
   if (w.insulation && sys.frame !== 'glued') {
@@ -346,7 +340,11 @@ export interface CeilingResult {
   warnings: string[];
 }
 
-export function ceilingRequirement(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c.systemId)): CeilingResult {
+export function ceilingRequirement(
+  c: Ceiling,
+  sys: CeilingSystem = ceilingSystemById(c.systemId),
+  fin: FinishingSettings = resolveFinishing(),
+): CeilingResult {
   const req = emptyReq();
   const A = polygonArea(c.points) / 10000;
   const edges = polygonPerimeterEdges(c.points).map((e) => e / 100);
@@ -425,7 +423,7 @@ export function ceilingRequirement(c: Ceiling, sys: CeilingSystem = ceilingSyste
   const sheetLen = pickBoardLength(c.boardId, Math.min(longSide, 300));
   add(req.boardArea, `${c.boardId}|${sheetLen}`, A * sys.layers);
   addBoardScrews(req, A, sys.layers, c.boardId, sys.screwsOuter, sys.screwsInner);
-  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2);
+  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin);
   if (c.insulation) add(req.area, 'WELNA100', A);
 
   return { req, areaM2: A, perimeterM: P, warnings };
@@ -577,6 +575,8 @@ export function summarize(reqs: Requirement[], wastePct: number): MaterialLine[]
 export interface ProjectCalc {
   walls: Map<string, { req: Requirement; info: WallBreakdown }>;
   ceilings: Map<string, CeilingResult>;
+  /** Połączenia ścian, styki i krawędzie otworów z materiałami */
+  joints: Joint[];
   total: MaterialLine[];
   stats: { wallLengthM: number; wallAreaM2: number; ceilingAreaM2: number; openings: number };
 }
@@ -600,15 +600,16 @@ export function calculateProject(p: Project): ProjectCalc {
   let ceilingAreaM2 = 0;
   for (const c of p.ceilings) {
     if (c.points.length < 3) continue;
-    const r = ceilingRequirement(c);
+    const r = ceilingRequirement(c, undefined, resolveFinishing(p.settings.finishing));
     ceilings.set(c.id, r);
     ceilingAreaM2 += r.areaM2;
   }
+  const joints = analyzeJoints(p);
   const total = summarize(
-    [...[...walls.values()].map((x) => x.req), ...[...ceilings.values()].map((x) => x.req)],
+    [...[...walls.values()].map((x) => x.req), ...[...ceilings.values()].map((x) => x.req), ...joints.map((j) => j.req)],
     p.settings.wasteEnabled ? p.settings.waste : 0,
   );
-  return { walls, ceilings, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings } };
+  return { walls, ceilings, joints, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings } };
 }
 
 export function materialsToCsv(lines: MaterialLine[]): string {

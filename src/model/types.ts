@@ -1,5 +1,7 @@
 // Wszystkie wymiary w modelu są w centymetrach.
 
+import type { FinishingSettings } from '../catalog/finishing';
+
 export type Id = string;
 
 export interface Point {
@@ -65,6 +67,17 @@ export interface ProjectSettings {
   defaultWallSystem: string;
   defaultCeilingSystem: string;
   gridSnap: number;
+  /** Spoinowanie (Q1) i domyślne wykończenie narożników i styków; brak = wartości domyślne */
+  finishing?: Partial<FinishingSettings>;
+}
+
+/**
+ * Wybór wykończenia dla jednego połączenia (klucz = id połączenia z `analyzeJoints`).
+ * outer = krawędzie zewnętrzne, inner = kąty wewnętrzne i styki.
+ */
+export interface JointFinishOverride {
+  outer?: string;
+  inner?: string;
 }
 
 export interface Project {
@@ -78,4 +91,6 @@ export interface Project {
   settings: ProjectSettings;
   /** Lista zakupów: pozycje odhaczone jako kupione */
   bought: Record<string, boolean>;
+  /** Wykończenie wybrane ręcznie dla połączeń (narożniki, trójniki, styki) */
+  jointFinish?: Record<string, JointFinishOverride>;
 }
