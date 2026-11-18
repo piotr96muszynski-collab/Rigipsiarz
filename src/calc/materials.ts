@@ -26,8 +26,11 @@ import {
   wallLength,
   type WallJunctions,
 } from '../geometry/geometry';
+import { WOOL_THICKNESSES, resolveWool, woolThicknessOf, type WoolChoice } from '../catalog/insulation';
 import type { Ceiling, Lining, Project, Wall } from '../model/types';
 import { createCeiling, createProject, createWall } from '../model/factory';
+import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
+import { analyzeJoints, type Joint } from './joints';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -104,18 +107,19 @@ function addBoardScrews(
 }
 
 /**
- * Spoinowanie wg kart Rigips: taśma spoinowa na warstwie zewnętrznej, masa konstrukcyjna
- * 0,25 kg/m² na każdą warstwę, masa wykończeniowa 0,10 kg/m².
+ * Spoinowanie do poziomu Q1 (karty Rigips): taśma spoinowa na warstwie zewnętrznej,
+ * masa wg karty wybranej masy na każdą warstwę płyt (warstwy wewnętrzne tylko wypełnione).
+ * Gładzie (Q2–Q4) nie są liczone.
  */
-function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number) {
+function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number, fin: FinishingSettings) {
   if (boardById(boardId).kind === 'cement') {
     add(req.meters, 'TASMA_AQ', area * tapePerM2);
     add(req.kg, 'MASA_AQ', area * (0.5 + 0.25 * (layers - 1)));
     return;
   }
-  add(req.meters, 'TASMA_SPOIN', area * tapePerM2);
-  add(req.kg, 'MASA', area * 0.25 * layers);
-  add(req.kg, 'MASA_WYK', area * 0.1);
+  add(req.meters, tapeById(fin.tape).product, area * tapePerM2);
+  const c = compoundById(fin.compound);
+  add(req.kg, c.product, area * c.kgPerM2 * layers);
 }
 
 /** Wkręty na m² jednej strony ściany przy rozstawie 60 cm (karta 3.40.05: 9 + 24 szt. na 2 strony) */
@@ -133,6 +137,39 @@ export interface WallBreakdown {
   junctions: WallJunctions;
   /** Ostrzeżenia, np. przekroczona wysokość systemu */
   warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Wełna mineralna: dobór grubości
+// ---------------------------------------------------------------------------
+
+/** Grubości wełny, które mieszczą się w ruszcie ściany (mm); pusta lista = bez wełny */
+export function wallWoolOptions(sys: WallSystem): number[] {
+  // płyta klejona i ATLAS M-System 3G – brak miejsca na wełnę
+  if (sys.frame === 'glued' || sys.frame === 'point-fix') return [];
+  // okładzina na CD 60 i uchwytach ES – przestrzeń regulowana uchwytem, typowo 50 mm
+  const cavity = sys.frame === 'cd-lining' ? 50 : sys.profile;
+  return WOOL_THICKNESSES.filter((t) => t <= cavity);
+}
+
+/**
+ * Wełna w ścianie: grubość (domyślnie pełna głębokość profilu) i liczba warstw –
+ * w ścianie na podwójnym ruszcie wełna w obu rzędach (karta 3.41.01).
+ */
+export function wallInsulation(w: Wall, sys: WallSystem = wallSystemById(w.systemId)): { thickness: number; layers: number } | null {
+  const options = wallWoolOptions(sys);
+  if (!w.insulation || !options.length) return null;
+  const thickness = options.includes(w.insulationThickness ?? -1) ? w.insulationThickness! : options[options.length - 1];
+  return { thickness, layers: sys.frame === 'double' ? 2 : 1 };
+}
+
+/** Grubości wełny na sufit (układana na płytach / między profilami), mm */
+export const CEILING_WOOL_OPTIONS: number[] = [...WOOL_THICKNESSES];
+
+export function ceilingInsulation(c: Ceiling): { thickness: number; layers: number } | null {
+  if (!c.insulation) return null;
+  const thickness = CEILING_WOOL_OPTIONS.includes(c.insulationThickness ?? -1) ? c.insulationThickness! : 100;
+  return { thickness, layers: 1 };
 }
 
 export function wallRequirement(
@@ -274,24 +311,13 @@ export function wallRequirement(
   }
 
   // --- Spoinowanie ---
-  addJointing(req, faceArea, sys.layers, w.boardId, 1.4);
+  addJointing(req, faceArea, sys.layers, w.boardId, 1.4, resolveFinishing(p.settings.finishing));
 
-  // --- Narożniki ochronne: krawędzie zewnętrzne + ościeża otworów ---
-  for (let i = 0; i < j.externalEdges; i++) addPiece(req, 'NAROZNIK', H);
-  for (const o of openings) {
-    for (let side = 0; side < sys.sides; side++) {
-      addPiece(req, 'NAROZNIK', o.h);
-      addPiece(req, 'NAROZNIK', o.h);
-      if (o.top < H - 0.01) addPiece(req, 'NAROZNIK', o.w);
-      if (o.sill > 0.01) addPiece(req, 'NAROZNIK', o.w);
-    }
-  }
+  // Narożniki, kąty wewnętrzne i styki liczy analyzeJoints (src/calc/joints.ts)
 
-  // --- Wełna (w ścianie na podwójnym ruszcie w obu rzędach, wg karty 3.41.01) ---
-  if (w.insulation && sys.frame !== 'glued') {
-    const wool = isCD ? 'WELNA50' : `WELNA${sys.profile}`;
-    add(req.area, wool, net * (sys.frame === 'double' ? 2 : 1));
-  }
+  // --- Wełna: powierzchnia netto ściany (po odjęciu otworów) × liczba warstw ---
+  const ins = wallInsulation(w, sys);
+  if (ins) add(req.area, `WELNA${ins.thickness}`, net * ins.layers);
 
   return {
     req,
@@ -345,13 +371,7 @@ function pointFixWall(
   add(req.boardArea, `${w.boardId}|${pickBoardLength(w.boardId, w.height)}`, faceArea * sys.layers);
   addAtlasJointing(req, faceArea, sys.layers, 1.4);
 
-  for (let i = 0; i < j.externalEdges; i++) addPiece(req, 'NAROZNIK', H);
-  for (const o of openings) {
-    addPiece(req, 'NAROZNIK', o.h);
-    addPiece(req, 'NAROZNIK', o.h);
-    if (o.top < H - 0.01) addPiece(req, 'NAROZNIK', o.w);
-    if (o.sill > 0.01) addPiece(req, 'NAROZNIK', o.w);
-  }
+  // narożniki i krawędzie otworów liczy analyzeJoints (src/calc/joints.ts)
 
   if (w.insulation) warnings.push('W systemie ATLAS M-System 3G aplikacja nie liczy wełny – odstęp płyty od ściany jest za mały na typowe płyty izolacyjne.');
   if (sys.layers > 1 && sx * sy > 0.36 + 1e-9)
@@ -447,7 +467,11 @@ export interface CeilingResult {
   warnings: string[];
 }
 
-export function ceilingRequirement(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c.systemId)): CeilingResult {
+export function ceilingRequirement(
+  c: Ceiling,
+  sys: CeilingSystem = ceilingSystemById(c.systemId),
+  fin: FinishingSettings = resolveFinishing(),
+): CeilingResult {
   const req = emptyReq();
   const A = polygonArea(c.points) / 10000;
   const edges = polygonPerimeterEdges(c.points).map((e) => e / 100);
@@ -527,8 +551,9 @@ export function ceilingRequirement(c: Ceiling, sys: CeilingSystem = ceilingSyste
   const sheetLen = pickBoardLength(c.boardId, Math.min(longSide, 300));
   add(req.boardArea, `${c.boardId}|${sheetLen}`, A * sys.layers);
   addBoardScrews(req, A, sys.layers, c.boardId, sys.screwsOuter, sys.screwsInner);
-  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2);
-  if (c.insulation) add(req.area, 'WELNA100', A);
+  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin);
+  const ins = ceilingInsulation(c);
+  if (ins) add(req.area, `WELNA${ins.thickness}`, A * ins.layers);
 
   return { req, areaM2: A, perimeterM: P, warnings };
 }
@@ -609,7 +634,34 @@ export interface MaterialLine {
 const GROUP_ORDER: Product['group'][] = ['Płyty', 'Profile', 'Akcesoria do sufitów', 'Mocowanie', 'Izolacja', 'Wykończenie'];
 
 
-export function summarize(reqs: Requirement[], wastePct: number): MaterialLine[] {
+export interface SummarizeOptions {
+  /** Wybrane produkty wełny wg grubości (ustawienia projektu) */
+  wool?: Record<string, WoolChoice>;
+}
+
+const fmtM2 = (v: number) => v.toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
+
+/**
+ * Wełna: m² netto × zapas, w górę do 0,1 m², potem pełne opakowania handlowe wybranego produktu.
+ */
+export function woolLine(pid: string, netM2: number, waste: number, choice?: WoolChoice): MaterialLine {
+  const t = woolThicknessOf(pid);
+  const r = resolveWool(t, choice);
+  const qty = Math.ceil(netM2 * waste * 10 - 1e-9) / 10;
+  const line: MaterialLine = { key: r.key, group: 'Izolacja', name: r.name, qty, unit: 'm²' };
+  const notes = [`${fmtM2(netM2)} m² netto`];
+  if (r.packM2 > 0) {
+    const packs = Math.ceil(qty / r.packM2 - 1e-9);
+    line.packs = packs;
+    line.packUnit = r.packUnit;
+    const pieces = r.pieces && r.sizeCm ? ` (${r.pieces} pł. ${r.sizeCm[0]}×${r.sizeCm[1]} cm)` : '';
+    notes.push(`${r.packUnit === 'rolka' ? 'rolka' : 'paczka'} ${fmtM2(r.packM2)} m²${pieces}`);
+  }
+  line.note = notes.join(' · ');
+  return line;
+}
+
+export function summarize(reqs: Requirement[], wastePct: number, opts: SummarizeOptions = {}): MaterialLine[] {
   const waste = 1 + wastePct / 100;
   const lines: MaterialLine[] = [];
   const merged = emptyReq();
@@ -669,7 +721,7 @@ export function summarize(reqs: Requirement[], wastePct: number): MaterialLine[]
   for (const [pid, v] of Object.entries(merged.counts)) lines.push(withPacks(pid, Math.ceil(v * (pid.startsWith('T') || pid.startsWith('AQ') || pid === 'LN9' ? waste : 1) - 1e-9), 'szt.'));
   for (const [pid, v] of Object.entries(merged.meters)) lines.push(withPacks(pid, Math.ceil(v * waste - 1e-9), 'mb'));
   for (const [pid, v] of Object.entries(merged.kg)) lines.push(withPacks(pid, Math.ceil(v * waste - 1e-9), 'kg'));
-  for (const [pid, v] of Object.entries(merged.area)) lines.push(withPacks(pid, Math.ceil(v * waste * 10 - 1e-9) / 10, 'm²'));
+  for (const [pid, v] of Object.entries(merged.area)) lines.push(woolLine(pid, v, waste, opts.wool?.[String(woolThicknessOf(pid))]));
 
   return lines.sort(
     (a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || a.name.localeCompare(b.name, 'pl'),
@@ -718,6 +770,8 @@ export interface ProjectCalc {
   /** Okładziny istniejących ścian, klucz z `liningKey` */
   linings: Map<string, LiningResult>;
   ceilings: Map<string, CeilingResult>;
+  /** Połączenia ścian, styki i krawędzie otworów z materiałami */
+  joints: Joint[];
   total: MaterialLine[];
   stats: { wallLengthM: number; wallAreaM2: number; ceilingAreaM2: number; openings: number; liningAreaM2: number };
 }
@@ -752,19 +806,22 @@ export function calculateProject(p: Project): ProjectCalc {
   let ceilingAreaM2 = 0;
   for (const c of p.ceilings) {
     if (c.points.length < 3) continue;
-    const r = ceilingRequirement(c);
+    const r = ceilingRequirement(c, undefined, resolveFinishing(p.settings.finishing));
     ceilings.set(c.id, r);
     ceilingAreaM2 += r.areaM2;
   }
+  const joints = analyzeJoints(p);
   const total = summarize(
     [
       ...[...walls.values()].map((x) => x.req),
       ...[...linings.values()].map((x) => x.req),
       ...[...ceilings.values()].map((x) => x.req),
+      ...joints.map((j) => j.req),
     ],
     p.settings.wasteEnabled ? p.settings.waste : 0,
+    { wool: p.settings.wool },
   );
-  return { walls, linings, ceilings, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings, liningAreaM2 } };
+  return { walls, linings, ceilings, joints, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings, liningAreaM2 } };
 }
 
 export function materialsToCsv(lines: MaterialLine[]): string {

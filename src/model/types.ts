@@ -1,5 +1,8 @@
 // Wszystkie wymiary w modelu są w centymetrach.
 
+import type { FinishingSettings } from '../catalog/finishing';
+import type { WoolChoice } from '../catalog/insulation';
+
 export type Id = string;
 
 export interface Point {
@@ -64,6 +67,8 @@ export interface Wall {
   /** Rozstaw słupków CW, cm */
   studSpacing: 60 | 40 | 30;
   insulation: boolean;
+  /** Grubość wełny, mm (brak = pełna głębokość rusztu) */
+  insulationThickness?: number;
   endA: FreeEndType;
   endB: FreeEndType;
   openings: Opening[];
@@ -75,6 +80,8 @@ export interface Ceiling {
   systemId: string;
   boardId: string;
   insulation: boolean;
+  /** Grubość wełny na suficie, mm (brak = 100 mm) */
+  insulationThickness?: number;
   /** Kierunek profili nośnych: 0 = wzdłuż osi X, 90 = wzdłuż osi Y */
   direction: 0 | 90;
   /** Wysokość sufitu od posadzki (do widoku 3D), cm */
@@ -90,6 +97,19 @@ export interface ProjectSettings {
   defaultWallSystem: string;
   defaultCeilingSystem: string;
   gridSnap: number;
+  /** Wybrany produkt wełny dla każdej grubości (klucz = grubość w mm) */
+  wool?: Record<string, WoolChoice>;
+  /** Spoinowanie (Q1) i domyślne wykończenie narożników i styków; brak = wartości domyślne */
+  finishing?: Partial<FinishingSettings>;
+}
+
+/**
+ * Wybór wykończenia dla jednego połączenia (klucz = id połączenia z `analyzeJoints`).
+ * outer = krawędzie zewnętrzne, inner = kąty wewnętrzne i styki.
+ */
+export interface JointFinishOverride {
+  outer?: string;
+  inner?: string;
 }
 
 export interface Project {
@@ -103,4 +123,6 @@ export interface Project {
   settings: ProjectSettings;
   /** Lista zakupów: pozycje odhaczone jako kupione */
   bought: Record<string, boolean>;
+  /** Wykończenie wybrane ręcznie dla połączeń (narożniki, trójniki, styki) */
+  jointFinish?: Record<string, JointFinishOverride>;
 }

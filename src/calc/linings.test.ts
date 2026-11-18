@@ -59,8 +59,11 @@ describe('obrys istniejącej przestrzeni', () => {
     // bez rusztu – żadnych profili ani kołków
     expect(Object.keys(r.req.pieces).filter((k) => k !== 'NAROZNIK')).toHaveLength(0);
     expect(r.req.counts.KOLEK ?? 0).toBe(0);
-    // narożniki ochronne na ościeżach okna
-    expect(r.req.pieces.NAROZNIK).toHaveLength(4);
+    // narożniki ochronne na ościeżach okna liczy połączenie otworu (src/calc/joints.ts)
+    const reveal = calc.joints.find((j) => j.id === `op:${w.id}:${w.linings![0].side}:${w.openings[0].id}`)!;
+    expect(reveal.req.pieces.NAROZNIK).toHaveLength(4);
+    // styk okładziny z murem na obu końcach i ze stropem
+    expect(calc.joints.find((j) => j.id === `lin:${w.id}:${w.linings![0].side}`)!.inner!.lengths).toEqual([2.6, 2.6]);
   });
 
   it('okładzina na CD 60: profile, uchwyty ES i UD przy murze', () => {
