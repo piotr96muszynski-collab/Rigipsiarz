@@ -6,6 +6,7 @@ import { migrateKeys, type PriceBook } from '../model/prices';
 import type { Project } from '../model/types';
 import { deleteProject, getKV, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
 import { CatalogView } from './CatalogView';
+import { DrawingsPanel } from './DrawingsPanel';
 import { ElementsPanel } from './ElementsPanel';
 import { PlanTab } from './PlanTab';
 import { LaserButton } from './LaserButton';
@@ -191,7 +192,7 @@ function Home({
   );
 }
 
-type Tab = 'plan' | 'list' | 'elements' | '3d' | 'settings';
+type Tab = 'plan' | 'list' | 'elements' | '3d' | 'drawings' | 'settings';
 
 function ProjectView({
   initial,
@@ -249,6 +250,7 @@ function ProjectView({
         { id: 'plan', label: 'Plan' },
         { id: 'elements', label: 'Ściany, sufity i materiały' },
         { id: '3d', label: 'Widok 3D' },
+        { id: 'drawings', label: 'Rysunki' },
         { id: 'settings', label: 'Ustawienia' },
       ]
     : [
@@ -256,6 +258,7 @@ function ProjectView({
         { id: 'list', label: 'Zakupy' },
         { id: 'elements', label: 'Elementy' },
         { id: '3d', label: '3D' },
+        { id: 'drawings', label: 'Rysunki' },
         { id: 'settings', label: 'Ustawienia' },
       ];
   const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
@@ -343,6 +346,7 @@ function ProjectView({
             </div>
           </div>
         )}
+        {tab === 'drawings' && <DrawingsPanel project={project} calc={calc} />}
         {activeTab === 'settings' && (
           <div className="card settings">
             <label className="check">
