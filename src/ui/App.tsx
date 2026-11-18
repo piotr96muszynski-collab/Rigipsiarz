@@ -176,7 +176,7 @@ function Home({
                 <button onClick={() => onSelect(p.id)}>
                   <strong>{p.name}</strong>
                   <span className="muted small">
-                    {p.walls.length} ścian · {p.ceilings.length} sufitów · {new Date(p.updatedAt).toLocaleDateString('pl-PL')}
+                    {p.walls.filter((w) => w.kind !== 'existing').length} ścian · {p.ceilings.length} sufitów · {new Date(p.updatedAt).toLocaleDateString('pl-PL')}
                   </span>
                 </button>
               </li>
@@ -304,11 +304,19 @@ function ProjectView({
           <strong>{fmtNum(s.ceilingAreaM2, 1)} m²</strong>
           <small>{project.ceilings.length} szt.</small>
         </div>
-        <div>
-          <span>Otwory</span>
-          <strong>{s.openings}</strong>
-          <small>drzwi i okna</small>
-        </div>
+        {s.liningAreaM2 > 0 ? (
+          <div>
+            <span>Okładziny</span>
+            <strong>{fmtNum(s.liningAreaM2, 1)} m²</strong>
+            <small>na istniejących ścianach</small>
+          </div>
+        ) : (
+          <div>
+            <span>Otwory</span>
+            <strong>{s.openings}</strong>
+            <small>drzwi i okna</small>
+          </div>
+        )}
       </div>
       )}
 

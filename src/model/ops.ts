@@ -1,5 +1,5 @@
 import { dist, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
-import { createWall, uid } from './factory';
+import { createExistingWall, createWall, uid } from './factory';
 import type { Id, Point, Project, Wall } from './types';
 
 /** Zwraca id istniejącego węzła w pobliżu lub tworzy nowy */
@@ -17,7 +17,7 @@ export function addWall(p: Project, from: Point, to: Point, overrides: Partial<W
   const b = ensureNode(p, to);
   if (a === b) return null;
   if (p.walls.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a))) return null;
-  const w = createWall(p, a, b, overrides);
+  const w = overrides.kind === 'existing' ? createExistingWall(p, a, b, overrides) : createWall(p, a, b, overrides);
   p.walls.push(w);
   return w;
 }

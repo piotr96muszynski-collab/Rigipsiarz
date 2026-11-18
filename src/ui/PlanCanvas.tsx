@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { bbox, dist, nodeMap, pointInPolygon, wallEnds } from '../geometry/geometry';
+import { bbox, dist, existingRooms, interiorSide, isNewWall, nodeMap, pointInPolygon, wallEnds } from '../geometry/geometry';
+import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
 import { createCeiling, createOpening } from '../model/factory';
 import { addWall, hitWall, mergeNodeIfOverlaps, offsetAlongWall, snapPoint, type SnapResult } from '../model/ops';
 import type { Point, Project } from '../model/types';
-import { fmtCm, wallColor, wallThickness } from './wallStyle';
+import { fmtCm, liningThickness, wallColor, wallThickness } from './wallStyle';
 
 export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'ceiling';
 
@@ -26,6 +27,8 @@ interface Props {
   zoom?: { seq: number; factor: number };
   /** Wysokość (px) zasłonięta od dołu przez panel – plan przesuwa się, żeby zaznaczenie było widać */
   insetBottom?: number;
+  /** Warstwa, do której trafiają rysowane ściany */
+  layer?: 'existing' | 'new';
   onMessage: (m: string) => void;
 }
 
@@ -48,7 +51,7 @@ const HANDLE_PX = 16;
 const DRAG_PX = 7;
 
 export function PlanCanvas(props: Props) {
-  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0 } = props;
+  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new' } = props;
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View>({ ox: -100, oy: -100, z: 1.2 });
@@ -60,6 +63,17 @@ export function PlanCanvas(props: Props) {
   const [hover, setHover] = useState<SnapResult | null>(null);
 
   const nodes = useMemo(() => nodeMap(project), [project]);
+  // strona pomieszczenia dla ścian obrysu
+  const interiors = useMemo(() => {
+    const rooms = existingRooms(project);
+    return new Map(project.walls.filter((w) => !isNewWall(w)).map((w) => [w.id, interiorSide(project, w, rooms)]));
+  }, [project]);
+  // węzły, w których spotykają się co najmniej dwie istniejące ściany
+  const cornerNodes = useMemo(() => {
+    const c = new Map<string, number>();
+    for (const w of project.walls) if (!isNewWall(w)) for (const n of [w.a, w.b]) c.set(n, (c.get(n) ?? 0) + 1);
+    return new Set([...c].filter(([, k]) => k > 1).map(([n]) => n));
+  }, [project]);
 
   // rozmiar
   useEffect(() => {
@@ -131,7 +145,7 @@ export function PlanCanvas(props: Props) {
     }
     const sy = (target.y - view.oy) * view.z;
     const visibleBottom = size.h - insetBottom - 30;
-    const TOP = 130; // pasek narzędzi i podpowiedź
+    const TOP = 130; // pasek narzędzi i przełącznik warstwy
     if (sy > visibleBottom || sy < TOP) {
       const wanted = TOP + Math.max(0, size.h - insetBottom - TOP) / 2;
       setView((v) => ({ ...v, oy: target!.y - wanted / v.z }));
@@ -384,7 +398,7 @@ export function PlanCanvas(props: Props) {
         if (dist(from, to) >= 10) {
           let created: string | null = null;
           update((d) => {
-            const wall = addWall(d, from, to);
+            const wall = addWall(d, from, to, layer === 'existing' ? { kind: 'existing' } : {});
             created = wall?.id ?? null;
           });
           // ściana zamknęła się na istniejącym węźle → koniec łańcucha
@@ -433,7 +447,7 @@ export function PlanCanvas(props: Props) {
           setSelection({ type: 'ceiling', id });
         } else {
           update((d) => {
-            pts.forEach((pt, i) => addWall(d, pt, pts[(i + 1) % 4]));
+            pts.forEach((pt, i) => addWall(d, pt, pts[(i + 1) % 4], layer === 'existing' ? { kind: 'existing' } : {}));
           });
           setSelection(null);
         }
@@ -529,16 +543,30 @@ export function PlanCanvas(props: Props) {
           })}
 
           {project.walls.map((w) => {
-            const a = nodes.get(w.a);
-            const b = nodes.get(w.b);
-            if (!a || !b) return null;
-            const L = dist(a, b);
+            const a0 = nodes.get(w.a);
+            const b0 = nodes.get(w.b);
+            if (!a0 || !b0) return null;
+            const L = dist(a0, b0);
             const t = wallThickness(w);
             const sel = selectedWall?.id === w.id;
-            const ux = (b.x - a.x) / (L || 1);
-            const uy = (b.y - a.y) / (L || 1);
+            const ux = (b0.x - a0.x) / (L || 1);
+            const uy = (b0.y - a0.y) / (L || 1);
+            const nx = -uy;
+            const ny = ux;
+            const existing = !isNewWall(w);
+            const inner = existing ? (interiors.get(w.id) ?? 0) : 0;
+            // istniejąca ściana: linia to lico od strony pomieszczenia, mur rysujemy na zewnątrz
+            const off = existing ? -inner * (t / 2) : 0;
+            // narożnik obrysu: mur przedłużony, żeby domknąć zewnętrzny róg
+            const ext = (nid: string) => (existing && inner && cornerNodes.has(nid) ? t / 2 : 0);
+            const ea = ext(w.a);
+            const eb = ext(w.b);
+            const a = { x: a0.x + nx * off - ux * ea, y: a0.y + ny * off - uy * ea };
+            const b = { x: b0.x + nx * off + ux * eb, y: b0.y + ny * off + uy * eb };
+            const faded = (tool === 'wall' || tool === 'room') && existing !== (layer === 'existing');
+            const sorted = [...w.openings].sort((m, n) => m.offset - n.offset);
             return (
-              <g key={w.id}>
+              <g key={w.id} className={`${existing ? 'existing' : ''} ${faded ? 'faded' : ''}`}>
                 {sel && (
                   <line
                     x1={a.x}
@@ -562,17 +590,54 @@ export function PlanCanvas(props: Props) {
                   y1={a.y}
                   x2={b.x}
                   y2={b.y}
-                  stroke={wallColor(w)}
-                  className="wall"
+                  stroke={existing ? undefined : wallColor(w)}
+                  className={existing ? 'wall masonry' : 'wall'}
                   strokeWidth={Math.max(t, 3 / view.z)}
                 />
-                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="wall-axis" strokeWidth={1 / view.z} />
+                {!existing && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="wall-axis" strokeWidth={1 / view.z} />}
+                {(w.linings ?? []).map((l) => {
+                  const lt = liningThickness(l);
+                  const lo = off + l.side * (t / 2 + lt / 2);
+                  // okładzina przerwana w otworach
+                  const segs: [number, number][] = [];
+                  let cur = 0;
+                  for (const o of sorted) {
+                    if (o.offset > cur) segs.push([cur, o.offset]);
+                    cur = Math.max(cur, o.offset + o.width);
+                  }
+                  if (cur < L) segs.push([cur, L]);
+                  return segs.map(([s0, s1], i) => [
+                    <line
+                      key={`${l.side}-${i}-e`}
+                      x1={a0.x + ux * s0 + nx * lo}
+                      y1={a0.y + uy * s0 + ny * lo}
+                      x2={a0.x + ux * s1 + nx * lo}
+                      y2={a0.y + uy * s1 + ny * lo}
+                      className="lining-edge"
+                      strokeWidth={Math.max(lt, 2.5 / view.z) + 2 / view.z}
+                    />,
+                    <line
+                      key={`${l.side}-${i}`}
+                      x1={a0.x + ux * s0 + nx * lo}
+                      y1={a0.y + uy * s0 + ny * lo}
+                      x2={a0.x + ux * s1 + nx * lo}
+                      y2={a0.y + uy * s1 + ny * lo}
+                      stroke={boardById(l.boardId).color}
+                      className="lining"
+                      strokeWidth={Math.max(lt, 2.5 / view.z)}
+                    />,
+                  ]);
+                })}
                 {w.openings.map((o) => {
-                  const p0 = { x: a.x + ux * o.offset, y: a.y + uy * o.offset };
-                  const p1 = { x: a.x + ux * (o.offset + o.width), y: a.y + uy * (o.offset + o.width) };
+                  const p0 = { x: a.x + ux * (o.offset + ea), y: a.y + uy * (o.offset + ea) };
+                  const p1 = { x: a.x + ux * (o.offset + ea + o.width), y: a.y + uy * (o.offset + ea + o.width) };
                   const opSel = sel && selection?.type === 'wall' && selection.openingId === o.id;
-                  const nx = -uy;
-                  const ny = ux;
+                  // drzwi w murze otwierają się do pomieszczenia
+                  const sg = existing && inner ? inner : 1;
+                  const f0 = { x: a0.x + ux * o.offset, y: a0.y + uy * o.offset };
+                  const f1 = { x: a0.x + ux * (o.offset + o.width), y: a0.y + uy * (o.offset + o.width) };
+                  const d0 = existing ? f0 : p0;
+                  const d1 = existing ? f1 : p1;
                   return (
                     <g key={o.id}>
                       <line
@@ -585,7 +650,7 @@ export function PlanCanvas(props: Props) {
                       />
                       {o.kind === 'door' ? (
                         <path
-                          d={`M ${p0.x} ${p0.y} L ${p0.x + nx * o.width} ${p0.y + ny * o.width} A ${o.width} ${o.width} 0 0 0 ${p1.x} ${p1.y}`}
+                          d={`M ${d0.x} ${d0.y} L ${d0.x + nx * sg * o.width} ${d0.y + ny * sg * o.width} A ${o.width} ${o.width} 0 0 ${sg > 0 ? 0 : 1} ${d1.x} ${d1.y}`}
                           className={`door ${opSel ? 'selected' : ''}`}
                           strokeWidth={(opSel ? 2.5 : 1.2) / view.z}
                         />
@@ -671,11 +736,14 @@ export function PlanCanvas(props: Props) {
             let ang = (Math.atan2(sb.y - sa.y, sb.x - sa.x) * 180) / Math.PI;
             if (ang > 90) ang -= 180;
             if (ang < -90) ang += 180;
-            const off = (wallThickness(w) * view.z) / 2 + 12;
             const nx = -(sb.y - sa.y) / (L * view.z);
             const ny = (sb.x - sa.x) / (L * view.z);
-            const mx = (sa.x + sb.x) / 2 - nx * off;
-            const my = (sa.y + sb.y) / 2 - ny * off;
+            // ściana obrysu: wymiar lica po stronie pomieszczenia
+            const inner = isNewWall(w) ? 0 : (interiors.get(w.id) ?? 0);
+            const k = inner ? inner : -1;
+            const off = inner ? 14 : (wallThickness(w) * view.z) / 2 + 12;
+            const mx = (sa.x + sb.x) / 2 + k * nx * off;
+            const my = (sa.y + sb.y) / 2 + k * ny * off;
             return (
               <text key={w.id} x={mx} y={my} transform={`rotate(${ang} ${mx} ${my})`} className="dim">
                 {fmtCm(L)}
