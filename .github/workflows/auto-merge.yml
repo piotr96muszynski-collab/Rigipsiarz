@@ -1,0 +1,44 @@
+name: Auto-merge
+
+# Po zielonym CI na pull requeście scala go do main (squash) i uruchamia deploy.
+# Działa bez reguł ochrony gałęzi, więc także w prywatnym repozytorium na darmowym planie.
+# Żeby PR NIE został scalony automatycznie, dodaj mu etykietę "nie-scalaj" albo oznacz go jako draft.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Znajdź PR i scal
+        id: merge
+        run: |
+          pr=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number,isDraft,labels,headRefOid \
+            --jq '.[0] | select(. != null)')
+          if [ -z "$pr" ]; then echo "Brak otwartego PR dla $BRANCH"; exit 0; fi
+          number=$(echo "$pr" | jq -r .number)
+          if [ "$(echo "$pr" | jq -r .isDraft)" = "true" ]; then echo "PR #$number to draft – pomijam"; exit 0; fi
+          if echo "$pr" | jq -e '.labels[] | select(.name == "nie-scalaj")' > /dev/null; then echo "PR #$number ma etykietę nie-scalaj"; exit 0; fi
+          if [ "$(echo "$pr" | jq -r .headRefOid)" != "$SHA" ]; then echo "PR #$number ma nowsze commity – czekam na ich CI"; exit 0; fi
+          gh pr merge "$number" -R "$REPO" --squash --delete-branch --match-head-commit "$SHA"
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+      # Scalenie tokenem GITHUB_TOKEN nie uruchamia workflowów „on: push”, więc deploy wołamy ręcznie.
+      - name: Uruchom deploy
+        if: steps.merge.outputs.merged == 'true'
+        run: gh workflow run deploy.yml -R "$REPO" --ref main
