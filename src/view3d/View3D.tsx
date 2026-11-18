@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { boardById } from '../catalog/rigips';
 import type { ProjectCalc } from '../calc/materials';
 import type { Project } from '../model/types';
+import { findCollisions } from '../geometry/contacts';
 import { buildModel3D, type Layer3D, type MatKey, type Model3D } from './model3d';
 
 const FRAME_COLORS: Record<string, number> = {
@@ -125,6 +126,14 @@ export default function View3D({ project, calc }: { project: Project; calc: Proj
   const [vis, setVis] = useState<Visibility>(ALL_ON);
   const [supported] = useState(webglAvailable);
   const model = useMemo(() => buildModel3D(project, calc), [project, calc]);
+  // elementy różnych ścian zajmujące to samo miejsce (model styków nie umie ich połączyć)
+  const collisions = useMemo(() => findCollisions(project), [project]);
+  const wallName = (id: string) => {
+    const i = project.walls.findIndex((w) => w.id === id);
+    const w = project.walls[i];
+    const n = project.walls.slice(0, i + 1).filter((x) => (x.kind === 'existing') === (w?.kind === 'existing')).length;
+    return w?.kind === 'existing' ? `Istniejąca ściana ${n}` : `Ściana ${n}`;
+  };
   const framed = useRef(false);
 
   // inicjalizacja sceny
@@ -279,6 +288,19 @@ export default function View3D({ project, calc }: { project: Project; calc: Proj
       <div className="view3d-canvas" ref={hostRef}>
         {!hasWalls && !hasCeilings && <p className="view3d-hint">Dodaj ścianę lub sufit, żeby zobaczyć model.</p>}
       </div>
+      {collisions.length > 0 && (
+        <div className="card view3d-collisions" role="status">
+          <strong>Elementy nachodzą na siebie ({collisions.length})</strong>
+          <ul className="warnings">
+            {collisions.slice(0, 6).map((c, i) => (
+              <li key={i}>
+                {wallName(c.a.wallId)} ({c.a.label}) i {wallName(c.b.wallId)} ({c.b.label}) zajmują to samo miejsce w rzucie,{' '}
+                {Math.round(c.areaCm2)} cm². Połącz ściany w jednym punkcie na planie albo przesuń jedną z nich.
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="muted small view3d-help">
         Obracaj jednym palcem, przybliżaj i przesuwaj dwoma. Na komputerze: lewy przycisk obraca, kółko przybliża, prawy
         przesuwa.

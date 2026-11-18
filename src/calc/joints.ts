@@ -17,7 +17,8 @@ import {
   type EdgeUse,
   type FinishingSettings,
 } from '../catalog/finishing';
-import { analyzeJunctions, dist, isNewWall, nodeMap, polygonPerimeterEdges, projectOnSegment, wallEnds } from '../geometry/geometry';
+import { wallSection } from '../geometry/contacts';
+import { analyzeJunctions, cornerThrough, dist, isNewWall, nodeMap, polygonPerimeterEdges, projectOnSegment, throughPair, wallEnds } from '../geometry/geometry';
 import type { Id, Project, Wall } from '../model/types';
 import { pickBoardLength, screwFor, type Requirement } from './materials';
 
@@ -233,11 +234,25 @@ export function analyzeJoints(p: Project): Joint[] {
       const twoSided = list.some((w) => sysOf(w).sides === 2);
       if (twoSided) j.outer = edges(j, 'outer', 'external', [H], odd);
       j.inner = edges(j, 'inner', 'internal', [H], odd);
+      const A = cornerThrough(list[0], list[1]);
+      const B = A === list[0] ? list[1] : list[0];
+      const ia = p.walls.indexOf(A) + 1;
+      const ib = p.walls.indexOf(B) + 1;
+      j.frame.push(
+        `ściana ${ia} przechodzi do zewnętrznego lica, ściana ${ib} do niej dochodzi: od zewnątrz płyty ściany ${ia} zachodzą na czoło płyt ściany ${ib}, od wewnątrz dochodzą do płyty ściany ${ib}`,
+      );
       if (list.every((w) => hasCavityFrame(sysOf(w)))) {
         const n = Math.ceil(H / STUD_LINK_SPACING - 1e-9) + 1;
         add(j.req.counts, 'LN9', n);
-        j.frame.push(`dodatkowy słupek CW do przykręcenia płyt od strony kąta wewnętrznego (w wyliczeniu ściany)`);
+        const coreB = Math.round(wallSection(B).core * 1000);
+        j.frame.push(
+          `dodatkowy słupek CW ściany ${ia} tuż za rusztem ściany ${ib} (${coreB + 25} mm od osi narożnika) – pod krawędziami płyt od strony kąta wewnętrznego (w wyliczeniu ściany)`,
+        );
         j.frame.push(`słupki narożne skręcone wkrętami LN 3,5×9 co ok. ${STUD_LINK_SPACING * 100} cm: ${n} szt.`);
+        if (list.some((w) => sysOf(w).layers > 1))
+          j.frame.push(
+            'dwie warstwy płyt: warstwy w narożniku zachodzą na zmianę (na zakład); krawędzie obu warstw od wewnątrz leżą na półce dodatkowego słupka, a od zewnątrz na słupku końcowym ściany ciągłej – druga warstwa ma się do czego przykręcić',
+          );
       }
       finish(j);
       continue;
@@ -250,17 +265,8 @@ export function analyzeJoints(p: Project): Joint[] {
       through = hosts.slice(0, 1);
       abut = list;
     } else {
-      // ściana „ciągła” = para najbardziej współliniowych ścian w węźle
-      let best: [Wall, Wall] = [list[0], list[1]];
-      let bestAng = -1;
-      for (let i = 0; i < list.length; i++)
-        for (let k = i + 1; k < list.length; k++) {
-          const a = angleAt(node, other(list[i]), other(list[k]));
-          if (a > bestAng) {
-            bestAng = a;
-            best = [list[i], list[k]];
-          }
-        }
+      // ściana „ciągła” = para najbardziej współliniowych ścian w węźle (ta sama reguła co w modelu styków)
+      const best = throughPair(node, list, other);
       through = best;
       abut = list.filter((w) => !best.includes(w));
     }
@@ -268,6 +274,10 @@ export function analyzeJoints(p: Project): Joint[] {
     const j = newJoint(`n:${nid}`, kind, all.map((w) => w.id));
     const host = through[0];
     for (const a of abut) abutFrame(j, host, a, H);
+    if ([host, ...abut].some((w) => sysOf(w).layers > 1))
+      j.frame.push(
+        'dwie warstwy płyt: ściana ciągła płytowana w całości przed dostawieniem ściany dochodzącej; płyty ściany dochodzącej obu warstw dochodzą do lica płyt ściany ciągłej i leżą na półce jej słupka końcowego',
+      );
     j.frame.unshift(kind === 'X' ? 'dwa dodatkowe słupki CW w ścianie ciągłej (w wyliczeniu ściany)' : 'dodatkowy słupek CW w ścianie ciągłej (w wyliczeniu ściany)');
     const innerCount = abut.reduce((s, a) => s + (sysOf(a).sides === 2 ? 2 : 1), 0);
     j.inner = edges(j, 'inner', 'internal', Array(innerCount).fill(H), false);

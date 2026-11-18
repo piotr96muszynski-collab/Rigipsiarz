@@ -2229,3 +2229,9 @@ kbd {
     font-size: 1.4rem;
   }
 }
+
+.view3d-collisions {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}

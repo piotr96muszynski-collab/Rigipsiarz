@@ -4,7 +4,8 @@
 // Jednostki: ściany w metrach (jak w wyliczeniach), sufity w centymetrach (jak ceilingGrid).
 
 import { boardById, ceilingSystemById, wallSystemById, type WallFrame } from '../catalog/rigips';
-import { bbox, isNewWall, nodeMap, projectOnSegment, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
+import { buildContacts, cornerStudPositions, partRange, type ContactModel } from '../geometry/contacts';
+import { bbox, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Opening, Project, Wall } from '../model/types';
 
 // ---------------------------------------------------------------------------
@@ -72,7 +73,7 @@ export function gridStuds(L: number, H: number, spacing: number, openings: WallO
  * Położenie dodatkowych słupków wynikających z połączeń ścian (narożniki, trójniki, skrzyżowania).
  * Liczba zawsze równa j.extraStuds – tak jak w wyliczeniu.
  */
-export function junctionStudPositions(p: Project, w: Wall, j: WallJunctions): number[] {
+export function junctionStudPositions(p: Project, w: Wall, j: WallJunctions, m: ContactModel = buildContacts(p)): number[] {
   const nodes = nodeMap(p);
   const L = wallLength(p, w, nodes) / 100;
   const xs: number[] = [];
@@ -98,11 +99,16 @@ export function junctionStudPositions(p: Project, w: Wall, j: WallJunctions): nu
     [w.b, L, j.endB],
   ] as const) {
     const others = fresh.filter((o) => o.id !== w.id && (o.a === nid || o.b === nid));
-    if (kind === 'corner' && others.length === 1 && w.id < others[0].id) xs.push(x);
-    const owner = [w, ...others].sort((m, n) => (m.id < n.id ? -1 : 1))[0];
-    if (kind === 'tee-through' && owner.id === w.id) xs.push(x);
-    if (kind === 'cross' && owner.id === w.id) xs.push(x, x);
+    if (kind === 'tee-through' || kind === 'cross') {
+      // słupki dostaje ściana ciągła (para współliniowa, mniejsze id) – jak w analizie połączeń
+      const node = nodes.get(nid)!;
+      const far = (o: Wall) => nodes.get(o.a === nid ? o.b : o.a)!;
+      const owner = throughPair(node, [w, ...others], far).sort((m, n) => (m.id < n.id ? -1 : 1))[0];
+      if (owner.id === w.id) xs.push(...(kind === 'cross' ? [x, x] : [x]));
+    }
   }
+  // narożnik L: słupek tuż za rusztem ściany dochodzącej, pod krawędziami płyt od wewnątrz (model styków)
+  if (j.endA === 'corner' || j.endB === 'corner') xs.push(...cornerStudPositions(m, w, L));
   // zabezpieczenie: liczba zawsze zgodna z analizą połączeń
   const out = xs.slice(0, j.extraStuds);
   while (out.length < j.extraStuds) out.push(L);
@@ -131,6 +137,9 @@ export interface BoardPiece {
 export interface BoardFace {
   side: 0 | 1;
   layer: number;
+  /** zakres płyt wzdłuż ściany z modelu styków (w narożniku płyta wychodzi poza oś lub kończy się przed nią), m */
+  x0: number;
+  x1: number;
   /** przesunięcie pierwszego styku pionowego, m */
   offset: number;
   pieces: BoardPiece[];
@@ -198,7 +207,7 @@ export function boardFace(L: number, H: number, sheetLen: number, offset: number
   return pieces;
 }
 
-export function wallLayout(p: Project, w: Wall, j: WallJunctions): WallLayout {
+export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactModel = buildContacts(p)): WallLayout {
   const sys = wallSystemById(w.systemId);
   const L = wallLength(p, w) / 100;
   const H = w.height / 100;
@@ -210,6 +219,7 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions): WallLayout {
   const isCD = frame === 'cd-lining';
   const rows = glued ? 0 : frame === 'double' || frame === 'separate' ? 2 : 1;
 
+  const [f0, f1] = partRange(m, w, L, { kind: 'frame' });
   // ruszt jednego rzędu (przy dwóch rzędach drugi jest taki sam)
   const studs = glued ? [] : gridStuds(L, H, s, openings);
   const tracks: TrackElement[] = [];
@@ -218,7 +228,13 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions): WallLayout {
       const kind: StudKind = o.reinforced && !isCD ? 'jamb-ua' : 'jamb';
       studs.push({ x: o.x0, kind, segments: [[0, H]] }, { x: o.x1, kind, segments: [[0, H]] });
     }
-    for (const x of junctionStudPositions(p, w, j)) studs.push({ x, kind: 'extra', segments: [[0, H]] });
+    for (const x of junctionStudPositions(p, w, j, m)) studs.push({ x, kind: 'extra', segments: [[0, H]] });
+    // słupki końcowe w miejscu, gdzie kończy się ruszt (model styków: narożnik, trójnik, pasek na czole)
+    for (const st of studs) {
+      if (st.kind === 'extra') continue;
+      if (Math.abs(st.x) < 1e-9) st.x = f0;
+      else if (Math.abs(st.x - L) < 1e-9) st.x = f1;
+    }
     studs.sort((a, b) => a.x - b.x);
 
     let cursor = 0;
@@ -228,6 +244,11 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions): WallLayout {
     }
     if (L - cursor > 0.05) tracks.push({ kind: 'floor', x0: cursor, x1: L, y: 0, cut: L - cursor });
     tracks.push({ kind: 'ceiling', x0: 0, x1: L, y: H, cut: L });
+    // UW na długość rusztu z modelu styków
+    for (const t of tracks) {
+      if (t.x0 < 1e-9) t.x0 = f0;
+      if (t.x1 > L - 1e-9) t.x1 = f1;
+    }
     for (const o of openings) {
       if (o.top < H - 0.05) tracks.push({ kind: 'header', x0: o.x0, x1: o.x1, y: o.top, cut: o.w + 0.3 });
       if (o.sill > 0.05) tracks.push({ kind: 'sill', x0: o.x0, x1: o.x1, y: o.sill, cut: o.w + 0.3 });
@@ -240,10 +261,12 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions): WallLayout {
   for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1) {
     for (let layer = 0; layer < sys.layers; layer++) {
       const offset = glued ? 0 : round3(((side + layer) * s) % boardW);
-      const pieces = boardFace(L, H, sheetLen, offset, boardW);
-      const joints = [...new Set(pieces.map((b) => b.x1).filter((x) => x < L - 0.01))];
+      const [x0, x1] = partRange(m, w, L, { kind: 'board', side, layer });
+      // styki liczone od węzła a (jak ruszt), płyta przycięta do zakresu z modelu styków
+      const pieces = clipPieces(boardFace(L, H, sheetLen, offset, boardW), x0, x1);
+      const joints = [...new Set(pieces.map((b) => b.x1).filter((x) => x < x1 - 0.01))];
       const jambJoints = joints.filter((x) => openings.some((o) => Math.abs(x - o.x0) < 0.1 || Math.abs(x - o.x1) < 0.1));
-      faces.push({ side, layer, offset, pieces, jambJoints });
+      faces.push({ side, layer, x0, x1, offset, pieces, jambJoints });
     }
   }
 
@@ -265,6 +288,21 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions): WallLayout {
 }
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
+/** Przycina rozkład płyt do zakresu [x0, x1]: skrajne pasy wydłużone (narożnik zewnętrzny) albo skrócone */
+function clipPieces(pieces: BoardPiece[], x0: number, x1: number): BoardPiece[] {
+  if (!pieces.length) return pieces;
+  const first = Math.min(...pieces.map((b) => b.x0));
+  const last = Math.max(...pieces.map((b) => b.x1));
+  return pieces
+    .map((b) => ({
+      ...b,
+      x0: Math.abs(b.x0 - first) < 1e-9 ? x0 : Math.max(b.x0, x0),
+      x1: Math.abs(b.x1 - last) < 1e-9 ? x1 : Math.min(b.x1, x1),
+    }))
+    .map((b, i) => ({ ...b, cut: b.cut || b.x1 - b.x0 < pieces[i].x1 - pieces[i].x0 - 0.005 }))
+    .filter((b) => b.x1 - b.x0 > 0.001);
+}
 
 /** Dobór długości arkusza: najkrótszy ≥ wysokości, inaczej najdłuższy (z dostawką), cm */
 export function pickBoardLengthCm(boardId: string, heightCm: number): number {

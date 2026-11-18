@@ -31,6 +31,7 @@ import type { Ceiling, Lining, Project, Wall } from '../model/types';
 import { createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
+import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -177,6 +178,7 @@ export function wallRequirement(
   w: Wall,
   j: WallJunctions,
   sys: WallSystem = wallSystemById(w.systemId),
+  contacts?: ContactModel,
 ): { req: Requirement; info: WallBreakdown } {
   const req = emptyReq();
   const L = wallLength(p, w) / 100;
@@ -299,8 +301,17 @@ export function wallRequirement(
   const net = Math.max(0, L * H - openingArea);
   const sheetLen = pickBoardLength(w.boardId, w.height);
   const sheetKey = `${w.boardId}|${sheetLen}`;
+  // każda warstwa na swoją długość z modelu styków: w narożniku płyta zachodzi na czoło sąsiedniej
+  // ściany albo dochodzi do jej płyty, w trójniku i przy okładzinie muru kończy się na ich licu
+  const m = contacts ?? (p.walls.includes(w) ? buildContacts(p) : undefined);
+  let boardsArea = 0;
+  for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1)
+    for (let layer = 0; layer < sys.layers; layer++) {
+      const [x0, x1] = m ? partRange(m, w, L, { kind: 'board', side, layer }) : [0, L];
+      boardsArea += Math.max(0, (x1 - x0) * H - openingArea);
+    }
+  add(req.boardArea, sheetKey, boardsArea);
   const faceArea = net * sys.sides;
-  add(req.boardArea, sheetKey, faceArea * sys.layers);
 
   // --- Wkręty lub klej ---
   if (sys.frame === 'glued') {
@@ -778,6 +789,7 @@ export interface ProjectCalc {
 
 export function calculateProject(p: Project): ProjectCalc {
   const junctions = analyzeJunctions(p);
+  const contacts = buildContacts(p);
   const nodes = nodeMap(p);
   const walls = new Map<string, { req: Requirement; info: WallBreakdown }>();
   let wallLengthM = 0;
@@ -796,7 +808,7 @@ export function calculateProject(p: Project): ProjectCalc {
       }
       continue;
     }
-    const r = wallRequirement(p, w, junctions.get(w.id)!);
+    const r = wallRequirement(p, w, junctions.get(w.id)!, undefined, contacts);
     walls.set(w.id, r);
     wallLengthM += r.info.lengthM;
     wallAreaM2 += r.info.netAreaM2;
