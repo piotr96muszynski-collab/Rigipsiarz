@@ -631,10 +631,12 @@ function LiningEditor({
                   <option value={30}>30 cm</option>
                 </select>
               </div>
-              <label className="check">
-                <input type="checkbox" checked={lining.insulation} onChange={(e) => onEdit((l) => void (l.insulation = e.target.checked))} />
-                Wełna mineralna 50 mm
-              </label>
+              {wallWoolOptions(sys).length > 0 && (
+                <label className="check">
+                  <input type="checkbox" checked={lining.insulation} onChange={(e) => onEdit((l) => void (l.insulation = e.target.checked))} />
+                  Wełna mineralna {wallWoolOptions(sys).at(-1)} mm
+                </label>
+              )}
             </div>
           )}
           <Warnings items={result?.info.warnings} />
