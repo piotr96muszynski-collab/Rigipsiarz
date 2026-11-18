@@ -1,11 +1,11 @@
-import { boardById, wallSystemById } from '../catalog/rigips';
+import { boardById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import type { Wall } from '../model/types';
 
 /** Grubość ściany w cm (profil + płyty) */
 export function wallThickness(w: Wall): number {
   const sys = wallSystemById(w.systemId);
   const board = boardById(w.boardId);
-  return (sys.profile + sys.layers * sys.sides * board.thickness) / 10;
+  return (wallFrameDepth(sys) + sys.layers * sys.sides * board.thickness) / 10;
 }
 
 export const wallColor = (w: Wall) => boardById(w.boardId).color;

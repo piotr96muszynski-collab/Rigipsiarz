@@ -748,6 +748,147 @@ li.done .item-qty strong {
   color: var(--bg);
 }
 
+/* ---------- dalmierz ---------- */
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.home-foot {
+  text-align: center;
+  padding: 8px 0 24px;
+}
+.home-foot a {
+  color: var(--muted);
+}
+.laser {
+  position: relative;
+}
+.laser-btn {
+  position: relative;
+}
+.laser-dot {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 2px solid var(--bg);
+}
+.laser-btn.connected .laser-dot {
+  background: var(--ok);
+}
+.laser-btn.connecting .laser-dot,
+.laser-btn.reconnecting .laser-dot {
+  background: #d99a1e;
+  animation: laser-blink 1s infinite;
+}
+@keyframes laser-blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+.laser-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: min(300px, calc(100vw - 32px));
+  z-index: 20;
+  gap: 10px;
+  padding: 14px;
+}
+.laser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+a.btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.error {
+  color: var(--danger);
+}
+.laser-flash {
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  z-index: 51;
+}
+.laser-flash.warn {
+  background: #8a5a00;
+  color: #fff;
+}
+.diag-title {
+  font-size: 1.15rem;
+  margin: 0;
+}
+.diag-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.diag .card-head {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.diag .card-head h2 {
+  margin: 0;
+}
+.diag-input {
+  min-height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 0 12px;
+  width: 100%;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+}
+.diag-row {
+  display: flex;
+  gap: 8px;
+}
+.diag-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 60vh;
+  overflow: auto;
+}
+.diag-log li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.diag-log li.error {
+  color: var(--danger);
+}
+.diag-log li.out code {
+  color: var(--accent);
+}
+.diag-log code {
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+.diag-log small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  word-break: break-word;
+}
+
 @media print {
   .topbar-actions,
   .tabs,
@@ -1428,10 +1569,217 @@ kbd {
 
 @media (max-width: 400px) {
   .tabs button {
-    padding: 0 8px;
-    font-size: 0.9rem;
+    padding: 0 6px;
+    font-size: 0.84rem;
   }
   .plan-summary {
     font-size: 0.8rem;
+/* ---------- katalog systemów ---------- */
+:root {
+  --warn-bg: #fff6e0;
+  --warn-ink: #7a4b00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --warn-bg: #3a2c0c;
+    --warn-ink: #ffd88a;
+  }
+}
+.catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.topbar-title {
+  font-size: 1.15rem;
+  margin: 0;
+  padding: 8px;
+}
+.catalog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.catalog-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.catalog-group h2 {
+  font-size: 1rem;
+  margin: 8px 0 0;
+}
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.badge.custom {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.system-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.params {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+.params dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.params dd {
+  margin: 0;
+}
+.consumption {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.consumption caption {
+  text-align: left;
+  font-weight: 700;
+  padding-bottom: 6px;
+}
+.consumption th,
+.consumption td {
+  text-align: left;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.consumption td:not(:first-child),
+.consumption th:not(:first-child) {
+  text-align: right;
+  white-space: nowrap;
+}
+.board-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.board-list li {
+  flex-direction: row;
+  align-items: flex-start;
+}
+.swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  flex: none;
+}
+.editor {
+  gap: 12px;
+}
+.warnings {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 0.92rem;
+}
+
+/* ---------- widok 3D ---------- */
+.view3d {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.view3d-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--tap);
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.chip input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.view3d-canvas {
+  position: relative;
+  height: min(70dvh, 640px);
+  min-height: 320px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface-2), var(--bg));
+  overflow: hidden;
+  touch-action: none;
+}
+.view3d-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.view3d-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--muted);
+  pointer-events: none;
+}
+.view3d-help {
+  margin: 0;
+}
+@media (min-width: 1024px) {
+  .view3d-canvas {
+    height: calc(100dvh - 260px);
+  }
+}
+@media (max-width: 640px) {
+  /* na telefonie przełączniki w jednym przewijanym rzędzie – więcej miejsca na model */
+  .view3d-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -16px;
+    padding: 0 16px 2px;
+    scrollbar-width: none;
+  }
+  .view3d-toolbar .chip {
+    flex: none;
+    min-height: 40px;
+    padding: 0 12px;
+  }
+  .view3d-canvas {
+    height: 62dvh;
   }
 }
