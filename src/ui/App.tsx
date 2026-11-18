@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculateProject } from '../calc/materials';
 import { PRODUCT_ALIASES, setCustomSystems, type CustomCatalog } from '../catalog/rigips';
 import { createProject, sampleProject } from '../model/factory';
@@ -7,11 +7,16 @@ import type { Project } from '../model/types';
 import { deleteProject, getKV, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
 import { CatalogView } from './CatalogView';
 import { ElementsPanel } from './ElementsPanel';
+import { LaserButton } from './LaserButton';
+import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
 import { UpdatePrompt } from './UpdatePrompt';
 import { useHistory } from './useHistory';
 import { fmtNum } from './wallStyle';
+
+// three.js ładujemy dopiero przy otwarciu widoku 3D (mniejszy start aplikacji; offline działa z pamięci podręcznej)
+const View3D = lazy(() => import('../view3d/View3D'));
 
 export function App() {
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -21,6 +26,7 @@ export function App() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   /** Zmienia się po każdej zmianie systemów własnych – odświeża wyliczenia */
   const [catalogVersion, setCatalogVersion] = useState(0);
+  const hash = useHash();
 
   const refresh = useCallback(() => listProjects().then(setProjects).catch(() => setProjects([])), []);
   useEffect(() => {
@@ -62,7 +68,9 @@ export function App() {
     <div className="app">
       {catalogOpen && <CatalogView onClose={() => setCatalogOpen(false)} onSave={saveCustom} />}
       <div hidden={catalogOpen}>
-      {current ? (
+      {hash === '#dalmierz' ? (
+        <LaserDiagnostics onClose={() => (history.length > 1 ? history.back() : (location.hash = ''))} />
+      ) : current ? (
         <ProjectView
           key={current.id}
           initial={current}
@@ -126,6 +134,7 @@ function Home({
             <p className="muted small">Planer suchej zabudowy · działa bez internetu</p>
           </div>
         </div>
+        <LaserButton />
       </header>
 
       {quick ? (
@@ -173,11 +182,15 @@ function Home({
           </ul>
         )}
       </section>
+
+      <p className="home-foot small">
+        <a href="#dalmierz">Dalmierz Bluetooth – diagnostyka</a>
+      </p>
     </main>
   );
 }
 
-type Tab = 'list' | 'elements' | 'settings';
+type Tab = 'list' | 'elements' | '3d' | 'settings';
 
 function ProjectView({
   initial,
@@ -233,11 +246,13 @@ function ProjectView({
   const tabs: { id: Tab; label: string }[] = wide
     ? [
         { id: 'elements', label: 'Ściany, sufity i materiały' },
+        { id: '3d', label: 'Widok 3D' },
         { id: 'settings', label: 'Ustawienia' },
       ]
     : [
         { id: 'list', label: 'Zakupy' },
         { id: 'elements', label: 'Elementy' },
+        { id: '3d', label: '3D' },
         { id: 'settings', label: 'Ustawienia' },
       ];
   const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
@@ -257,6 +272,7 @@ function ProjectView({
           aria-label="Nazwa projektu"
         />
         <div className="topbar-actions">
+          <LaserButton />
           <button className="icon-btn" onClick={undo} disabled={!canUndo} aria-label="Cofnij">
             <svg viewBox="0 0 24 24" aria-hidden>
               <path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -303,7 +319,12 @@ function ProjectView({
       </nav>
 
       <div className="tab-body">
-        {tab !== 'settings' && (
+        {tab === '3d' && (
+          <Suspense fallback={<p className="muted">Wczytywanie widoku 3D…</p>}>
+            <View3D project={project} calc={calc} />
+          </Suspense>
+        )}
+        {(tab === 'list' || tab === 'elements') && (
           <div className="split">
             <div className={tab === 'elements' ? '' : 'panel-hidden'}>
               <ElementsPanel project={project} calc={calc} update={update} />
@@ -364,4 +385,14 @@ function useMediaQuery(q: string) {
     return () => m.removeEventListener('change', on);
   }, [q]);
   return match;
+}
+
+function useHash() {
+  const [hash, setHash] = useState(() => (typeof location !== 'undefined' ? location.hash : ''));
+  useEffect(() => {
+    const on = () => setHash(location.hash);
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  return hash;
 }

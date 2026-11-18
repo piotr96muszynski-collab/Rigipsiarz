@@ -35,6 +35,8 @@ export default defineConfig({
       },
     }),
   ],
+  // three.js (~600 kB) ładuje się osobno, tylko w widoku 3D, i trafia do pamięci offline
+  build: { chunkSizeWarningLimit: 700 },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
