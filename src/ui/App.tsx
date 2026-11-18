@@ -5,6 +5,8 @@ import type { PriceBook } from '../model/prices';
 import type { Project } from '../model/types';
 import { deleteProject, getKV, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
 import { ElementsPanel } from './ElementsPanel';
+import { LaserButton } from './LaserButton';
+import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
 import { UpdatePrompt } from './UpdatePrompt';
@@ -16,6 +18,7 @@ export function App() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [quick, setQuick] = useState(false);
   const [prices, setPrices] = useState<PriceBook>({});
+  const hash = useHash();
 
   const refresh = useCallback(() => listProjects().then(setProjects).catch(() => setProjects([])), []);
   useEffect(() => {
@@ -44,7 +47,9 @@ export function App() {
 
   return (
     <div className="app">
-      {current ? (
+      {hash === '#dalmierz' ? (
+        <LaserDiagnostics onClose={() => (history.length > 1 ? history.back() : (location.hash = ''))} />
+      ) : current ? (
         <ProjectView
           key={current.id}
           initial={current}
@@ -96,6 +101,7 @@ function Home({
             <p className="muted small">Planer suchej zabudowy · działa bez internetu</p>
           </div>
         </div>
+        <LaserButton />
       </header>
 
       {quick ? (
@@ -139,6 +145,10 @@ function Home({
           </ul>
         )}
       </section>
+
+      <p className="home-foot small">
+        <a href="#dalmierz">Dalmierz Bluetooth – diagnostyka</a>
+      </p>
     </main>
   );
 }
@@ -217,6 +227,7 @@ function ProjectView({
           aria-label="Nazwa projektu"
         />
         <div className="topbar-actions">
+          <LaserButton />
           <button className="icon-btn" onClick={undo} disabled={!canUndo} aria-label="Cofnij">
             <svg viewBox="0 0 24 24" aria-hidden>
               <path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -320,4 +331,14 @@ function useMediaQuery(q: string) {
     return () => m.removeEventListener('change', on);
   }, [q]);
   return match;
+}
+
+function useHash() {
+  const [hash, setHash] = useState(() => (typeof location !== 'undefined' ? location.hash : ''));
+  useEffect(() => {
+    const on = () => setHash(location.hash);
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  return hash;
 }

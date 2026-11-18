@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { setActiveMeasureTarget } from './measure';
+import { isActiveMeasureTarget, setActiveMeasureTarget } from './measure';
 
 interface Props {
   label: string;
@@ -28,6 +28,14 @@ export function DimInput({ label, value, onChange, min = 1, max = 100000, unit =
   });
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+
+  // po zniknięciu pola pomiar z dalmierza nie może już do niego trafić
+  useEffect(() => {
+    const l = listener.current;
+    return () => {
+      if (isActiveMeasureTarget(l)) setActiveMeasureTarget(null);
+    };
+  }, []);
 
   useEffect(() => {
     if (!focused.current) setText(show(value));
