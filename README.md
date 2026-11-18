@@ -16,6 +16,13 @@ działowe, obudowy i sufity podwieszane w systemach Rigips, a projekty trzyma ty
   taśmy, masa, narożniki ochronne, wełna.
 - **Lista zakupów** – odhaczanie kupionych pozycji, opcjonalny zapas na odpady, opcjonalne ceny,
   eksport CSV, udostępnianie, druk do PDF.
+- **Rysunki montażowe** (zakładka *Rysunki*) – widok każdej ściany z osiami słupków, ościeżami,
+  nadprożami i łańcuchami wymiarów; rozkład płyt na każdej okładzinie i warstwie (styki mijankowo,
+  ostrzeżenie o styku w linii ościeża); rzut rusztu sufitu z rozstawami profili, wieszakami
+  i łącznikami; rozkład płyt sufitowych; przekroje użytych systemów; detale narożnika, trójnika,
+  skrzyżowania, połączenia z murem, wolnego końca i otworów; lista cięć profili dla każdego elementu.
+  Wszystko drukuje się do PDF razem z zestawieniem materiałów. Rysunki i ilości liczy ta sama
+  geometria (`src/calc/layout.ts`), więc schemat zawsze zgadza się z listą zakupów.
 - **Instalacja i aktualizacje** – aplikację instaluje się z przeglądarki („Dodaj do ekranu głównego”).
   Po każdej nowej wersji pokazuje się komunikat „Jest nowa wersja aplikacji” z przyciskiem *Odśwież*.
 

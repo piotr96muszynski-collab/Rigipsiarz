@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useBack } from './back';
 import { ceilingSystemById, wallSystemById } from '../catalog/rigips';
-import { summarize, type ProjectCalc } from '../calc/materials';
-import { dist, wallEnds } from '../geometry/geometry';
+import { liningKey, summarize, type ProjectCalc } from '../calc/materials';
+import { dist, isNewWall, wallEnds } from '../geometry/geometry';
 import { deleteWall } from '../model/ops';
 import type { Project } from '../model/types';
-import { CeilingEditor, WallEditor } from './ElementsPanel';
+import { CeilingEditor, ExistingWallEditor, WallEditor } from './ElementsPanel';
 import { PlanCanvas, type Selection, type Tool } from './PlanCanvas';
 import { fmtNum } from './wallStyle';
 
@@ -57,8 +58,22 @@ const TOOLS: { id: Tool; label: string; hint: string; icon: React.ReactNode }[] 
   },
 ];
 
+type Layer = 'existing' | 'new';
+
+const LAYERS: { id: Layer; label: string }[] = [
+  { id: 'existing', label: 'Istniejące ściany' },
+  { id: 'new', label: 'Nowa zabudowa' },
+];
+
+const EXISTING_HINT = {
+  wall: 'Obrysuj istniejące ściany po licu od strony pomieszczenia – od narożnika do narożnika. Zamknij obrys w pierwszym punkcie.',
+  room: 'Przeciągnij prostokąt – powstanie obrys z 4 istniejących ścian (np. pustego pokoju). Okna i drzwi dodasz narzędziami obok.',
+};
+
 export function PlanTab({ project, calc, update, commit, wide, onShowList }: Props) {
   const [tool, setTool] = useState<Tool>(project.walls.length ? 'select' : 'wall');
+  // pusty projekt zaczynamy od obrysu istniejącej przestrzeni, potem wstawia się nową zabudowę
+  const [layer, setLayer] = useState<Layer>(project.walls.length || project.ceilings.length ? 'new' : 'existing');
   const [selection, setSelectionRaw] = useState<Selection>(null);
   const [expanded, setExpanded] = useState(false);
   const [fitSignal, setFitSignal] = useState(0);
@@ -73,9 +88,10 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList }: Pro
   const shape = project.walls.length + project.ceilings.length * 1000 + project.walls.reduce((n, w) => n + w.openings.length, 0) * 1e6;
   const lastShape = useRef(shape);
   useEffect(() => {
-    if (shape !== lastShape.current) setHintSeen((h) => (h[tool] ? h : { ...h, [tool]: true }));
+    const key = tool === 'wall' || tool === 'room' ? `${tool}-${layer}` : tool;
+    if (shape !== lastShape.current) setHintSeen((h) => (h[key] ? h : { ...h, [key]: true }));
     lastShape.current = shape;
-  }, [shape, tool]);
+  }, [shape, tool, layer]);
 
   const setSelection = (s: Selection) => {
     setSelectionRaw(s);
@@ -96,6 +112,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList }: Pro
   const ceiling = selection?.type === 'ceiling' ? project.ceilings.find((c) => c.id === selection.id) : undefined;
   const opening = wall && selection?.type === 'wall' ? wall.openings.find((o) => o.id === selection.openingId) : undefined;
   const hasSel = !!(wall || ceiling);
+  useBack(hasSel, () => setSelection(null));
 
   useEffect(() => {
     const el = sheetRef.current;
@@ -149,7 +166,10 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList }: Pro
   }, []);
 
   const current = TOOLS.find((t) => t.id === tool)!;
-  const showHint = !hintSeen[tool] && !msg && !(hasSel && !wide);
+  const layered = tool === 'wall' || tool === 'room';
+  const hintKey = layered ? `${tool}-${layer}` : tool;
+  const hintText = layered && layer === 'existing' ? EXISTING_HINT[tool as 'wall' | 'room'] : current.hint;
+  const showHint = !hintSeen[hintKey] && !msg && !(hasSel && !wide);
   const empty = project.walls.length === 0 && project.ceilings.length === 0;
 
   const inspector = (
@@ -182,6 +202,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList }: Pro
           fitSignal={fitSignal}
           zoom={zoom}
           insetBottom={sheetH}
+          layer={layer}
           onMessage={onMessage}
         />
 
@@ -225,18 +246,40 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList }: Pro
 
         {(msg || showHint) && (
           <div className={`plan-hint ${msg ? 'msg' : ''}`} role="status">
-            <span>{msg ?? current.hint}</span>
+            <span>{msg ?? hintText}</span>
             {!msg && (
-              <button className="hint-close" onClick={() => setHintSeen((h) => ({ ...h, [tool]: true }))} aria-label="Ukryj podpowiedź">
+              <button className="hint-close" onClick={() => setHintSeen((h) => ({ ...h, [hintKey]: true }))} aria-label="Ukryj podpowiedź">
                 ×
               </button>
             )}
           </div>
         )}
 
-        {empty && tool === 'wall' && !wide && (
+        <div className="plan-layer" role="radiogroup" aria-label="Co rysujesz">
+          {LAYERS.map((l) => (
+            <button
+              key={l.id}
+              role="radio"
+              aria-checked={layer === l.id}
+              className={`${layer === l.id ? 'on' : ''} layer-${l.id}`}
+              onClick={() => {
+                setLayer(l.id);
+                if (tool !== 'wall' && tool !== 'room') setTool('wall');
+              }}
+            >
+              <i aria-hidden />
+              {l.label}
+            </button>
+          ))}
+        </div>
+
+        {empty && layered && !wide && (
           <div className="plan-empty" aria-hidden>
-            <p>Narysuj pierwszą ścianę palcem albo wybierz „Pokój”, żeby od razu wstawić 4 ściany.</p>
+            <p>
+              {layer === 'existing'
+                ? 'Zacznij od obrysu: narysuj istniejące ściany mieszkania palcem albo prostokątem „Pokój”. Potem wybierz „Nowa zabudowa”.'
+                : 'Narysuj pierwszą ścianę palcem albo wybierz „Pokój”, żeby od razu wstawić 4 ściany.'}
+            </p>
           </div>
         )}
 
@@ -252,7 +295,14 @@ function SummaryBar({ calc, onShowList }: { calc: ProjectCalc; onShowList: () =>
   return (
     <button className="plan-summary" onClick={onShowList}>
       <span>
-        Ściany <strong>{fmtNum(s.wallAreaM2, 1)} m²</strong> · sufity <strong>{fmtNum(s.ceilingAreaM2, 1)} m²</strong>
+        Ściany <strong>{fmtNum(s.wallAreaM2, 1)} m²</strong>
+        {s.liningAreaM2 > 0 && (
+          <>
+            {' '}
+            · okładziny <strong>{fmtNum(s.liningAreaM2, 1)} m²</strong>
+          </>
+        )}{' '}
+        · sufity <strong>{fmtNum(s.ceilingAreaM2, 1)} m²</strong>
       </span>
       <span className="plan-summary-cta">
         Zakupy ({calc.total.length})
@@ -297,8 +347,13 @@ function Inspector({
   const opening = wall?.openings.find((o) => o.id === openingId);
   const waste = project.settings.wasteEnabled ? project.settings.waste : 0;
 
-  const req = wall ? calc.walls.get(wall.id)?.req : ceiling ? calc.ceilings.get(ceiling.id)?.req : undefined;
-  const lines = useMemo(() => (req ? summarize([req], waste) : []), [req, waste]);
+  const existing = wall ? !isNewWall(wall) : false;
+  const reqs = useMemo(() => {
+    if (wall && existing) return (wall.linings ?? []).map((l) => calc.linings.get(liningKey(wall.id, l.side))?.req).filter((r) => !!r);
+    const r = wall ? calc.walls.get(wall.id)?.req : ceiling ? calc.ceilings.get(ceiling.id)?.req : undefined;
+    return r ? [r] : [];
+  }, [wall, existing, ceiling, calc]);
+  const lines = useMemo(() => (reqs.length ? summarize(reqs, waste) : []), [reqs, waste]);
 
   if (!wall && !ceiling) {
     const s = calc.stats;
@@ -319,14 +374,15 @@ function Inspector({
             <small>{project.ceilings.length} szt.</small>
           </div>
           <div>
-            <span>Otwory</span>
-            <strong>{s.openings}</strong>
-            <small>drzwi i okna</small>
+            <span>Okładziny</span>
+            <strong>{fmtNum(s.liningAreaM2, 1)} m²</strong>
+            <small>na istniejących ścianach</small>
           </div>
         </div>
         <p className="muted small">
-          Wybierz element na planie, żeby ustawić wysokość, system Rigips, płytę i otwory. Materiały liczą się na bieżąco, razem z
-          narożnikami i połączeniami ścian.
+          Najpierw obrysuj istniejące ściany (np. puste mieszkanie) z oknami i drzwiami wejściowymi – nie są liczone w
+          materiałach, ale można na nie nałożyć okładzinę z płyt. Potem wybierz „Nowa zabudowa” i wstaw ściany g-k. Dotknij
+          elementu, żeby ustawić wysokość, system, płytę i otwory.
         </p>
         <ul className="shortcuts muted small">
           <li>
@@ -345,10 +401,20 @@ function Inspector({
     );
   }
 
-  const index = wall ? project.walls.indexOf(wall) + 1 : project.ceilings.indexOf(ceiling!) + 1;
-  const title = opening ? (opening.kind === 'door' ? 'Drzwi' : 'Okno') + ` · ściana ${index}` : wall ? `Ściana ${index}` : `Sufit ${index}`;
+  const index = wall
+    ? project.walls.filter((w) => isNewWall(w) === !existing).indexOf(wall) + 1
+    : project.ceilings.indexOf(ceiling!) + 1;
+  const wallName = existing ? `Mur ${index}` : `Ściana ${index}`;
+  const title = opening
+    ? (opening.kind === 'door' ? (existing ? 'Drzwi wejściowe' : 'Drzwi') : 'Okno') + ` · ${wallName.toLowerCase()}`
+    : wall
+      ? wallName
+      : `Sufit ${index}`;
+  const liningNames = (wall?.linings ?? []).map((l) => wallSystemById(l.systemId).name);
   const summary = wall
-    ? `${fmtNum(dist(...wallEnds(project, wall)) / 100)} × ${fmtNum(wall.height / 100)} m · ${wallSystemById(wall.systemId).name}`
+    ? `${fmtNum(dist(...wallEnds(project, wall)) / 100)} × ${fmtNum(wall.height / 100)} m · ${
+        existing ? (liningNames.length ? liningNames.join(', ') : 'istniejąca, bez okładziny') : wallSystemById(wall.systemId).name
+      }`
     : `${fmtNum(calc.ceilings.get(ceiling!.id)?.areaM2 ?? 0)} m² · ${ceilingSystemById(ceiling!.systemId).name}`;
   const subtitle = opening ? `${opening.width} × ${opening.height} cm${opening.kind === 'window' ? `, parapet ${opening.sill} cm` : ''}` : summary;
 
@@ -380,7 +446,8 @@ function Inspector({
       </header>
       {expanded && (
         <div className="insp-body">
-          {wall && <WallEditor wall={wall} project={project} calc={calc} update={update} activeOpeningId={openingId} />}
+          {wall && existing && <ExistingWallEditor wall={wall} project={project} calc={calc} update={update} activeOpeningId={openingId} />}
+          {wall && !existing && <WallEditor wall={wall} project={project} calc={calc} update={update} activeOpeningId={openingId} />}
           {ceiling && <CeilingEditor ceiling={ceiling} wool={project.settings.wool} calc={calc} update={update} />}
           {lines.length > 0 && (
             <details className="insp-materials" open={wide}>

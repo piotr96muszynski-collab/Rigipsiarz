@@ -31,8 +31,33 @@ export interface Opening {
 /** Jak zakończona jest ściana w węźle, który nie łączy się z inną ścianą */
 export type FreeEndType = 'existing-wall' | 'free';
 
+/**
+ * Okładzina z płyt na istniejącej ścianie (klejona albo na ruszcie). Liczona jak ściana
+ * z systemu kategorii „okładzina” o długości i wysokości ściany, z odjęciem jej otworów.
+ */
+export interface Lining {
+  /** Strona ściany: 1 = po lewej patrząc od a do b (normalna (-dy, dx)), -1 = po prawej */
+  side: 1 | -1;
+  systemId: string;
+  boardId: string;
+  studSpacing: 60 | 40 | 30;
+  insulation: boolean;
+}
+
+/**
+ * Rodzaj ściany: „new” – nowa ściana z płyt g-k (liczona w materiałach),
+ * „existing” – istniejąca ściana (mur, obrys mieszkania), tylko tło planu i podkład pod okładziny.
+ */
+export type WallKind = 'new' | 'existing';
+
 export interface Wall {
   id: Id;
+  /** Brak = 'new' (projekty sprzed wprowadzenia obrysu) */
+  kind?: WallKind;
+  /** Grubość istniejącej ściany, cm (rysowana na zewnątrz od linii lica) */
+  thickness?: number;
+  /** Okładziny istniejącej ściany */
+  linings?: Lining[];
   a: Id;
   b: Id;
   height: number;

@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { BOARDS, ceilingSystemById, wallSystemById } from '../catalog/rigips';
-import { CeilingSystemSelect, Warnings, WallSystemSelect } from './SystemSelect';
-import { CEILING_WOOL_OPTIONS, ceilingInsulation, wallInsulation, wallWoolOptions, type ProjectCalc } from '../calc/materials';
-import { bbox, dist, wallEnds } from '../geometry/geometry';
-import { createCeiling, createOpening } from '../model/factory';
+import { CeilingSystemSelect, LiningSystemSelect, Warnings, WallSystemSelect } from './SystemSelect';
+import {
+  CEILING_WOOL_OPTIONS,
+  ceilingInsulation,
+  liningKey,
+  wallInsulation,
+  wallWoolOptions,
+  type LiningResult,
+  type ProjectCalc,
+} from '../calc/materials';
+import { bbox, dist, interiorSide, isNewWall, wallEnds } from '../geometry/geometry';
+import { createCeiling, createLining, createOpening } from '../model/factory';
 import { addWall, deleteWall, setWallLength } from '../model/ops';
-import type { Ceiling, Opening, Project, Wall } from '../model/types';
+import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { DimInput } from './DimInput';
 import { WoolField } from './WoolField';
 import { fmtNum } from './wallStyle';
@@ -28,13 +36,20 @@ const JUNCTION_LABEL: Record<string, string> = {
 
 export function ElementsPanel({ project, calc, update }: Props) {
   const count = project.walls.length + project.ceilings.length;
+  const existing = project.walls.filter((w) => !isNewWall(w));
+  const fresh = project.walls.filter(isNewWall);
   const nextY = () => {
     const pts = [...project.nodes, ...project.ceilings.flatMap((c) => c.points)];
     return pts.length ? bbox(pts).maxY + 100 : 0;
   };
   return (
     <div className="elements">
-      {project.walls.map((w, i) => (
+      {existing.length > 0 && <h2 className="side-title">Istniejące ściany (obrys)</h2>}
+      {existing.map((w, i) => (
+        <ExistingWallCard key={w.id} index={i + 1} wall={w} project={project} calc={calc} update={update} startOpen={count <= 2} />
+      ))}
+      {existing.length > 0 && fresh.length > 0 && <h2 className="side-title">Nowa zabudowa</h2>}
+      {fresh.map((w, i) => (
         <WallCard key={w.id} index={i + 1} wall={w} project={project} calc={calc} update={update} startOpen={count <= 2} />
       ))}
       {project.ceilings.map((c, i) => (
@@ -121,12 +136,6 @@ export function WallEditor({
       const w = d.walls.find((x) => x.id === wall.id);
       if (w) fn(w, d);
     });
-  const editOpening = (id: string, fn: (o: Opening) => void) =>
-    edit((w) => {
-      const o = w.openings.find((x) => x.id === id);
-      if (o) fn(o);
-    });
-
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!activeOpeningId) return;
@@ -228,39 +237,64 @@ export function WallEditor({
         </div>
       )}
 
-      <div className="openings">
-        {wall.openings.map((o, i) => (
-          <div key={o.id} className={`opening ${o.id === activeOpeningId ? 'active' : ''}`} data-opening={o.id}>
-            <div className="opening-head">
-              <strong>
-                {o.kind === 'door' ? 'Drzwi' : 'Okno'} {i + 1}
-              </strong>
-              <button className="btn ghost small danger" onClick={() => edit((w) => void (w.openings = w.openings.filter((x) => x.id !== o.id)))}>
-                Usuń
-              </button>
-            </div>
-            <div className="grid-4">
-              <DimInput label="Szerokość" value={o.width} min={20} max={L} onChange={(v) => editOpening(o.id, (x) => void (x.width = v))} />
-              <DimInput label="Wysokość" value={o.height} min={20} max={wall.height} onChange={(v) => editOpening(o.id, (x) => void (x.height = v))} />
-              {o.kind === 'window' && (
-                <DimInput label="Parapet" value={o.sill} min={0} max={wall.height} onChange={(v) => editOpening(o.id, (x) => void (x.sill = v))} />
-              )}
-              <DimInput label="Od początku" value={o.offset} min={0} max={L} onChange={(v) => editOpening(o.id, (x) => void (x.offset = v))} />
-            </div>
-            <label className="check">
-              <input type="checkbox" checked={o.reinforced} onChange={(e) => editOpening(o.id, (x) => void (x.reinforced = e.target.checked))} />
-              Ościeże z profili UA (ciężkie drzwi)
-            </label>
+      <OpeningsEditor wall={wall} L={L} edit={edit} activeOpeningId={activeOpeningId} />
+    </div>
+  );
+}
+
+/** Lista otworów ściany (nowej albo istniejącej) */
+function OpeningsEditor({
+  wall,
+  L,
+  edit,
+  activeOpeningId,
+}: {
+  wall: Wall;
+  L: number;
+  edit: (fn: (w: Wall, d: Project) => void) => void;
+  activeOpeningId?: string;
+}) {
+  const existing = !isNewWall(wall);
+  const editOpening = (id: string, fn: (o: Opening) => void) =>
+    edit((w) => {
+      const o = w.openings.find((x) => x.id === id);
+      if (o) fn(o);
+    });
+  return (
+    <div className="openings">
+      {wall.openings.map((o, i) => (
+        <div key={o.id} className={`opening ${o.id === activeOpeningId ? 'active' : ''}`} data-opening={o.id}>
+          <div className="opening-head">
+            <strong>
+              {o.kind === 'door' ? (existing ? 'Drzwi wejściowe' : 'Drzwi') : 'Okno'} {i + 1}
+            </strong>
+            <button className="btn ghost small danger" onClick={() => edit((w) => void (w.openings = w.openings.filter((x) => x.id !== o.id)))}>
+              Usuń
+            </button>
           </div>
-        ))}
-        <div className="actions wrap">
-          <button className="btn small" onClick={() => edit((w) => void w.openings.push(createOpening('door', Math.max(0, L / 2 - 45))))}>
-            + Drzwi
-          </button>
-          <button className="btn small" onClick={() => edit((w) => void w.openings.push(createOpening('window', Math.max(0, L / 2 - 60))))}>
-            + Okno
-          </button>
+          <div className="grid-4">
+            <DimInput label="Szerokość" value={o.width} min={20} max={L} onChange={(v) => editOpening(o.id, (x) => void (x.width = v))} />
+            <DimInput label="Wysokość" value={o.height} min={20} max={wall.height} onChange={(v) => editOpening(o.id, (x) => void (x.height = v))} />
+            {o.kind === 'window' && (
+              <DimInput label="Parapet" value={o.sill} min={0} max={wall.height} onChange={(v) => editOpening(o.id, (x) => void (x.sill = v))} />
+            )}
+            <DimInput label="Od początku" value={o.offset} min={0} max={L} onChange={(v) => editOpening(o.id, (x) => void (x.offset = v))} />
+          </div>
+          {!existing && (
+          <label className="check">
+            <input type="checkbox" checked={o.reinforced} onChange={(e) => editOpening(o.id, (x) => void (x.reinforced = e.target.checked))} />
+            Ościeże z profili UA (ciężkie drzwi)
+          </label>
+          )}
         </div>
+      ))}
+      <div className="actions wrap">
+        <button className="btn small" onClick={() => edit((w) => void w.openings.push(createOpening('door', Math.max(0, L / 2 - 45), existing ? { reinforced: false } : {})))}>
+          + Drzwi
+        </button>
+        <button className="btn small" onClick={() => edit((w) => void w.openings.push(createOpening('window', Math.max(0, L / 2 - 60))))}>
+          + Okno
+        </button>
       </div>
     </div>
   );
@@ -411,5 +445,201 @@ function Chevron({ open }: { open: boolean }) {
     <svg viewBox="0 0 24 24" className={`chevron ${open ? 'open' : ''}`} aria-hidden>
       <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+function ExistingWallCard({ wall, index, project, calc, update, startOpen }: { wall: Wall; index: number; startOpen: boolean } & Props) {
+  const [open, setOpen] = useState(startOpen);
+  const L = dist(...wallEnds(project, wall));
+  const linings = wall.linings ?? [];
+  return (
+    <article className="card element existing">
+      <header className="element-head">
+        <button className="element-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Chevron open={open} />
+          <span>
+            <h3>Mur {index}</h3>
+            <span className="muted small">
+              {fmtNum(L / 100)} × {fmtNum(wall.height / 100)} m
+              {wall.openings.length ? ` · otwory: ${wall.openings.length}` : ''}
+              {linings.length ? ` · okładzina: ${linings.map((l) => wallSystemById(l.systemId).name).join(', ')}` : ' · bez okładziny'}
+            </span>
+          </span>
+        </button>
+        <button className="btn ghost small danger" onClick={() => update((d) => deleteWall(d, wall.id))}>
+          Usuń
+        </button>
+      </header>
+      {open && <ExistingWallEditor wall={wall} project={project} calc={calc} update={update} />}
+    </article>
+  );
+}
+
+/** Edytor istniejącej ściany: wymiary, otwory i okładziny z płyt */
+export function ExistingWallEditor({
+  wall,
+  project,
+  calc,
+  update,
+  activeOpeningId,
+}: {
+  wall: Wall;
+  activeOpeningId?: string;
+} & Props) {
+  const L = dist(...wallEnds(project, wall));
+  const interior = interiorSide(project, wall);
+  const edit = (fn: (w: Wall, d: Project) => void) =>
+    update((d) => {
+      const w = d.walls.find((x) => x.id === wall.id);
+      if (w) fn(w, d);
+    });
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!activeOpeningId) return;
+    root.current?.querySelector(`[data-opening="${activeOpeningId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeOpeningId]);
+
+  // strona pomieszczenia pierwsza; przy ścianie wewnętrznej (pomieszczenia po obu stronach) – strona 1 i 2
+  const first: 1 | -1 = interior === -1 ? -1 : 1;
+  const sides: { side: 1 | -1; label: string }[] =
+    interior === 0
+      ? [
+          { side: 1, label: 'Okładzina – strona 1' },
+          { side: -1, label: 'Okładzina – strona 2' },
+        ]
+      : [
+          { side: first, label: 'Okładzina od strony pomieszczenia' },
+          { side: (first * -1) as 1 | -1, label: 'Okładzina od zewnątrz' },
+        ];
+
+  return (
+    <div className="editor" ref={root}>
+      <p className="muted small">
+        Istniejąca ściana nie jest liczona w materiałach. Linia na planie to lico od strony pomieszczenia – zmierz ją
+        dalmierzem od narożnika do narożnika.
+      </p>
+      <div className="grid-3">
+        <DimInput label="Długość" unit="m" value={L} min={10} onChange={(v) => edit((w, d) => setWallLength(d, w, v))} />
+        <DimInput label="Wysokość" unit="m" value={wall.height} min={30} max={1000} onChange={(v) => edit((w) => void (w.height = v))} />
+        <DimInput label="Grubość muru" value={wall.thickness ?? 25} min={5} max={100} onChange={(v) => edit((w) => void (w.thickness = v))} />
+      </div>
+
+      <OpeningsEditor wall={wall} L={L} edit={edit} activeOpeningId={activeOpeningId} />
+
+      {sides.map(({ side, label }, i) => {
+        const lining = (wall.linings ?? []).find((l) => l.side === side);
+        if (!lining && i === 1 && interior !== 0)
+          return (
+            <button
+              key={side}
+              className="btn ghost small"
+              onClick={() => edit((w) => void (w.linings = [...(w.linings ?? []), createLining(side)]))}
+            >
+              + Okładzina także od zewnątrz
+            </button>
+          );
+        return (
+          <LiningEditor
+            key={side}
+            label={label}
+            lining={lining}
+            result={calc.linings.get(liningKey(wall.id, side))}
+            onToggle={(on) =>
+              edit((w) => {
+                const rest = (w.linings ?? []).filter((l) => l.side !== side);
+                w.linings = on ? [...rest, createLining(side)] : rest;
+              })
+            }
+            onEdit={(fn) =>
+              edit((w) => {
+                const l = (w.linings ?? []).find((x) => x.side === side);
+                if (l) fn(l);
+              })
+            }
+            idBase={`${wall.id}-${side}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function LiningEditor({
+  label,
+  lining,
+  result,
+  onToggle,
+  onEdit,
+  idBase,
+}: {
+  label: string;
+  lining?: Lining;
+  result?: LiningResult;
+  onToggle: (on: boolean) => void;
+  onEdit: (fn: (l: Lining) => void) => void;
+  idBase: string;
+}) {
+  const sys = lining ? wallSystemById(lining.systemId) : undefined;
+  return (
+    <section className={`lining ${lining ? 'on' : ''}`}>
+      <label className="check lining-toggle">
+        <input type="checkbox" checked={!!lining} onChange={(e) => onToggle(e.target.checked)} />
+        <strong>{label}</strong>
+        {result && <span className="muted small">{fmtNum(result.info.netAreaM2, 1)} m² po odjęciu otworów</span>}
+      </label>
+      {lining && sys && (
+        <>
+          <div className="grid-2">
+            <div className="field">
+              <label htmlFor={`ls-${idBase}`}>System okładziny</label>
+              <LiningSystemSelect
+                id={`ls-${idBase}`}
+                value={lining.systemId}
+                onChange={(id) =>
+                  onEdit((l) => {
+                    const s = wallSystemById(id);
+                    l.systemId = s.id;
+                    l.boardId = s.defaultBoard;
+                    l.studSpacing = s.studSpacing;
+                  })
+                }
+              />
+              <small className="hint">{sys.info}</small>
+            </div>
+            <div className="field">
+              <label htmlFor={`lb-${idBase}`}>Płyta</label>
+              <select id={`lb-${idBase}`} value={lining.boardId} onChange={(e) => onEdit((l) => void (l.boardId = e.target.value))}>
+                {BOARDS.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {sys.frame !== 'glued' && (
+            <div className="grid-2">
+              <div className="field">
+                <label htmlFor={`lsp-${idBase}`}>Rozstaw profili</label>
+                <select
+                  id={`lsp-${idBase}`}
+                  value={lining.studSpacing}
+                  onChange={(e) => onEdit((l) => void (l.studSpacing = Number(e.target.value) as Lining['studSpacing']))}
+                >
+                  <option value={60}>60 cm</option>
+                  <option value={40}>40 cm (płytki)</option>
+                  <option value={30}>30 cm</option>
+                </select>
+              </div>
+              <label className="check">
+                <input type="checkbox" checked={lining.insulation} onChange={(e) => onEdit((l) => void (l.insulation = e.target.checked))} />
+                Wełna mineralna 50 mm
+              </label>
+            </div>
+          )}
+          <Warnings items={result?.info.warnings} />
+        </>
+      )}
+    </section>
   );
 }

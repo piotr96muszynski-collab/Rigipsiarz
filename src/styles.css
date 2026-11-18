@@ -18,6 +18,7 @@
   --grid-minor: #eef0f3;
   --grid-major: #dde1e7;
   --wall-edge: #3b4350;
+  --masonry: #c9b9a6;
   color-scheme: light;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 16px;
@@ -44,6 +45,7 @@
     --grid-minor: #1a2129;
     --grid-major: #26303a;
     --wall-edge: #aab3bf;
+    --masonry: #6b5d4f;
     color-scheme: dark;
   }
 }
@@ -1258,7 +1260,7 @@ svg.plan.tool-window {
 
 .plan-hint {
   position: absolute;
-  top: 76px;
+  top: 122px;
   left: 10px;
   right: 64px;
   max-width: 460px;
@@ -1818,4 +1820,284 @@ kbd {
 }
 .wool-choice select {
   max-width: 100%;
+}
+
+/* obrys istniejącej przestrzeni i okładziny */
+.plan .wall.masonry {
+  stroke: var(--masonry);
+  stroke-linecap: square;
+}
+.plan .faded {
+  opacity: 0.4;
+}
+.plan .lining {
+  stroke-linecap: butt;
+}
+.plan .lining-edge {
+  stroke: var(--accent);
+  stroke-linecap: butt;
+}
+.plan-layer {
+  position: absolute;
+  top: 74px;
+  left: 10px;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  max-width: calc(100% - 76px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.plan-layer button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 0.8rem/1.1 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plan-layer button i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+.plan-layer .layer-existing i {
+  background: var(--masonry);
+}
+.plan-layer .layer-new i {
+  background: #e8e4da;
+  border: 1.5px solid var(--wall-edge);
+}
+.plan-layer button.on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+@media (max-width: 380px) {
+  .plan-layer button {
+    padding: 0 7px;
+    font-size: 0.75rem;
+  }
+}
+.card.element.existing {
+  border-left: 4px solid var(--masonry);
+}
+.lining {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.lining.on {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.lining-toggle {
+  flex-wrap: wrap;
+}
+.lining-toggle .small {
+  flex-basis: 100%;
+  padding-left: 32px;
+}
+/* ---------- rysunki montażowe ---------- */
+.drawings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.drawings h4 {
+  font-size: 0.95rem;
+  margin: 4px 0 0;
+}
+.drawings h5 {
+  font-size: 0.85rem;
+  margin: 6px 0 0;
+}
+.sheet-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.drawing {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.paper {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.paper svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 78vh;
+}
+.dw-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 0.85rem;
+}
+.dw-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dw-swatch {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid #0003;
+  flex: none;
+}
+.dw-swatch.dw-dashed {
+  height: 0;
+  border: none;
+  border-top: 2px dashed currentColor;
+  background: none !important;
+}
+.dw-swatch.dw-cut {
+  background: repeating-linear-gradient(-45deg, #f6d9a8 0 4px, #e0b46a 4px 6px);
+}
+.dw-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex: none;
+}
+.detail-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+}
+.detail .paper svg {
+  max-height: 420px;
+}
+.stud-list {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.seg button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.seg button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.cut-list,
+.materials-table {
+  font-size: 0.9rem;
+}
+.cut-list table,
+.materials-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cut-list th,
+.cut-list td,
+.materials-table th,
+.materials-table td {
+  text-align: left;
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.cut-list th,
+.materials-table th {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.cut-list .num,
+.materials-table .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cut-chip {
+  display: inline-block;
+  margin: 0 8px 2px 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block;
+  }
+  .stats,
+  .drawings-intro {
+    display: none !important;
+  }
+  .card {
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+  .sheet ~ .sheet {
+    break-before: page;
+  }
+  .drawings h4,
+  .drawings h5 {
+    break-after: avoid;
+  }
+  .drawing,
+  .cut-list,
+  .materials-table tr {
+    break-inside: avoid;
+  }
+  .paper {
+    overflow: visible;
+    border-color: #ccc;
+  }
+  .paper svg {
+    min-width: 0 !important;
+    max-height: 165mm;
+  }
+  .detail .paper svg {
+    max-height: 80mm;
+  }
+  .print-head h1 {
+    font-size: 1.4rem;
+  }
 }

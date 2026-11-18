@@ -3,6 +3,7 @@ import {
   WALL_CATEGORY_LABEL,
   allCeilingSystems,
   allWallSystems,
+  isLiningSystem,
   type CeilingKind,
   type WallCategory,
 } from '../catalog/rigips';
@@ -45,6 +46,32 @@ export function WallSystemSelect({ id, value, onChange }: Props) {
             ))}
         </optgroup>
       )}
+    </select>
+  );
+}
+
+/**
+ * Systemy okładzin istniejących ścian: jednostronne systemy mocowane do muru z katalogu
+ * (Rigips: klej, CD na ES; ATLAS M-System 3G; systemy własne).
+ */
+export function LiningSystemSelect({ id, value, onChange }: Props) {
+  const all = allWallSystems().filter(isLiningSystem);
+  const groups = new Map<string, typeof all>();
+  for (const s of all) {
+    const g = s.custom ? 'Systemy własne' : WALL_CATEGORY_LABEL[s.category];
+    groups.set(g, [...(groups.get(g) ?? []), s]);
+  }
+  return (
+    <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+      {[...groups].map(([g, list]) => (
+        <optgroup key={g} label={g}>
+          {list.map((s) => (
+            <option key={s.id} value={s.id}>
+              {label(s)}
+            </option>
+          ))}
+        </optgroup>
+      ))}
     </select>
   );
 }

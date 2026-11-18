@@ -3,6 +3,7 @@ import {
   PRODUCTS,
   STOCK_LENGTHS,
   boardById,
+  isLiningSystem,
   ceilingMaxSpan,
   ceilingSystemById,
   wallMaxHeight,
@@ -15,6 +16,7 @@ import {
 import { FIXERS } from '../catalog/atlas';
 import {
   analyzeJunctions,
+  isNewWall,
   bbox,
   nodeMap,
   pointInPolygon,
@@ -25,7 +27,7 @@ import {
   type WallJunctions,
 } from '../geometry/geometry';
 import { WOOL_THICKNESSES, resolveWool, woolThicknessOf, type WoolChoice } from '../catalog/insulation';
-import type { Ceiling, Project, Wall } from '../model/types';
+import type { Ceiling, Lining, Project, Wall } from '../model/types';
 import { createCeiling, createProject, createWall } from '../model/factory';
 
 // ---------------------------------------------------------------------------
@@ -734,11 +736,50 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
   );
 }
 
+export interface LiningResult {
+  wallId: string;
+  side: 1 | -1;
+  req: Requirement;
+  info: WallBreakdown;
+}
+
+/** Klucz okładziny w `ProjectCalc.linings` */
+export const liningKey = (wallId: string, side: 1 | -1) => `${wallId}:${side}`;
+
+/** Połączenia okładziny: zawsze między istniejącymi ścianami, bez dodatkowych słupków */
+const LINING_JUNCTIONS: WallJunctions = { endA: 'existing-wall', endB: 'existing-wall', extraStuds: 0, externalEdges: 0 };
+
+/**
+ * Okładzina istniejącej ściany: liczona jak jednostronna ściana z systemu okładziny o długości
+ * i wysokości muru, z odjęciem jego otworów (okna, drzwi wejściowe).
+ */
+export function liningRequirement(p: Project, w: Wall, l: Lining): LiningResult {
+  const sys = wallSystemById(l.systemId);
+  const synthetic: Wall = {
+    ...w,
+    kind: 'new',
+    systemId: sys.id,
+    boardId: l.boardId,
+    studSpacing: l.studSpacing,
+    insulation: l.insulation,
+    endA: 'existing-wall',
+    endB: 'existing-wall',
+    // w murze nie ma ościeżnic z profili UA
+    openings: w.openings.map((o) => ({ ...o, reinforced: false })),
+  };
+  const { req, info } = wallRequirement(p, synthetic, LINING_JUNCTIONS, sys);
+  if (!isLiningSystem(sys))
+    info.warnings.push('Wybrany system nie jest okładziną – sprawdź, czy o to chodziło.');
+  return { wallId: w.id, side: l.side, req, info };
+}
+
 export interface ProjectCalc {
   walls: Map<string, { req: Requirement; info: WallBreakdown }>;
+  /** Okładziny istniejących ścian, klucz z `liningKey` */
+  linings: Map<string, LiningResult>;
   ceilings: Map<string, CeilingResult>;
   total: MaterialLine[];
-  stats: { wallLengthM: number; wallAreaM2: number; ceilingAreaM2: number; openings: number };
+  stats: { wallLengthM: number; wallAreaM2: number; ceilingAreaM2: number; openings: number; liningAreaM2: number };
 }
 
 export function calculateProject(p: Project): ProjectCalc {
@@ -748,8 +789,19 @@ export function calculateProject(p: Project): ProjectCalc {
   let wallLengthM = 0;
   let wallAreaM2 = 0;
   let openings = 0;
+  const linings = new Map<string, LiningResult>();
+  let liningAreaM2 = 0;
   for (const w of p.walls) {
     if (!nodes.has(w.a) || !nodes.has(w.b)) continue;
+    if (!isNewWall(w)) {
+      // istniejąca ściana: liczymy tylko jej okładziny
+      for (const l of w.linings ?? []) {
+        const r = liningRequirement(p, w, l);
+        linings.set(liningKey(w.id, l.side), r);
+        liningAreaM2 += r.info.netAreaM2;
+      }
+      continue;
+    }
     const r = wallRequirement(p, w, junctions.get(w.id)!);
     walls.set(w.id, r);
     wallLengthM += r.info.lengthM;
@@ -765,11 +817,15 @@ export function calculateProject(p: Project): ProjectCalc {
     ceilingAreaM2 += r.areaM2;
   }
   const total = summarize(
-    [...[...walls.values()].map((x) => x.req), ...[...ceilings.values()].map((x) => x.req)],
+    [
+      ...[...walls.values()].map((x) => x.req),
+      ...[...linings.values()].map((x) => x.req),
+      ...[...ceilings.values()].map((x) => x.req),
+    ],
     p.settings.wasteEnabled ? p.settings.waste : 0,
     { wool: p.settings.wool },
   );
-  return { walls, ceilings, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings } };
+  return { walls, linings, ceilings, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings, liningAreaM2 } };
 }
 
 export function materialsToCsv(lines: MaterialLine[]): string {
