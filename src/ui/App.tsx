@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculateProject } from '../calc/materials';
 import { createProject, sampleProject } from '../model/factory';
 import type { PriceBook } from '../model/prices';
@@ -12,6 +12,9 @@ import { ShoppingList } from './ShoppingList';
 import { UpdatePrompt } from './UpdatePrompt';
 import { useHistory } from './useHistory';
 import { fmtNum } from './wallStyle';
+
+// three.js ładujemy dopiero przy otwarciu widoku 3D (mniejszy start aplikacji; offline działa z pamięci podręcznej)
+const View3D = lazy(() => import('../view3d/View3D'));
 
 export function App() {
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -153,7 +156,7 @@ function Home({
   );
 }
 
-type Tab = 'list' | 'elements' | 'settings';
+type Tab = 'list' | 'elements' | '3d' | 'settings';
 
 function ProjectView({
   initial,
@@ -203,11 +206,13 @@ function ProjectView({
   const tabs: { id: Tab; label: string }[] = wide
     ? [
         { id: 'elements', label: 'Ściany, sufity i materiały' },
+        { id: '3d', label: 'Widok 3D' },
         { id: 'settings', label: 'Ustawienia' },
       ]
     : [
         { id: 'list', label: 'Zakupy' },
         { id: 'elements', label: 'Elementy' },
+        { id: '3d', label: '3D' },
         { id: 'settings', label: 'Ustawienia' },
       ];
   const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
@@ -274,7 +279,12 @@ function ProjectView({
       </nav>
 
       <div className="tab-body">
-        {tab !== 'settings' && (
+        {tab === '3d' && (
+          <Suspense fallback={<p className="muted">Wczytywanie widoku 3D…</p>}>
+            <View3D project={project} calc={calc} />
+          </Suspense>
+        )}
+        {(tab === 'list' || tab === 'elements') && (
           <div className="split">
             <div className={tab === 'elements' ? '' : 'panel-hidden'}>
               <ElementsPanel project={project} calc={calc} update={update} />

@@ -977,3 +977,91 @@ a.btn {
   color: var(--muted);
   margin: 4px 0 10px;
 }
+
+/* ---------- widok 3D ---------- */
+.view3d {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.view3d-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--tap);
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.chip input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.view3d-canvas {
+  position: relative;
+  height: min(70dvh, 640px);
+  min-height: 320px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface-2), var(--bg));
+  overflow: hidden;
+  touch-action: none;
+}
+.view3d-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.view3d-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--muted);
+  pointer-events: none;
+}
+.view3d-help {
+  margin: 0;
+}
+@media (min-width: 1024px) {
+  .view3d-canvas {
+    height: calc(100dvh - 260px);
+  }
+}
+@media (max-width: 640px) {
+  /* na telefonie przełączniki w jednym przewijanym rzędzie – więcej miejsca na model */
+  .view3d-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -16px;
+    padding: 0 16px 2px;
+    scrollbar-width: none;
+  }
+  .view3d-toolbar .chip {
+    flex: none;
+    min-height: 40px;
+    padding: 0 12px;
+  }
+  .view3d-canvas {
+    height: 62dvh;
+  }
+}
