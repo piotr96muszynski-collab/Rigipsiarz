@@ -125,13 +125,27 @@ export interface TrackElement {
   cut: number;
 }
 
+export interface CutRect {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+/** Kształt elementu po wycięciu otworu */
+export type PieceShape = 'rect' | 'L' | 'U' | 'frame';
+
 export interface BoardPiece {
+  /** prostokąt arkusza, z którego wycina się element (przed wycięciem otworu), m */
   x0: number;
   x1: number;
   y0: number;
   y1: number;
   /** element docinany (węższy lub krótszy niż arkusz) */
   cut: boolean;
+  /** wycięcia pod otwór w obrębie elementu (narożnik → L, bok → U, środek → ramka) */
+  notches?: CutRect[];
+  shape?: PieceShape;
 }
 
 export interface BoardFace {
@@ -142,9 +156,13 @@ export interface BoardFace {
   x1: number;
   /** przesunięcie pierwszego styku pionowego, m */
   offset: number;
+  /** styki pionowe okładziny (po przesunięciu przy otworach), m */
+  joints: number[];
   pieces: BoardPiece[];
-  /** styki pionowe wypadające w linii ościeża (do poprawy wycięciem w kształcie L) */
+  /** styki pionowe, które mimo przesunięcia zostały w linii ościeża (brak słupka w dobrym miejscu) */
   jambJoints: number[];
+  /** styki pionowe pokrywające się ze stykiem niższej warstwy (brak słupka, żeby je rozsunąć) */
+  layerJoints: number[];
 }
 
 export interface WallLayout {
@@ -172,12 +190,24 @@ export interface WallLayout {
  * warstwie i na przeciwnej stronie przesunięte o rozstaw słupków. Gdy ściana jest wyższa
  * od arkusza – dostawki na przemian u dołu i u góry (styki poziome mijankowo).
  */
-export function boardFace(L: number, H: number, sheetLen: number, offset: number, BOARD_W = 1.2): BoardPiece[] {
+export function boardFace(
+  L: number,
+  H: number,
+  sheetLen: number,
+  offset: number,
+  BOARD_W = 1.2,
+  joints?: number[],
+  /** dla kolumny i: true = dostawka u dołu (domyślnie co druga kolumna) */
+  bottomFirst?: (i: number, x0: number, x1: number) => boolean,
+): BoardPiece[] {
   const xs: number[] = [0];
-  let x = offset > 0.01 ? offset : BOARD_W;
-  while (x < L - 0.01) {
-    xs.push(x);
-    x += BOARD_W;
+  if (joints) xs.push(...joints.filter((x) => x > 0.01 && x < L - 0.01));
+  else {
+    let x = offset > 0.01 ? offset : BOARD_W;
+    while (x < L - 0.01) {
+      xs.push(x);
+      x += BOARD_W;
+    }
   }
   xs.push(L);
   const pieces: BoardPiece[] = [];
@@ -191,7 +221,7 @@ export function boardFace(L: number, H: number, sheetLen: number, offset: number
       // pełny arkusz + dostawka, styki poziome na przemian
       let y = 0;
       const rows: [number, number][] = [];
-      if (i % 2 === 1) {
+      if (bottomFirst ? bottomFirst(i, x0, x1) : i % 2 === 1) {
         const first = H - Math.floor(H / sheetLen) * sheetLen || sheetLen;
         rows.push([0, first]);
         y = first;
@@ -259,15 +289,38 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
   const sheetLen = pickBoardLengthCm(w.boardId, w.height) / 100;
   const boardW = boardById(w.boardId).width / 100;
   const faces: BoardFace[] = [];
+  // miejsca, w których może wypaść styk pionowy: słupki (bez ościeży – te i tak są zabronione)
+  const studXs = glued ? undefined : studs.filter((st) => st.segments.length).map((st) => st.x);
+  const bottomFirst = (i: number, c0: number, c1: number) => rowPattern(i, c0, c1, H, sheetLen, openings);
+  const inside = (x: number, r: [number, number]) => x > r[0] + 0.01 && x < r[1] - 0.01;
   for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1) {
-    for (let layer = 0; layer < sys.layers; layer++) {
-      const offset = glued ? 0 : round3(((side + layer) * s) % boardW);
-      const [x0, x1] = partRange(m, w, L, { kind: 'board', side, layer });
+    const layers = Array.from({ length: sys.layers }, (_, layer) => ({
+      layer,
+      offset: glued ? 0 : round3(((side + layer) * s) % boardW),
+      range: partRange(m, w, L, { kind: 'board', side, layer }),
+      joints: [] as number[],
+      bad: [] as number[],
+    }));
+    // styki drugiej strony (ta sama warstwa) – lepiej się z nimi nie pokrywać
+    const soft = (layer: number) => faces.filter((f) => f.side !== side && f.layer === layer).flatMap(faceJoints);
+    const others = (layer: number) => layers.filter((q) => q.layer !== layer && q.joints.length).flatMap((q) => q.joints.filter((x) => inside(x, q.range)));
+    // warstwy tej strony nie mogą mieć wspólnych styków: kilka przebiegów, każda warstwa
+    // dopasowuje się do pozostałych (przy otworach pierwsza warstwa też może ustąpić drugiej)
+    for (let round = 0; round < (sys.layers > 1 ? 3 : 1); round++)
+      for (const q of layers) {
+        const [x0, x1] = q.range;
+        const r = placeJoints({ L, x0, x1, offset: q.offset, boardW, step: s, openings, studXs, hard: others(q.layer), soft: soft(q.layer) });
+        q.joints = r.joints;
+        q.bad = r.bad;
+      }
+    for (const q of layers) {
+      const [x0, x1] = q.range;
       // styki liczone od węzła a (jak ruszt), płyta przycięta do zakresu z modelu styków
-      const pieces = clipPieces(boardFace(L, H, sheetLen, offset, boardW), x0, x1);
-      const joints = [...new Set(pieces.map((b) => b.x1).filter((x) => x < x1 - 0.01))];
-      const jambJoints = joints.filter((x) => openings.some((o) => Math.abs(x - o.x0) < 0.1 || Math.abs(x - o.x1) < 0.1));
-      faces.push({ side, layer, x0, x1, offset, pieces, jambJoints });
+      const pieces = cutOpenings(clipPieces(boardFace(L, H, sheetLen, q.offset, boardW, q.joints, bottomFirst), x0, x1), openings);
+      const inRange = q.joints.filter((x) => inside(x, q.range));
+      const lower = layers.filter((o) => o.layer < q.layer).flatMap((o) => o.joints.filter((x) => inside(x, o.range)));
+      const layerJoints = inRange.filter((x) => lower.some((y) => Math.abs(y - x) < 0.05));
+      faces.push({ side, layer: q.layer, x0, x1, offset: q.offset, joints: inRange, pieces, jambJoints: q.bad, layerJoints });
     }
   }
 
@@ -289,6 +342,240 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
 }
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
+// ---------------------------------------------------------------------------
+// Płyty przy otworach: wycięcie w kształt litery L
+// ---------------------------------------------------------------------------
+
+/**
+ * Najmniejsza odległość styku płyt od linii ościeża (pionowo) i nadproża/parapetu (poziomo), m.
+ * Styk nie może wypadać w linii krawędzi otworu – płytę przy otworze wycina się w kształt
+ * litery L, a styk nad otworem przesuwa się o co najmniej 15 cm od ościeży.
+ */
+export const OPENING_JOINT_MIN = 0.15;
+
+/** Odcinek płyty węższy niż ten (m) to odpad – nie da się go przykręcić do dwóch słupków */
+export const OFFCUT_MIN = 0.3;
+
+const EPS = 1e-6;
+
+/** Czy styk pionowy w x wypada za blisko pionowej krawędzi otworu */
+export function nearJamb(x: number, openings: WallOpening[], min = OPENING_JOINT_MIN): boolean {
+  return openings.some((o) => Math.abs(x - o.x0) < min - EPS || Math.abs(x - o.x1) < min - EPS);
+}
+
+const faceJoints = (f: BoardFace) => f.joints;
+
+/**
+ * Styki pionowe jednej okładziny. Szuka najlepszego ułożenia po słupkach (programowanie
+ * dynamiczne), tak żeby żaden pas nie był szerszy od arkusza, a kolejno najbardziej unikać:
+ * styku w linii ościeża (bliżej niż OPENING_JOINT_MIN – płyta przy otworze jest wtedy wycinana
+ * w kształt L, a styk wypada nad/pod otworem), styku na styku niższej warstwy tej samej strony,
+ * styku na styku drugiej strony, dodatkowych elementów i odejścia od zwykłego rozkładu co arkusz.
+ */
+export function placeJoints(o: {
+  L: number;
+  x0: number;
+  x1: number;
+  offset: number;
+  boardW: number;
+  step: number;
+  openings: WallOpening[];
+  /** położenie słupków (brak = okładzina klejona, styk w dowolnym miejscu siatki) */
+  studXs?: number[];
+  /** styki, z którymi nie wolno się pokryć (niższe warstwy tej samej strony) */
+  hard?: number[];
+  /** styki, z którymi lepiej się nie pokrywać (druga strona ściany) */
+  soft?: number[];
+}): { joints: number[]; bad: number[] } {
+  const { L, boardW, openings } = o;
+  const step = Math.max(0.1, o.step);
+  const end = Math.min(L, o.x1);
+  const lo = Math.max(0, o.x0) + 0.1;
+  const MIN_W = 0.1;
+  const hits = (x: number, list?: number[]) => (list ?? []).some((y) => Math.abs(y - x) < 0.05);
+  // zwykły rozkład: co szerokość arkusza od przesunięcia
+  const plain: number[] = [];
+  for (let x = o.offset > 0.01 ? o.offset : boardW; x < end - 0.01; x = round3(x + boardW)) plain.push(x);
+  const grid: number[] = [];
+  if (o.studXs) grid.push(...o.studXs);
+  else for (let x = step; x < end; x = round3(x + step)) grid.push(x);
+  const cands = [...new Set([...grid, ...plain].map(round3))].filter((x) => x > lo - 0.05 && x < end - MIN_W).sort((a, b) => a - b);
+  if (o.studXs) {
+    // bez słupka styk możliwy tylko tam, gdzie był w zwykłym rozkładzie (np. siatka inna niż arkusz)
+    for (let i = cands.length - 1; i >= 0; i--)
+      if (!o.studXs.some((x) => Math.abs(x - cands[i]) < 0.005) && !plain.some((x) => Math.abs(x - cands[i]) < 0.005)) cands.splice(i, 1);
+  }
+  const cost = (x: number) =>
+    (nearJamb(x, openings) ? 100 : 0) +
+    (hits(x, o.hard) ? 10 : 0) +
+    (hits(x, o.soft) ? 1 : 0) +
+    0.5 +
+    (plain.some((p) => Math.abs(p - x) < 0.005) ? 0 : 0.2);
+  // dp[i]: najmniejszy koszt z ostatnim stykiem w cands[i]; start w 0
+  const best: number[] = cands.map(() => Infinity);
+  const prev: number[] = cands.map(() => -1);
+  const fits = (a: number, b: number) => b - a >= MIN_W - 1e-9 && b - a <= boardW + 0.001;
+  // wąskie paski (< 30 cm) trudno przykręcić – tylko gdy nie ma innego wyjścia
+  const narrow = (a: number, b: number) => (b - a < 0.3 - 1e-9 ? 2 : 0);
+  for (let i = 0; i < cands.length; i++) {
+    const c = cost(cands[i]);
+    if (fits(0, cands[i])) best[i] = c + narrow(0, cands[i]);
+    for (let k = 0; k < i; k++) {
+      const v = best[k] + c + narrow(cands[k], cands[i]);
+      if (v < best[i] - 1e-9 && fits(cands[k], cands[i])) {
+        best[i] = v;
+        prev[i] = k;
+      }
+    }
+  }
+  let last = -1;
+  let total = end <= boardW + 0.001 ? 0 : Infinity;
+  for (let i = 0; i < cands.length; i++)
+    if (end - cands[i] <= boardW + 0.001 && best[i] + narrow(cands[i], end) < total - 1e-9) {
+      total = best[i] + narrow(cands[i], end);
+      last = i;
+    }
+  if (!Number.isFinite(total)) return { joints: plain, bad: plain.filter((x) => x > o.x0 + 0.01 && nearJamb(x, openings)) };
+  const joints: number[] = [];
+  for (let i = last; i >= 0; i = prev[i]) joints.unshift(cands[i]);
+  return { joints, bad: joints.filter((x) => x > o.x0 + 0.01 && nearJamb(x, openings)) };
+}
+
+/**
+ * Wybór, czy dostawka idzie u dołu (true) czy u góry kolumny: domyślnie na przemian,
+ * a w kolumnie przy ościeżu tak, by styk poziomy nie wypadł w linii nadproża ani parapetu.
+ */
+function rowPattern(i: number, c0: number, c1: number, H: number, sheetLen: number, openings: WallOpening[]): boolean {
+  const def = i % 2 === 1;
+  const edges = openings
+    .filter((o) => (o.x0 > c0 + EPS && o.x0 < c1 - EPS) || (o.x1 > c0 + EPS && o.x1 < c1 - EPS))
+    .flatMap((o) => [o.sill, o.top].filter((y) => y > 0.01 && y < H - 0.01));
+  if (!edges.length) return def;
+  const seams = (bottom: boolean) => {
+    const out: number[] = [];
+    let y = bottom ? H - Math.floor(H / sheetLen) * sheetLen || sheetLen : sheetLen;
+    for (; y < H - 0.001; y += sheetLen) out.push(y);
+    return out;
+  };
+  const ok = (bottom: boolean) => seams(bottom).every((y) => edges.every((e) => Math.abs(y - e) >= OPENING_JOINT_MIN - EPS));
+  if (ok(def)) return def;
+  if (ok(!def)) return !def;
+  return def;
+}
+
+/**
+ * Wycina otwory z elementów: element w całości w otworze znika, przecięty w poprzek – dzieli się
+ * na dwa, przycięty z trzech stron – skraca się, a zachodzący na narożnik lub bok otworu dostaje
+ * wycięcie (kształt L albo U).
+ */
+export function cutOpenings(pieces: BoardPiece[], openings: WallOpening[]): BoardPiece[] {
+  let list = pieces.map((p) => ({ ...p }));
+  for (const o of openings) {
+    const next: BoardPiece[] = [];
+    for (const p of list) {
+      const n = { x0: Math.max(p.x0, o.x0), x1: Math.min(p.x1, o.x1), y0: Math.max(p.y0, o.sill), y1: Math.min(p.y1, o.top) };
+      if (n.x1 - n.x0 < 0.005 || n.y1 - n.y0 < 0.005) {
+        next.push(p);
+        continue;
+      }
+      const left = n.x0 <= p.x0 + 0.005;
+      const right = n.x1 >= p.x1 - 0.005;
+      const bottom = n.y0 <= p.y0 + 0.005;
+      const top = n.y1 >= p.y1 - 0.005;
+      const touch = [left, right, bottom, top].filter(Boolean).length;
+      const sub = (q: Partial<BoardPiece>) => ({ ...p, ...q, cut: true });
+      if (touch === 4) continue;
+      if (left && right && !(bottom && top)) {
+        if (!bottom) next.push(sub({ y1: n.y0 }));
+        if (!top) next.push(sub({ y0: n.y1 }));
+        continue;
+      }
+      if (bottom && top) {
+        if (!left) next.push(sub({ x1: n.x0 }));
+        if (!right) next.push(sub({ x0: n.x1 }));
+        continue;
+      }
+      if (touch === 3) {
+        // pozostaje pas z jednej strony
+        next.push(sub(!left ? { x1: n.x0 } : !right ? { x0: n.x1 } : !bottom ? { y1: n.y0 } : { y0: n.y1 }));
+        continue;
+      }
+      const notches = [...(p.notches ?? []), n];
+      next.push({ ...p, cut: true, notches, shape: notchShape(p, notches) });
+    }
+    list = next;
+  }
+  return list.map((p) => (p.shape ? p : { ...p, shape: 'rect' as const }));
+}
+
+function notchShape(p: CutRect, notches: CutRect[]): PieceShape {
+  let edges = 0;
+  for (const n of notches)
+    edges = Math.max(
+      edges,
+      [n.x0 <= p.x0 + 0.005, n.x1 >= p.x1 - 0.005, n.y0 <= p.y0 + 0.005, n.y1 >= p.y1 - 0.005].filter(Boolean).length,
+    );
+  return edges >= 2 ? 'L' : edges === 1 ? 'U' : 'frame';
+}
+
+/** Pole elementu po wycięciu otworów, m² */
+export function pieceArea(p: BoardPiece): number {
+  return (p.x1 - p.x0) * (p.y1 - p.y0) - (p.notches ?? []).reduce((a, n) => a + (n.x1 - n.x0) * (n.y1 - n.y0), 0);
+}
+
+/**
+ * Obrys elementu z wycięciami jako wielokąty (pierwszy – zewnętrzny, pozostałe – otwory w środku).
+ * Wspólne dla rysunku (SVG) i widoku 3D.
+ */
+export function pieceOutline(p: BoardPiece): { x: number; y: number }[][] {
+  const notches = p.notches ?? [];
+  if (!notches.length)
+    return [[{ x: p.x0, y: p.y0 }, { x: p.x1, y: p.y0 }, { x: p.x1, y: p.y1 }, { x: p.x0, y: p.y1 }]];
+  const xs = [...new Set([p.x0, p.x1, ...notches.flatMap((n) => [n.x0, n.x1])])].sort((a, b) => a - b);
+  const ys = [...new Set([p.y0, p.y1, ...notches.flatMap((n) => [n.y0, n.y1])])].sort((a, b) => a - b);
+  const filled = (i: number, j: number) => {
+    if (i < 0 || j < 0 || i >= xs.length - 1 || j >= ys.length - 1) return false;
+    const cx = (xs[i] + xs[i + 1]) / 2;
+    const cy = (ys[j] + ys[j + 1]) / 2;
+    return !notches.some((n) => cx > n.x0 && cx < n.x1 && cy > n.y0 && cy < n.y1);
+  };
+  // krawędzie brzegowe skierowane przeciwnie do ruchu wskazówek zegara (wnętrze po lewej)
+  const next = new Map<string, [number, number]>();
+  const key = (i: number, j: number) => `${i},${j}`;
+  for (let i = 0; i < xs.length - 1; i++)
+    for (let j = 0; j < ys.length - 1; j++) {
+      if (!filled(i, j)) continue;
+      if (!filled(i, j - 1)) next.set(key(i, j), [i + 1, j]);
+      if (!filled(i + 1, j)) next.set(key(i + 1, j), [i + 1, j + 1]);
+      if (!filled(i, j + 1)) next.set(key(i + 1, j + 1), [i, j + 1]);
+      if (!filled(i - 1, j)) next.set(key(i, j + 1), [i, j]);
+    }
+  const loops: { x: number; y: number }[][] = [];
+  while (next.size) {
+    const [startKey] = next.keys();
+    let [ci, cj] = startKey.split(',').map(Number);
+    const pts: [number, number][] = [];
+    for (;;) {
+      const k = key(ci, cj);
+      const n = next.get(k);
+      if (!n) break;
+      next.delete(k);
+      pts.push([ci, cj]);
+      [ci, cj] = n;
+    }
+    // usuwa wierzchołki współliniowe
+    const simple = pts.filter((q, idx) => {
+      const a = pts[(idx - 1 + pts.length) % pts.length];
+      const b = pts[(idx + 1) % pts.length];
+      return !((a[0] === q[0] && q[0] === b[0]) || (a[1] === q[1] && q[1] === b[1]));
+    });
+    loops.push(simple.map(([i, j]) => ({ x: xs[i], y: ys[j] })));
+  }
+  const area = (l: { x: number; y: number }[]) =>
+    Math.abs(l.reduce((a, q, i) => a + q.x * l[(i + 1) % l.length].y - l[(i + 1) % l.length].x * q.y, 0)) / 2;
+  return loops.sort((a, b) => area(b) - area(a));
+}
 
 /** Przycina rozkład płyt do zakresu [x0, x1]: skrajne pasy wydłużone (narożnik zewnętrzny) albo skrócone */
 function clipPieces(pieces: BoardPiece[], x0: number, x1: number): BoardPiece[] {

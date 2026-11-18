@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardFace, ceilingBoardLayout, hangerPositions, splicePositions, wallLayout } from './layout';
+import { OPENING_JOINT_MIN, boardFace, ceilingBoardLayout, cutOpenings, hangerPositions, pieceArea, pieceOutline, splicePositions, wallLayout } from './layout';
 import { calculateProject, ceilingGrid } from './materials';
 import { analyzeJunctions } from '../geometry/geometry';
 import { createCeiling, createOpening, createProject, createWall, uid } from '../model/factory';
@@ -133,10 +133,100 @@ describe('rozkład płyt na ścianie', () => {
     expect(area).toBeCloseTo(4.37 * 2.75, 6);
   });
 
-  it('wykrywa styk płyt w linii ościeża', () => {
+});
+
+describe('płyty przy otworach: wycięcie w kształt L', () => {
+  const jambs = (l: ReturnType<typeof layoutOf>) => l.openings.flatMap((o) => [o.x0, o.x1]);
+  const farFromJambs = (l: ReturnType<typeof layoutOf>) => {
+    for (const f of l.faces) for (const x of f.joints) for (const j of jambs(l)) expect(Math.abs(x - j)).toBeGreaterThanOrEqual(OPENING_JOINT_MIN - 1e-6);
+  };
+
+  it('drzwi z ościeżem na styku arkuszy: styk przeniesiony, płyty w L, brak ostrzeżeń', () => {
     const p = wallProject(400);
     p.walls[0].openings.push(createOpening('door', 120, { reinforced: false }));
-    expect(layoutOf(p).faces[0].jambJoints).toContain(1.2);
+    const l = layoutOf(p);
+    farFromJambs(l);
+    for (const f of l.faces) {
+      expect(f.jambJoints).toEqual([]);
+      expect(f.pieces.filter((b) => b.shape === 'L').length).toBeGreaterThanOrEqual(2);
+      // pas nie szerszy od arkusza
+      for (const b of f.pieces) expect(b.x1 - b.x0).toBeLessThanOrEqual(1.2 + 1e-6);
+      // styki zawsze na słupku
+      for (const x of f.joints) expect(l.studs.some((st) => Math.abs(st.x - x) < 0.005)).toBe(true);
+    }
+  });
+
+  it('styk płyt nad drzwiami: co najmniej 15 cm od ościeży (obie strony, wszystkie warstwy)', () => {
+    for (const sys of ['W-CW75-1', 'W-CW75-2', 'W-CW100-2'])
+      for (const off of [40, 75, 100, 133, 180]) {
+        const p = wallProject(500, 260, sys);
+        p.walls[0].openings.push(createOpening('door', off, { reinforced: false }), createOpening('window', 330, { width: 100 }));
+        const l = layoutOf(p);
+        for (const f of l.faces) {
+          expect(f.jambJoints).toEqual([]);
+          for (const x of f.joints) for (const j of jambs(l)) expect(Math.abs(x - j)).toBeGreaterThanOrEqual(OPENING_JOINT_MIN - 1e-6);
+        }
+      }
+  });
+
+  it('druga warstwa: styki przesunięte względem pierwszej', () => {
+    const p = wallProject(500, 260, 'W-CW75-2');
+    p.walls[0].openings.push(createOpening('door', 75, { reinforced: false }));
+    const l = layoutOf(p);
+    for (const side of [0, 1]) {
+      const [a, b] = l.faces.filter((f) => f.side === side);
+      for (const x of b.joints) expect(a.joints.some((y) => Math.abs(x - y) < 0.05)).toBe(false);
+      expect(b.layerJoints).toEqual([]);
+    }
+  });
+
+  it('gdy przy otworze nie da się rozsunąć styków warstw – rysunek dostaje ostrzeżenie', () => {
+    // drzwi 90 cm przy rozstawie 60: obie warstwy muszą mieć styk na tym samym słupku
+    const p = wallProject(500, 260, 'W-CW75-2');
+    p.walls[0].openings.push(createOpening('door', 100, { reinforced: false }));
+    const l = layoutOf(p);
+    const outer = l.faces.find((f) => f.side === 0 && f.layer === 1)!;
+    expect(outer.layerJoints.length).toBeGreaterThan(0);
+    expect(outer.jambJoints).toEqual([]);
+  });
+
+  it('element L: obrys z sześciu wierzchołków, pole = arkusz − wycięcie', () => {
+    const pcs = cutOpenings([{ x0: 0.6, x1: 1.8, y0: 0, y1: 2.6, cut: false }], [
+      { x0: 1.2, x1: 2.1, sill: 0, top: 2.05 } as never,
+    ]);
+    expect(pcs).toHaveLength(1);
+    expect(pcs[0].shape).toBe('L');
+    expect(pieceOutline(pcs[0])[0]).toHaveLength(6);
+    expect(pieceArea(pcs[0])).toBeCloseTo(1.2 * 2.6 - 0.6 * 2.05, 6);
+  });
+
+  it('element w świetle okna dzieli się na pas nad i pod oknem', () => {
+    const win = { x0: 0.3, x1: 2, sill: 0.9, top: 2.1 } as never;
+    const pcs = cutOpenings([{ x0: 0.6, x1: 1.2, y0: 0, y1: 2.6, cut: false }], [win]);
+    expect(pcs.map((b) => [b.y0, b.y1])).toEqual([
+      [0, 0.9],
+      [2.1, 2.6],
+    ]);
+  });
+
+  it('powierzchnia płyt z rozkładu = netto ściany; drobny odpad z wycięć doliczony do zakupu', () => {
+    const p = wallProject(400);
+    p.walls[0].openings.push(createOpening('door', 105, { reinforced: false }));
+    const l = layoutOf(p);
+    const area = l.faces.flatMap((f) => f.pieces).reduce((a, b) => a + pieceArea(b), 0);
+    expect(area).toBeCloseTo((4 * 2.6 - 0.9 * 2.05) * 2, 6);
+    const r = calculateProject(p).walls.get(p.walls[0].id)!;
+    const total = Object.values(r.req.boardArea).reduce((a, b) => a + b, 0);
+    expect(total).toBeCloseTo(area + (r.info.cutWasteM2 ?? 0), 6);
+  });
+
+  it('wysoka ściana: styk poziomy przy ościeżu nie wypada w linii nadproża', () => {
+    const p = wallProject(400, 320);
+    p.walls[0].openings.push(createOpening('door', 100, { reinforced: false, height: 300 }));
+    const l = layoutOf(p);
+    for (const f of l.faces)
+      for (const b of f.pieces)
+        if (b.notches?.length) for (const y of [b.y0, b.y1]) if (y > 0.01 && y < 3.19) expect(Math.abs(y - 3)).toBeGreaterThanOrEqual(OPENING_JOINT_MIN - 1e-6);
   });
 });
 

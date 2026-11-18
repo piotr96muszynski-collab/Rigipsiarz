@@ -32,6 +32,7 @@ import { createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
+import { OFFCUT_MIN, pieceArea, wallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -44,6 +45,8 @@ export interface Requirement {
   pieces: Record<string, number[]>;
   /** Powierzchnia płyt: `${boardId}|${długośćArkusza cm}` → m² */
   boardArea: Record<string, number>;
+  /** Część boardArea, która jest odpadem z wycięć L/U przy otworach (ten sam klucz), m² */
+  boardCutWaste?: Record<string, number>;
   /** Sztuki (wkręty, kołki, wieszaki, łączniki) */
   counts: Record<string, number>;
   /** Metry bieżące (taśmy) */
@@ -138,6 +141,8 @@ export interface WallBreakdown {
   junctions: WallJunctions;
   /** Ostrzeżenia, np. przekroczona wysokość systemu */
   warnings: string[];
+  /** Odpad z wycięć płyt w kształcie L/U przy otworach (doliczony do płyt), m² */
+  cutWasteM2?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,12 +310,23 @@ export function wallRequirement(
   // ściany albo dochodzi do jej płyty, w trójniku i przy okładzinie muru kończy się na ich licu
   const m = contacts ?? (p.walls.includes(w) ? buildContacts(p) : undefined);
   let boardsArea = 0;
-  for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1)
-    for (let layer = 0; layer < sys.layers; layer++) {
-      const [x0, x1] = m ? partRange(m, w, L, { kind: 'board', side, layer }) : [0, L];
-      boardsArea += Math.max(0, (x1 - x0) * H - openingArea);
-    }
-  add(req.boardArea, sheetKey, boardsArea);
+  let cutWaste = 0;
+  if (m && sys.id === w.systemId) {
+    // z rozkładu płyt (ten sam co na rysunku i w 3D): elementy po wycięciu otworów
+    // + odpad z wycięć L/U, z którego nie da się już nic przykręcić (pas węższy niż 30 cm)
+    for (const face of wallLayout(p, w, j, m).faces)
+      for (const pc of face.pieces) {
+        boardsArea += pieceArea(pc);
+        for (const n of pc.notches ?? []) if (Math.min(n.x1 - n.x0, n.y1 - n.y0) < OFFCUT_MIN) cutWaste += (n.x1 - n.x0) * (n.y1 - n.y0);
+      }
+  } else
+    for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1)
+      for (let layer = 0; layer < sys.layers; layer++) {
+        const [x0, x1] = m ? partRange(m, w, L, { kind: 'board', side, layer }) : [0, L];
+        boardsArea += Math.max(0, (x1 - x0) * H - openingArea);
+      }
+  add(req.boardArea, sheetKey, boardsArea + cutWaste);
+  if (cutWaste > 0) add((req.boardCutWaste ??= {}), sheetKey, cutWaste);
   const faceArea = net * sys.sides;
 
   // --- Wkręty lub klej ---
@@ -332,7 +348,7 @@ export function wallRequirement(
 
   return {
     req,
-    info: { lengthM: L, heightM: H, netAreaM2: net, studPositions, jambPositions, junctions: j, warnings },
+    info: { lengthM: L, heightM: H, netAreaM2: net, studPositions, jambPositions, junctions: j, warnings, cutWasteM2: cutWaste },
   };
 }
 
@@ -672,6 +688,11 @@ export function woolLine(pid: string, netM2: number, waste: number, choice?: Woo
   return line;
 }
 
+const m2 = (v: number) => v.toFixed(1).replace('.', ',');
+function boardNote(area: number, cut: number): string {
+  return cut >= 0.05 ? `${m2(area - cut)} m² netto + ${m2(cut)} m² odpadu z wycięć L/U przy otworach` : `${m2(area)} m² netto`;
+}
+
 export function summarize(reqs: Requirement[], wastePct: number, opts: SummarizeOptions = {}): MaterialLine[] {
   const waste = 1 + wastePct / 100;
   const lines: MaterialLine[] = [];
@@ -680,6 +701,7 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
     for (const [k, v] of Object.entries(r.pieces)) (merged.pieces[k] ??= []).push(...v);
     for (const key of ['boardArea', 'counts', 'meters', 'kg', 'area'] as const)
       for (const [k, v] of Object.entries(r[key])) add(merged[key], k, v);
+    for (const [k, v] of Object.entries(r.boardCutWaste ?? {})) add((merged.boardCutWaste ??= {}), k, v);
   }
 
   // płyty
@@ -695,7 +717,7 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
       name: `${board.name}, ${board.width}×${len} cm`,
       qty: sheets,
       unit: 'szt.',
-      note: `${area.toFixed(1).replace('.', ',')} m² netto`,
+      note: boardNote(area, merged.boardCutWaste?.[key] ?? 0),
     });
   }
 

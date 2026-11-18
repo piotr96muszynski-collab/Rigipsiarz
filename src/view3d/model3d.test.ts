@@ -3,7 +3,7 @@ import { calculateProject, ceilingGrid } from '../calc/materials';
 import { createCeiling, createOpening, createProject, createWall, sampleProject, uid } from '../model/factory';
 import type { Project } from '../model/types';
 import { overlapArea, wallSection } from '../geometry/contacts';
-import { boardSheets, buildModel3D, subtractRects, type BoxPart } from './model3d';
+import { boardSheets, buildModel3D, subtractRects, type BoxPart, type PanelPart } from './model3d';
 
 function wall(lengthCm: number, heightCm = 260, angleDeg = 0): Project {
   const p = createProject();
@@ -65,8 +65,21 @@ describe('model 3D ściany', () => {
     p.walls[0].openings.push(createOpening('door', 100));
     const calc = calculateProject(p);
     const net = calc.walls.get(p.walls[0].id)!.info.netAreaM2;
-    const a = boxes(p, 'wallBoards').reduce((s, b) => s + b.s[0] * b.s[1], 0);
+    const panels = buildModel3D(p, calc).parts.filter((x): x is PanelPart => x.type === 'panel' && x.layer === 'wallBoards');
+    const a = boxes(p, 'wallBoards').reduce((s, b) => s + b.s[0] * b.s[1], 0) + panels.reduce((s, b) => s + b.area, 0);
     expect(a).toBeCloseTo(net * 2, 3);
+  });
+
+  it('płyty przy drzwiach wycięte w kształt L jedną bryłą (jak na rysunku)', () => {
+    const p = wall(400);
+    p.walls[0].openings.push(createOpening('door', 120, { reinforced: false }));
+    const calc = calculateProject(p);
+    const panels = buildModel3D(p, calc).parts.filter((x): x is PanelPart => x.type === 'panel');
+    expect(panels.length).toBeGreaterThanOrEqual(2);
+    for (const pn of panels) {
+      expect(pn.loops[0].length).toBe(6); // L: sześć wierzchołków
+      expect(pn.layer).toBe('wallBoards');
+    }
   });
 
   it('każdy słupek z silnika jest w modelu (w otworze – dwa krótkie lub jeden nad drzwiami)', () => {

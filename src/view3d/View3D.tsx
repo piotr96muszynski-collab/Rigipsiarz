@@ -51,6 +51,18 @@ function buildGroups(model: Model3D): Map<Layer3D, THREE.Group> {
       tmp.rotation.set(0, part.rotY, 0);
       tmp.updateMatrix();
       g.applyMatrix4(tmp.matrix);
+    } else if (part.type === 'panel') {
+      // obrys w płaszczyźnie ściany (x wzdłuż, y w górę), grubość wzdłuż normalnej
+      const [outer, ...inner] = part.loops;
+      const shape = new THREE.Shape(outer.map((q) => new THREE.Vector2(q.x, q.y)));
+      for (const h of inner) shape.holes.push(new THREE.Path(h.map((q) => new THREE.Vector2(q.x, q.y))));
+      g = new THREE.ExtrudeGeometry(shape, { depth: part.thickness, bevelEnabled: false });
+      g.translate(0, 0, part.n - part.thickness / 2);
+      tmp.position.set(...part.origin);
+      tmp.rotation.set(0, part.rotY, 0);
+      tmp.updateMatrix();
+      g.applyMatrix4(tmp.matrix);
+      g = g.toNonIndexed();
     } else {
       // obrys w płaszczyźnie XY (x, -z), potem obrót do poziomu
       const shape = new THREE.Shape(part.points.map((q) => new THREE.Vector2(q.x, -q.y)));
