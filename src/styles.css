@@ -1574,6 +1574,9 @@ kbd {
   }
   .plan-summary {
     font-size: 0.8rem;
+  }
+}
+
 /* ---------- katalog systemów ---------- */
 :root {
   --warn-bg: #fff6e0;
