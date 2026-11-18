@@ -173,7 +173,7 @@ export function ShoppingList({ project, lines, prices, setPrice, update }: Props
         )}
       </div>
       <p className="muted small disclaimer">
-        Ilości wyliczone wg typowych wytycznych montażu systemów Rigips (rozstawy profili, zużycie wkrętów i masy). Profile
+        Ilości wyliczone wg typowych wytycznych montażu systemów Rigips i ATLAS M-System 3G (rozstawy profili i łączników, zużycie wkrętów i masy). Profile
         policzone z rozkroju na długości handlowe. Przed zamówieniem sprawdź wymagania karty technicznej systemu.
       </p>
     </div>

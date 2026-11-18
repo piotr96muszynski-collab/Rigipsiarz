@@ -8,6 +8,7 @@ import {
   allWallSystems,
   boardById,
   ceilingMaxSpan,
+  PRODUCTS,
   customSystems,
   type CeilingKind,
   type CeilingSystem,
@@ -19,6 +20,7 @@ import {
   type WallFrame,
   type WallSystem,
 } from '../catalog/rigips';
+import type { PointFixer } from '../catalog/atlas';
 import { REF_CEILING, REF_WALL, ceilingConsumption, wallConsumption, type ConsumptionLine } from '../calc/materials';
 import { uid } from '../model/factory';
 import { fmtNum } from './wallStyle';
@@ -75,7 +77,7 @@ export function CatalogView({ onClose, onSave }: Props) {
             <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <h1 className="topbar-title">{draft ? 'System własny' : 'Katalog systemów Rigips'}</h1>
+        <h1 className="topbar-title">{draft ? 'System własny' : 'Katalog systemów Rigips i ATLAS'}</h1>
       </header>
 
       {draft ? (
@@ -102,7 +104,7 @@ export function CatalogView({ onClose, onSave }: Props) {
           <div className="tab-body catalog-body">
             <p className="muted small">
               Zużycie na 1 m² liczy silnik aplikacji na elemencie wzorcowym (ściana {REF_WALL.lengthCm / 100}×{fmtNum(REF_WALL.heightCm / 100)} m,
-              sufit {REF_CEILING.lengthCm / 100}×{REF_CEILING.widthCm / 100} m) bez zapasu. Obok podajemy wartości z karty Rigips, jeśli była dostępna.
+              sufit {REF_CEILING.lengthCm / 100}×{REF_CEILING.widthCm / 100} m) bez zapasu. Obok podajemy wartości z karty producenta (Rigips, ATLAS), jeśli była dostępna.
               Własny system utworzysz przyciskiem „Na podstawie tego” przy dowolnym systemie.
             </p>
             {tab === 'walls' && <WallList onCopy={fromWall} onEdit={(s) => fromWall(s, true)} onRemove={remove} />}
@@ -142,9 +144,15 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 info={s.info}
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
-                  ...(s.frame === 'glued' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : `CW ${s.profile} / UW ${s.profile}`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : `CW ${s.profile} / UW ${s.profile}`]] as [string, string][])),
                   ['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
-                  ...(s.frame === 'glued' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
+                  ...(s.frame === 'point-fix'
+                    ? ([
+                        ['Łącznik', fixerLabel(s.fixer)],
+                        ['Siatka łączników', `${s.studSpacing}×${s.pointSpacing ?? 50} cm`],
+                      ] as [string, string][])
+                    : []),
                   ...(s.bracketSpacing ? ([['Uchwyty ES', `co ${s.bracketSpacing} cm`]] as [string, string][]) : []),
                   ...(s.maxHeight
                     ? ([
@@ -173,6 +181,13 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
   );
 }
 
+/** Opis łącznika ATLAS: zestaw, przedłużka i zakres odstępu płyty od podłoża */
+function fixerLabel(f: PointFixer | undefined): string {
+  if (!f) return 'ATLAS M-SYSTEM 3G L100';
+  const ext = f.extension ? ` + ${PRODUCTS[f.extension]?.name.split(' – ')[0] ?? f.extension}` : '';
+  return `${PRODUCTS[f.product]?.name.split(' – ')[0] ?? f.product}${ext}, odstęp ${f.standoff[0]}–${f.standoff[1]} mm, zestaw 21 szt. (z kołkami i wkrętami)`;
+}
+
 const HANGER_LABEL: Record<HangerType, string> = {
   noniusz: 'wieszaki noniuszowe',
   es: 'uchwyty bezpośrednie ES',
@@ -191,12 +206,15 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
   } else if (s.kind === 'ua-span') {
     out.push(['Profile UA 50', `co ${s.mainSpacing} cm, oparte na ścianach`]);
     out.push(['Profile CD 60', `co ${s.secondarySpacing} cm`]);
+  } else if (s.kind === 'point-fix') {
+    out.push(['Łącznik', fixerLabel(s.fixer)]);
+    out.push(['Siatka łączników', `${s.mainSpacing}×${s.secondarySpacing} cm`]);
   } else {
     out.push([`Profile CW ${s.profile}`, `co ${s.secondarySpacing} cm, w UW przy ścianach`]);
   }
   const span = ceilingMaxSpan(s);
   if (span) out.push(['Maks. rozpiętość', `${fmtNum(span / 100)} m`]);
-  out.push(['Wkręty', `zewn. ${fmtNum(s.screwsOuter, 1)} szt./m²${s.layers > 1 ? `, wewn. ${fmtNum(s.screwsInner, 1)} szt./m²` : ''}`]);
+  if (s.kind !== 'point-fix') out.push(['Wkręty', `zewn. ${fmtNum(s.screwsOuter, 1)} szt./m²${s.layers > 1 ? `, wewn. ${fmtNum(s.screwsInner, 1)} szt./m²` : ''}`]);
   if (s.fire) out.push(['Ogień', s.fire]);
   return out;
 }
@@ -452,7 +470,7 @@ function WallEditor({ initial, onSave, onCancel }: { initial: WallSystem; onSave
         </div>
       </div>
       <div className="grid-3">
-        {s.frame !== 'cd-lining' && s.frame !== 'glued' && (
+        {s.frame !== 'cd-lining' && s.frame !== 'glued' && s.frame !== 'point-fix' && (
           <div className="field">
             <label htmlFor="ew-prof">Profil CW/UW</label>
             <select id="ew-prof" value={s.profile} onChange={(e) => set({ profile: Number(e.target.value) as WallSystem['profile'] })}>
@@ -464,7 +482,7 @@ function WallEditor({ initial, onSave, onCancel }: { initial: WallSystem; onSave
         )}
         {s.frame !== 'glued' && (
           <div className="field">
-            <label htmlFor="ew-sp">Rozstaw profili</label>
+            <label htmlFor="ew-sp">{s.frame === 'point-fix' ? 'Rozstaw łączników poziomo' : 'Rozstaw profili'}</label>
             <select id="ew-sp" value={s.studSpacing} onChange={(e) => set({ studSpacing: Number(e.target.value) as StudSpacing })}>
               <option value={60}>60 cm</option>
               <option value={40}>40 cm</option>
@@ -493,6 +511,9 @@ function WallEditor({ initial, onSave, onCancel }: { initial: WallSystem; onSave
         />
         {s.frame === 'cd-lining' && (
           <NumField id="ew-br" label="Rozstaw uchwytów ES" unit="cm" value={s.bracketSpacing ?? 100} min={30} max={150} onChange={(v) => set({ bracketSpacing: v })} />
+        )}
+        {s.frame === 'point-fix' && (
+          <NumField id="ew-pt" label="Rozstaw łączników pionowo" unit="cm" value={s.pointSpacing ?? 50} min={30} max={60} onChange={(v) => set({ pointSpacing: v })} />
         )}
         {s.frame === 'separate' && (
           <NumField id="ew-gap" label="Odstęp między rusztami" unit="cm" value={s.gap ?? 10} min={0} max={60} onChange={(v) => set({ gap: v })} />
@@ -558,12 +579,12 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
         <NumField id="ec-layers" label="Warstwy płyt" unit="szt." value={s.layers} min={1} max={3} onChange={(v) => set({ layers: Math.round(v) })} />
       </div>
       <div className="grid-3">
-        {(s.kind === 'two-level' || s.kind === 'one-level' || s.kind === 'ua-span') && (
-          <NumField id="ec-main" label={s.kind === 'ua-span' ? 'Rozstaw UA 50' : 'Rozstaw nośnych'} unit="cm" value={s.mainSpacing} min={40} max={150} onChange={(v) => set({ mainSpacing: v })} />
+        {(s.kind === 'two-level' || s.kind === 'one-level' || s.kind === 'ua-span' || s.kind === 'point-fix') && (
+          <NumField id="ec-main" label={s.kind === 'ua-span' ? 'Rozstaw UA 50' : s.kind === 'point-fix' ? 'Siatka łączników – kierunek 1' : 'Rozstaw nośnych'} unit="cm" value={s.mainSpacing} min={40} max={150} onChange={(v) => set({ mainSpacing: v })} />
         )}
         <NumField
           id="ec-sec"
-          label={s.kind === 'cw-span' ? 'Rozstaw CW' : s.kind === 'direct' ? 'Rozstaw CD' : 'Rozstaw montażowych'}
+          label={s.kind === 'cw-span' ? 'Rozstaw CW' : s.kind === 'direct' ? 'Rozstaw CD' : s.kind === 'point-fix' ? 'Siatka łączników – kierunek 2' : 'Rozstaw montażowych'}
           unit="cm"
           value={s.secondarySpacing}
           min={20}
@@ -593,10 +614,10 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
           </div>
         )}
       </div>
-      <div className="grid-2">
+      {s.kind !== 'point-fix' && <div className="grid-2">
         <NumField id="ec-so" label="Wkręty – warstwa zewn." unit="szt./m²" value={s.screwsOuter} min={5} max={40} step={0.5} onChange={(v) => set({ screwsOuter: v })} />
         <NumField id="ec-si" label="Wkręty – warstwy wewn." unit="szt./m²" value={s.screwsInner} min={0} max={30} step={0.5} onChange={(v) => set({ screwsInner: v })} />
-      </div>
+      </div>}
       <BoardSelect id="ec-board" value={s.defaultBoard} onChange={(v) => set({ defaultBoard: v })} />
       <div className="field">
         <label htmlFor="ec-info">Opis</label>

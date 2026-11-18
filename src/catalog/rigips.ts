@@ -1,4 +1,5 @@
-// Katalog materiałów i systemów suchej zabudowy marki Rigips.
+// Katalog materiałów i systemów suchej zabudowy marki Rigips (oraz osobny system
+// ATLAS M-SYSTEM 3G, dołączany z `atlas.ts`).
 //
 // Dane systemów pochodzą z kart systemowych Rigips Polska (Saint-Gobain), których
 // adresy są podane w polu `source` każdego systemu. Tam, gdzie karta nie była
@@ -7,6 +8,7 @@
 // z wymaganiami ogniowymi lub akustycznymi zawsze sprawdź aktualną kartę systemu.
 
 import { CORNER_STOCK_LENGTHS, FINISHING_PRODUCTS } from './finishing';
+import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
 
 export type Unit = 'szt.' | 'mb' | 'm²' | 'kg' | 'opak.' | 'rolka' | 'worek';
 
@@ -322,6 +324,7 @@ export const PRODUCTS: Record<string, Product> = {
   WELNA100: { id: 'WELNA100', name: 'Wełna mineralna 100 mm', group: 'Izolacja', unit: 'm²' },
   // masy, taśmy spoinowe, narożniki i materiały na styki – src/catalog/finishing.ts
   ...FINISHING_PRODUCTS,
+  ...ATLAS_PRODUCTS,
 };
 
 /** Stare identyfikatory produktów (zapisane ceny i odhaczenia) → nowe */
@@ -331,7 +334,7 @@ export const PRODUCT_ALIASES: Record<string, string> = { UD27: 'UD30' };
 // Systemy ścian
 // ---------------------------------------------------------------------------
 
-export type WallCategory = 'działowa' | 'podwójna' | 'instalacyjna' | 'okładzina' | 'szacht';
+export type WallCategory = 'działowa' | 'podwójna' | 'instalacyjna' | 'okładzina' | 'szacht' | 'atlas';
 
 /**
  * Rodzaj konstrukcji:
@@ -340,8 +343,9 @@ export type WallCategory = 'działowa' | 'podwójna' | 'instalacyjna' | 'okładz
  * - separate: dwa rzędy CW rozsunięte, połączone paskami płyty (ściana instalacyjna)
  * - cd-lining: okładzina na profilach CD 60 i uchwytach ES mocowanych do ściany
  * - glued: płyta klejona do ściany na placki z kleju gipsowego (suchy tynk)
+ * - point-fix: płyta na łącznikach talerzykowych ATLAS M-SYSTEM 3G (bez profili)
  */
-export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued';
+export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix';
 
 export const WALL_CATEGORY_LABEL: Record<WallCategory, string> = {
   działowa: 'Ściany działowe – pojedynczy ruszt',
@@ -349,6 +353,7 @@ export const WALL_CATEGORY_LABEL: Record<WallCategory, string> = {
   instalacyjna: 'Ściany instalacyjne',
   okładzina: 'Okładziny ścian',
   szacht: 'Obudowy szachtów i instalacji',
+  atlas: 'ATLAS M-System 3G – okładziny istniejących ścian na łącznikach (bez profili)',
 };
 
 export const WALL_FRAME_LABEL: Record<WallFrame, string> = {
@@ -357,6 +362,7 @@ export const WALL_FRAME_LABEL: Record<WallFrame, string> = {
   separate: 'podwójny ruszt rozsunięty (instalacyjny)',
   'cd-lining': 'ruszt CD 60 na uchwytach ES',
   glued: 'płyta klejona (bez rusztu)',
+  'point-fix': 'łączniki ATLAS M-SYSTEM 3G (bez profili)',
 };
 
 export type StudSpacing = 60 | 40 | 30;
@@ -387,6 +393,10 @@ export interface WallSystem {
   bracketSpacing?: number;
   /** Szerokość przestrzeni między rusztami (ściana instalacyjna), cm */
   gap?: number;
+  /** Mocowanie punktowe (ATLAS M-SYSTEM 3G): łącznik; rozstaw poziomy = studSpacing */
+  fixer?: PointFixer;
+  /** Rozstaw łączników w pionie (mocowanie punktowe), cm */
+  pointSpacing?: number;
   info: string;
   source: Source;
   reference?: RefLine[];
@@ -844,6 +854,7 @@ export const WALL_SYSTEMS: WallSystem[] = [
     info: 'Niewielkie obudowy rur w narożniku – profile CD z UD 30',
     source: APPROX,
   },
+  ...ATLAS_WALL_SYSTEMS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -856,8 +867,9 @@ export const WALL_SYSTEMS: WallSystem[] = [
  * - direct: CD 60 na uchwytach bezpośrednich (ES, elastyczne) tuż pod stropem
  * - ua-span: sufit przęsłowy – UA 50 opartymi na ścianach + CD 60 (bez wieszaków)
  * - cw-span: sufit przęsłowy (samonośny) na CW/UW opartych na ścianach
+ * - point-fix: płyta na łącznikach ATLAS M-SYSTEM 3G w siatce mainSpacing × secondarySpacing
  */
-export type CeilingKind = 'two-level' | 'one-level' | 'direct' | 'ua-span' | 'cw-span';
+export type CeilingKind = 'two-level' | 'one-level' | 'direct' | 'ua-span' | 'cw-span' | 'point-fix';
 
 export const CEILING_KIND_LABEL: Record<CeilingKind, string> = {
   'two-level': 'Sufity podwieszane CD 60 – ruszt dwupoziomowy',
@@ -865,6 +877,7 @@ export const CEILING_KIND_LABEL: Record<CeilingKind, string> = {
   direct: 'Okładziny sufitów na uchwytach bezpośrednich',
   'ua-span': 'Sufity przęsłowe na UA 50 (bez wieszaków)',
   'cw-span': 'Sufity przęsłowe na CW/UW (bez wieszaków)',
+  'point-fix': 'ATLAS M-System 3G – sufity na łącznikach (bez profili)',
 };
 
 export type HangerType = 'noniusz' | 'es' | 'elastic';
@@ -887,6 +900,8 @@ export interface CeilingSystem {
   profile?: 50 | 75 | 100;
   /** Maksymalna rozpiętość sufitu przęsłowego, cm */
   maxSpan?: number;
+  /** Mocowanie punktowe (ATLAS M-SYSTEM 3G) */
+  fixer?: PointFixer;
   /** Wkręty na m²: warstwa zewnętrzna i każda wewnętrzna */
   screwsOuter: number;
   screwsInner: number;
@@ -1301,6 +1316,7 @@ export const CEILING_SYSTEMS: CeilingSystem[] = [
   cwSpanSystem(75, 2),
   cwSpanSystem(100, 1),
   cwSpanSystem(100, 2),
+  ...ATLAS_CEILING_SYSTEMS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -1353,6 +1369,10 @@ export function ceilingMaxSpan(sys: CeilingSystem): number | undefined {
   return undefined;
 }
 
+/** Okładzina istniejącej ściany (jednostronna, mocowana do muru): CD na ES, klej gipsowy, ATLAS M-System 3G */
+export const isLiningSystem = (sys: WallSystem): boolean =>
+  sys.sides === 1 && (sys.frame === 'cd-lining' || sys.frame === 'glued' || sys.frame === 'point-fix');
+
 /** Grubość rusztu ściany, mm (bez płyt) */
 export function wallFrameDepth(sys: WallSystem): number {
   switch (sys.frame) {
@@ -1364,6 +1384,9 @@ export function wallFrameDepth(sys: WallSystem): number {
       return 27 + 10;
     case 'glued':
       return 10;
+    case 'point-fix':
+      // średni odstęp płyty od podłoża dla wybranego łącznika
+      return sys.fixer ? Math.round((sys.fixer.standoff[0] + sys.fixer.standoff[1]) / 2) : 30;
     default:
       return sys.profile;
   }
