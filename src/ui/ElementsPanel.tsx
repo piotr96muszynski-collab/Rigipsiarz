@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { BOARDS, ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { CeilingSystemSelect, Warnings, WallSystemSelect } from './SystemSelect';
-import type { ProjectCalc } from '../calc/materials';
+import { CEILING_WOOL_OPTIONS, ceilingInsulation, wallInsulation, wallWoolOptions, type ProjectCalc } from '../calc/materials';
 import { bbox, dist, wallEnds } from '../geometry/geometry';
 import { createCeiling, createOpening } from '../model/factory';
 import { addWall, deleteWall, setWallLength } from '../model/ops';
 import type { Ceiling, Opening, Project, Wall } from '../model/types';
 import { DimInput } from './DimInput';
+import { WoolField } from './WoolField';
 import { fmtNum } from './wallStyle';
 
 interface Props {
@@ -37,7 +38,7 @@ export function ElementsPanel({ project, calc, update }: Props) {
         <WallCard key={w.id} index={i + 1} wall={w} project={project} calc={calc} update={update} startOpen={count <= 2} />
       ))}
       {project.ceilings.map((c, i) => (
-        <CeilingCard key={c.id} index={i + 1} ceiling={c} calc={calc} update={update} startOpen={count <= 2} />
+        <CeilingCard key={c.id} index={i + 1} ceiling={c} wool={project.settings.wool} calc={calc} update={update} startOpen={count <= 2} />
       ))}
       <div className="actions wrap">
         <button
@@ -159,10 +160,17 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
 
       <Warnings items={info?.warnings} />
 
-      <label className="check">
-        <input type="checkbox" checked={wall.insulation} onChange={(e) => edit((w) => void (w.insulation = e.target.checked))} />
-        Wełna mineralna {sys.frame === 'cd-lining' ? 50 : sys.profile} mm{sys.frame === 'double' ? ' (w obu rusztach)' : ''}
-      </label>
+      <WoolField
+        id={`wool-${wall.id}`}
+        enabled={wall.insulation}
+        thickness={wallInsulation({ ...wall, insulation: true }, sys)?.thickness ?? 0}
+        options={wallWoolOptions(sys)}
+        layers={sys.frame === 'double' ? 2 : 1}
+        areaM2={info?.netAreaM2}
+        wool={project.settings.wool}
+        onToggle={(on) => edit((w) => void (w.insulation = on))}
+        onThickness={(mm) => edit((w) => void (w.insulationThickness = mm))}
+      />
 
       {info && (
         <div className="ends">
@@ -245,12 +253,14 @@ function isAxisRect(c: Ceiling) {
 function CeilingCard({
   ceiling,
   index,
+  wool,
   calc,
   update,
   startOpen,
 }: {
   ceiling: Ceiling;
   index: number;
+  wool: Project['settings']['wool'];
   calc: ProjectCalc;
   update: Props['update'];
   startOpen: boolean;
@@ -337,11 +347,18 @@ function CeilingCard({
             <option value={90}>wzdłuż szerokości</option>
           </select>
         </div>
-        <label className="check">
-          <input type="checkbox" checked={ceiling.insulation} onChange={(e) => edit((c) => void (c.insulation = e.target.checked))} />
-          Wełna mineralna 100 mm
-        </label>
       </div>
+      <WoolField
+        id={`wool-${ceiling.id}`}
+        enabled={ceiling.insulation}
+        thickness={ceilingInsulation({ ...ceiling, insulation: true })?.thickness ?? 100}
+        options={CEILING_WOOL_OPTIONS}
+        layers={1}
+        areaM2={r?.areaM2}
+        wool={wool}
+        onToggle={(on) => edit((c) => void (c.insulation = on))}
+        onThickness={(mm) => edit((c) => void (c.insulationThickness = mm))}
+      />
         </>
       )}
     </article>

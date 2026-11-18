@@ -1187,3 +1187,36 @@ a.btn {
     height: 62dvh;
   }
 }
+
+/* Wełna mineralna – inspektor i ustawienia */
+.wool-field {
+  display: grid;
+  gap: 4px;
+}
+.wool-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.wool-row select {
+  width: auto;
+  min-width: 96px;
+}
+.wool-field small.hint {
+  color: var(--muted);
+}
+.wool-settings {
+  display: grid;
+  gap: 10px;
+}
+.wool-settings h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.wool-settings small.hint {
+  color: var(--muted);
+}
+.wool-choice select {
+  max-width: 100%;
+}

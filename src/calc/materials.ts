@@ -23,6 +23,7 @@ import {
   wallLength,
   type WallJunctions,
 } from '../geometry/geometry';
+import { WOOL_THICKNESSES, resolveWool, woolThicknessOf, type WoolChoice } from '../catalog/insulation';
 import type { Ceiling, Project, Wall } from '../model/types';
 import { createCeiling, createProject, createWall } from '../model/factory';
 
@@ -130,6 +131,38 @@ export interface WallBreakdown {
   junctions: WallJunctions;
   /** Ostrzeżenia, np. przekroczona wysokość systemu */
   warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Wełna mineralna: dobór grubości
+// ---------------------------------------------------------------------------
+
+/** Grubości wełny, które mieszczą się w ruszcie ściany (mm); pusta lista = bez wełny */
+export function wallWoolOptions(sys: WallSystem): number[] {
+  if (sys.frame === 'glued') return [];
+  // okładzina na CD 60 i uchwytach ES – przestrzeń regulowana uchwytem, typowo 50 mm
+  const cavity = sys.frame === 'cd-lining' ? 50 : sys.profile;
+  return WOOL_THICKNESSES.filter((t) => t <= cavity);
+}
+
+/**
+ * Wełna w ścianie: grubość (domyślnie pełna głębokość profilu) i liczba warstw –
+ * w ścianie na podwójnym ruszcie wełna w obu rzędach (karta 3.41.01).
+ */
+export function wallInsulation(w: Wall, sys: WallSystem = wallSystemById(w.systemId)): { thickness: number; layers: number } | null {
+  const options = wallWoolOptions(sys);
+  if (!w.insulation || !options.length) return null;
+  const thickness = options.includes(w.insulationThickness ?? -1) ? w.insulationThickness! : options[options.length - 1];
+  return { thickness, layers: sys.frame === 'double' ? 2 : 1 };
+}
+
+/** Grubości wełny na sufit (układana na płytach / między profilami), mm */
+export const CEILING_WOOL_OPTIONS: number[] = [...WOOL_THICKNESSES];
+
+export function ceilingInsulation(c: Ceiling): { thickness: number; layers: number } | null {
+  if (!c.insulation) return null;
+  const thickness = CEILING_WOOL_OPTIONS.includes(c.insulationThickness ?? -1) ? c.insulationThickness! : 100;
+  return { thickness, layers: 1 };
 }
 
 export function wallRequirement(
@@ -282,11 +315,9 @@ export function wallRequirement(
     }
   }
 
-  // --- Wełna (w ścianie na podwójnym ruszcie w obu rzędach, wg karty 3.41.01) ---
-  if (w.insulation && sys.frame !== 'glued') {
-    const wool = isCD ? 'WELNA50' : `WELNA${sys.profile}`;
-    add(req.area, wool, net * (sys.frame === 'double' ? 2 : 1));
-  }
+  // --- Wełna: powierzchnia netto ściany (po odjęciu otworów) × liczba warstw ---
+  const ins = wallInsulation(w, sys);
+  if (ins) add(req.area, `WELNA${ins.thickness}`, net * ins.layers);
 
   return {
     req,
@@ -426,7 +457,8 @@ export function ceilingRequirement(c: Ceiling, sys: CeilingSystem = ceilingSyste
   add(req.boardArea, `${c.boardId}|${sheetLen}`, A * sys.layers);
   addBoardScrews(req, A, sys.layers, c.boardId, sys.screwsOuter, sys.screwsInner);
   addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2);
-  if (c.insulation) add(req.area, 'WELNA100', A);
+  const ins = ceilingInsulation(c);
+  if (ins) add(req.area, `WELNA${ins.thickness}`, A * ins.layers);
 
   return { req, areaM2: A, perimeterM: P, warnings };
 }
@@ -507,7 +539,34 @@ export interface MaterialLine {
 const GROUP_ORDER: Product['group'][] = ['Płyty', 'Profile', 'Akcesoria do sufitów', 'Mocowanie', 'Izolacja', 'Wykończenie'];
 
 
-export function summarize(reqs: Requirement[], wastePct: number): MaterialLine[] {
+export interface SummarizeOptions {
+  /** Wybrane produkty wełny wg grubości (ustawienia projektu) */
+  wool?: Record<string, WoolChoice>;
+}
+
+const fmtM2 = (v: number) => v.toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
+
+/**
+ * Wełna: m² netto × zapas, w górę do 0,1 m², potem pełne opakowania handlowe wybranego produktu.
+ */
+export function woolLine(pid: string, netM2: number, waste: number, choice?: WoolChoice): MaterialLine {
+  const t = woolThicknessOf(pid);
+  const r = resolveWool(t, choice);
+  const qty = Math.ceil(netM2 * waste * 10 - 1e-9) / 10;
+  const line: MaterialLine = { key: r.key, group: 'Izolacja', name: r.name, qty, unit: 'm²' };
+  const notes = [`${fmtM2(netM2)} m² netto`];
+  if (r.packM2 > 0) {
+    const packs = Math.ceil(qty / r.packM2 - 1e-9);
+    line.packs = packs;
+    line.packUnit = r.packUnit;
+    const pieces = r.pieces && r.sizeCm ? ` (${r.pieces} pł. ${r.sizeCm[0]}×${r.sizeCm[1]} cm)` : '';
+    notes.push(`${r.packUnit === 'rolka' ? 'rolka' : 'paczka'} ${fmtM2(r.packM2)} m²${pieces}`);
+  }
+  line.note = notes.join(' · ');
+  return line;
+}
+
+export function summarize(reqs: Requirement[], wastePct: number, opts: SummarizeOptions = {}): MaterialLine[] {
   const waste = 1 + wastePct / 100;
   const lines: MaterialLine[] = [];
   const merged = emptyReq();
@@ -567,7 +626,7 @@ export function summarize(reqs: Requirement[], wastePct: number): MaterialLine[]
   for (const [pid, v] of Object.entries(merged.counts)) lines.push(withPacks(pid, Math.ceil(v * (pid.startsWith('T') || pid.startsWith('AQ') || pid === 'LN9' ? waste : 1) - 1e-9), 'szt.'));
   for (const [pid, v] of Object.entries(merged.meters)) lines.push(withPacks(pid, Math.ceil(v * waste - 1e-9), 'mb'));
   for (const [pid, v] of Object.entries(merged.kg)) lines.push(withPacks(pid, Math.ceil(v * waste - 1e-9), 'kg'));
-  for (const [pid, v] of Object.entries(merged.area)) lines.push(withPacks(pid, Math.ceil(v * waste * 10 - 1e-9) / 10, 'm²'));
+  for (const [pid, v] of Object.entries(merged.area)) lines.push(woolLine(pid, v, waste, opts.wool?.[String(woolThicknessOf(pid))]));
 
   return lines.sort(
     (a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || a.name.localeCompare(b.name, 'pl'),
@@ -607,6 +666,7 @@ export function calculateProject(p: Project): ProjectCalc {
   const total = summarize(
     [...[...walls.values()].map((x) => x.req), ...[...ceilings.values()].map((x) => x.req)],
     p.settings.wasteEnabled ? p.settings.waste : 0,
+    { wool: p.settings.wool },
   );
   return { walls, ceilings, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings } };
 }

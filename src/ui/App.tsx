@@ -11,6 +11,7 @@ import { LaserButton } from './LaserButton';
 import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
+import { WoolSettings } from './WoolField';
 import { UpdatePrompt } from './UpdatePrompt';
 import { useHistory } from './useHistory';
 import { fmtNum } from './wallStyle';
@@ -361,6 +362,18 @@ function ProjectView({
               </div>
               <small className="hint">Dotyczy płyt, wkrętów, taśm, masy i wełny. Profile liczone są z rozkroju.</small>
             </div>
+            <hr />
+            <WoolSettings
+              wool={project.settings.wool}
+              onChange={(t, choice) =>
+                update((d) => {
+                  const next = { ...(d.settings.wool ?? {}) };
+                  if (choice) next[String(t)] = choice;
+                  else delete next[String(t)];
+                  d.settings.wool = next;
+                })
+              }
+            />
             <hr />
             <button className="btn" onClick={onOpenCatalog}>
               Katalog systemów i systemy własne
