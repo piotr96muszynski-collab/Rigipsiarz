@@ -105,6 +105,39 @@ describe('połączenia ścian', () => {
     expect(j.get('a')!.extraStuds).toBe(1);
   });
 
+  it('płyty liczone na długość z modelu styków: narożnik L bez zmian, w trójniku krótsze o grubość ściany ciągłej', () => {
+    const boardM2 = (p: Project, id: string) =>
+      Object.values(calculateProject(p).walls.get(id)!.req.boardArea).reduce((a, b) => a + b, 0);
+    const L = createProject();
+    L.nodes = [
+      { id: 'n1', x: 0, y: 0 },
+      { id: 'n2', x: 300, y: 0 },
+      { id: 'n3', x: 300, y: 300 },
+    ];
+    L.walls = [
+      createWall(L, 'n1', 'n2', { id: 'a', systemId: 'W-CW75-1', boardId: 'RB12.5', height: 260 }),
+      createWall(L, 'n2', 'n3', { id: 'b', systemId: 'W-CW75-1', boardId: 'RB12.5', height: 260 }),
+    ];
+    // ściana ciągła: +5 cm na zewnątrz, −5 cm od wewnątrz; dochodząca: +3,75 i −3,75 cm
+    expect(boardM2(L, 'a')).toBeCloseTo(2 * 3 * 2.6, 6);
+    expect(boardM2(L, 'b')).toBeCloseTo(2 * 3 * 2.6, 6);
+
+    const T = createProject();
+    T.nodes = [
+      { id: 'n1', x: 0, y: 0 },
+      { id: 'n2', x: 400, y: 0 },
+      { id: 'n3', x: 200, y: 0 },
+      { id: 'n4', x: 200, y: 300 },
+    ];
+    T.walls = [
+      createWall(T, 'n1', 'n2', { id: 'a', systemId: 'W-CW75-1', boardId: 'RB12.5', height: 260 }),
+      createWall(T, 'n3', 'n4', { id: 'b', systemId: 'W-CW75-1', boardId: 'RB12.5', height: 260 }),
+    ];
+    // ściana dochodząca zaczyna się na licu płyt ściany ciągłej (37,5 + 12,5 mm od osi)
+    expect(boardM2(T, 'b')).toBeCloseTo(2 * (3 - 0.05) * 2.6, 6);
+    expect(boardM2(T, 'a')).toBeCloseTo(2 * 4 * 2.6, 6);
+  });
+
   it('wolny koniec ściany działowej – dwie krawędzie z narożnikiem', () => {
     const p = straightWall(300);
     p.walls[0].endB = 'free';

@@ -4,7 +4,9 @@
 
 import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingGrid, liningKey, pickBoardLength, type ProjectCalc } from '../calc/materials';
-import { existingRooms, interiorSide, isNewWall, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
+import { wallLayout } from '../calc/layout';
+import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
+import { analyzeJunctions, existingRooms, interiorSide, isNewWall, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Ceiling, Point, Project, Wall } from '../model/types';
 
 /** Warstwy, które można przełączać w widoku */
@@ -126,13 +128,19 @@ export function boardSheets(L: number, H: number, widthM: number, sheetLenM: num
   return out;
 }
 
-const STUD_W = 0.05; // szerokość półki CW/UW
 const TRACK_H = 0.04; // wysokość ścianki UW widoczna w 3D
 const CD_H = 0.027;
 const CD_W = 0.06;
 const UD_W = 0.028;
 
-function buildWall(p: Project, w: Wall, calc: ProjectCalc | undefined, nodes: ReturnType<typeof nodeMap>, parts: Part3D[]) {
+function buildWall(
+  p: Project,
+  w: Wall,
+  nodes: ReturnType<typeof nodeMap>,
+  contacts: ContactModel,
+  junctions: ReturnType<typeof analyzeJunctions>,
+  parts: Part3D[],
+) {
   const [a, b] = wallEnds(p, w, nodes);
   const ax = a.x / 100;
   const az = a.y / 100;
@@ -149,10 +157,10 @@ function buildWall(p: Project, w: Wall, calc: ProjectCalc | undefined, nodes: Re
   const rotY = -Math.atan2(dz, dx);
   const sys = wallSystemById(w.systemId);
   const board = boardById(w.boardId);
+  const sec = contacts.sections.get(w.id) ?? wallSection(w);
   const pointFix = sys.frame === 'point-fix';
-  // okładzina ATLAS: zamiast profili odstęp płyty od muru (łączniki punktowe)
-  const depth = pointFix ? wallFrameDepth(sys) / 1000 : sys.profile / 1000;
-  const bt = board.thickness / 1000;
+  const glued = sys.frame === 'glued';
+  const bt = sec.bt;
 
   /** Dodaje prostopadłościan w układzie ściany: u wzdłuż, v wysokość, n odsunięcie od osi */
   const box = (layer: Layer3D, mat: MatKey, u0: number, u1: number, v0: number, v1: number, n: number, thick: number) => {
@@ -168,52 +176,57 @@ function buildWall(p: Project, w: Wall, calc: ProjectCalc | undefined, nodes: Re
     });
   };
 
+  // ten sam układ rusztu i płyt co na rysunkach, z zakresami z modelu styków
+  const j = junctions.get(w.id);
+  const lay = j ? wallLayout(p, w, j, contacts) : undefined;
+  const [f0, f1] = partRange(contacts, w, L, { kind: 'frame' });
+
+  // --- Ruszt: słupki (pełne, skrócone, ościeżnicowe, dodatkowe z połączeń) ---
+  if (lay && !pointFix && !glued) {
+    const isCD = sys.frame === 'cd-lining';
+    // rzędy słupków: pojedynczy w osi, podwójny i instalacyjny – po jednym przy każdej okładzinie
+    const rowDepth = isCD ? CD_H : sec.profile / 1000;
+    const rowsN = lay.rows === 2 ? [-(sec.core - rowDepth / 2), sec.core - rowDepth / 2] : [0];
+    const thick = lay.rows === 2 ? rowDepth : sec.core * 2;
+    const lo = f0 + STUD_W / 2;
+    const hi = f1 - STUD_W / 2;
+    const used: number[] = [];
+    for (const st of lay.studs) {
+      let u = Math.min(hi, Math.max(lo, st.x));
+      // dwa słupki w tym samym miejscu (np. skrzyżowanie) stawiamy obok siebie
+      while (used.some((x) => Math.abs(x - u) < STUD_W - 1e-6)) u += u > (f0 + f1) / 2 ? -STUD_W : STUD_W;
+      used.push(u);
+      const mat: FrameMat = st.kind === 'jamb-ua' ? 'ua' : isCD ? 'cdMain' : 'cw';
+      for (const n of rowsN)
+        for (const [y0, y1] of st.segments) {
+          const v0 = Math.max(y0, TRACK_H);
+          const v1 = Math.min(y1, H - TRACK_H);
+          if (v1 - v0 > 0.005) box('wallFrame', mat, u - STUD_W / 2, u + STUD_W / 2, v0, v1, n, thick * 0.96);
+        }
+    }
+    // --- UW: strop, posadzka (przerwana w drzwiach), nadproża i podokienniki ---
+    for (const t of lay.tracks) {
+      const y0 = t.kind === 'floor' ? 0 : t.kind === 'ceiling' ? H - TRACK_H : t.kind === 'header' ? t.y : t.y - TRACK_H;
+      for (const n of rowsN) box('wallFrame', isCD ? 'ud' : 'uw', t.x0, t.x1, y0, y0 + TRACK_H, n, thick);
+    }
+  }
+
+  // --- Płyty: każda warstwa na swój zakres (narożnik: zachodzi albo dochodzi), otwory wycięte ---
   const openings = wallOpenings(w, L, H);
-  const studs = calc?.walls.get(w.id)?.info.studPositions ?? [];
-  const clampU = (x: number) => Math.min(L - STUD_W / 2, Math.max(STUD_W / 2, x));
-
-  // --- Ruszt: słupki CW ---
-  for (const x of studs) {
-    const u = clampU(x);
-    const op = openings.find((o) => x > o.x0 && x < o.x1);
-    if (!op) box('wallFrame', 'cw', u - STUD_W / 2, u + STUD_W / 2, TRACK_H, H - TRACK_H, 0, depth * 0.96);
-    else {
-      if (op.sill > TRACK_H) box('wallFrame', 'cw', u - STUD_W / 2, u + STUD_W / 2, TRACK_H, op.sill, 0, depth * 0.96);
-      if (op.top < H - TRACK_H) box('wallFrame', 'cw', u - STUD_W / 2, u + STUD_W / 2, op.top, H - TRACK_H, 0, depth * 0.96);
-    }
-  }
-  // --- Ościeża, nadproża, podokienniki ---
-  for (const o of pointFix ? [] : openings) {
-    const mat: FrameMat = o.reinforced ? 'ua' : 'cw';
-    const jl = Math.max(STUD_W / 2, o.x0 - STUD_W / 2);
-    const jr = Math.min(L - STUD_W / 2, o.x1 + STUD_W / 2);
-    box('wallFrame', mat, jl - STUD_W / 2, jl + STUD_W / 2, TRACK_H, H - TRACK_H, 0, depth * 0.96);
-    box('wallFrame', mat, jr - STUD_W / 2, jr + STUD_W / 2, TRACK_H, H - TRACK_H, 0, depth * 0.96);
-    if (o.top < H - 0.05) box('wallFrame', 'uw', o.x0, o.x1, o.top, o.top + TRACK_H, 0, depth);
-    if (o.sill > 0.05) box('wallFrame', 'uw', o.x0, o.x1, o.sill - TRACK_H, o.sill, 0, depth);
-  }
-  // --- UW: strop i posadzka (posadzkowy przerwany w drzwiach) ---
-  if (!pointFix) box('wallFrame', 'uw', 0, L, H - TRACK_H, H, 0, depth);
-  let cursor = pointFix ? L : 0;
-  for (const o of (pointFix ? [] : openings).filter((o) => o.sill <= 0.01).sort((m, n) => m.x0 - n.x0)) {
-    if (o.x0 - cursor > 0.05) box('wallFrame', 'uw', cursor, o.x0, 0, TRACK_H, 0, depth);
-    cursor = Math.max(cursor, o.x1);
-  }
-  if (L - cursor > 0.05) box('wallFrame', 'uw', cursor, L, 0, TRACK_H, 0, depth);
-
-  // --- Płyty ---
   const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
-  const sheetLen = pickBoardLength(w.boardId, w.height) / 100;
-  const widthM = board.width / 100;
-  for (let side = 0; side < sys.sides; side++) {
-    const dir = side === 0 ? 1 : -1;
-    for (let layer = 0; layer < sys.layers; layer++) {
-      const n = dir * (depth / 2 + bt * layer + bt / 2);
-      const shift = ((side + layer) % 2) * (widthM / 2);
-      for (const r of boardSheets(L, H, widthM, sheetLen, shift, holes)) {
+  for (const face of lay?.faces ?? []) {
+    const n = (face.side === 0 ? 1 : -1) * (sec.core + bt * face.layer + bt / 2);
+    for (const pc of face.pieces)
+      for (const r of subtractRects({ x0: pc.x0, x1: pc.x1, y0: pc.y0, y1: pc.y1 }, holes))
         box('wallBoards', `board:${board.id}`, r.x0, r.x1, r.y0, r.y1, n, bt);
-      }
-    }
+  }
+
+  // --- Pasek płyty zamykający czoło wolnego końca ---
+  for (const end of ['a', 'b'] as const) {
+    const e = contacts.ends.get(`${w.id}:${end}`);
+    if (!e?.strip) continue;
+    const [s0, s1] = end === 'a' ? [0, e.strip.thickness] : [L - e.strip.thickness, L];
+    box('wallBoards', `board:${board.id}`, s0, s1, 0, H, 0, sec.core * 2);
   }
 }
 
@@ -227,6 +240,7 @@ function buildExistingWall(
   inner: 1 | -1 | 0,
   calc: ProjectCalc | undefined,
   nodes: ReturnType<typeof nodeMap>,
+  contacts: ContactModel,
   parts: Part3D[],
 ) {
   const [a, b] = wallEnds(p, w, nodes);
@@ -274,7 +288,8 @@ function buildExistingWall(
     if (sys.frame === 'cd-lining') {
       const studs = calc?.linings.get(liningKey(w.id, l.side))?.info.studPositions ?? [];
       for (const x of studs) {
-        const u = Math.min(L - CD_W / 2, Math.max(CD_W / 2, x));
+        const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
+        const u = Math.min(l1 - CD_W / 2, Math.max(l0 + CD_W / 2, x));
         const op = openings.find((o) => x > o.x0 && x < o.x1);
         const n = face + l.side * (depth - CD_H / 2);
         if (!op) box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, TRACK_H, H - TRACK_H, n, CD_H);
@@ -286,10 +301,16 @@ function buildExistingWall(
     }
     const sheetLen = pickBoardLength(l.boardId, w.height) / 100;
     const widthM = board.width / 100;
+    // w narożniku obrysu okładzina dochodzi do lica sąsiedniej okładziny (model styków)
+    const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
     for (let layer = 0; layer < sys.layers; layer++) {
       const n = face + l.side * (depth + bt * layer + bt / 2);
       const shift = (layer % 2) * (widthM / 2);
-      for (const r of boardSheets(L, H, widthM, sheetLen, shift, holes)) box('wallBoards', `board:${board.id}`, r.x0, r.x1, r.y0, r.y1, n, bt);
+      for (const r of boardSheets(L, H, widthM, sheetLen, shift, holes)) {
+        const x0 = Math.max(r.x0, l0);
+        const x1 = Math.min(r.x1, l1);
+        if (x1 - x0 > 0.001) box('wallBoards', `board:${board.id}`, x0, x1, r.y0, r.y1, n, bt);
+      }
     }
   }
 }
@@ -376,10 +397,12 @@ export function buildModel3D(p: Project, calc?: ProjectCalc): Model3D {
   const parts: Part3D[] = [];
   const nodes = nodeMap(p);
   const rooms = existingRooms(p);
+  const contacts = buildContacts(p);
+  const junctions = analyzeJunctions(p);
   for (const w of p.walls) {
     if (!nodes.has(w.a) || !nodes.has(w.b)) continue;
-    if (isNewWall(w)) buildWall(p, w, calc, nodes, parts);
-    else buildExistingWall(p, w, interiorSide(p, w, rooms), calc, nodes, parts);
+    if (isNewWall(w)) buildWall(p, w, nodes, contacts, junctions, parts);
+    else buildExistingWall(p, w, interiorSide(p, w, rooms), calc, nodes, contacts, parts);
   }
   for (const c of p.ceilings) buildCeiling(c, parts);
 

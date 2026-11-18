@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { bbox, dist, existingRooms, interiorSide, isNewWall, nodeMap, pointInPolygon, wallEnds } from '../geometry/geometry';
+import { bbox, dist, existingRooms, interiorSide, isNewWall, nodeMap, pointInPolygon, sameOutline, wallEnds } from '../geometry/geometry';
 import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
 import { createCeiling, createOpening } from '../model/factory';
@@ -425,14 +425,18 @@ export function PlanCanvas(props: Props) {
       if (g.mode === 'ceiling' && (!g.moved || w < 20 || h < 20)) {
         const room = findRoomAt(project, start);
         if (room) {
-          let id = '';
-          update((d) => {
-            const c = createCeiling(d, room);
-            id = c.id;
-            d.ceilings.push(c);
-          });
-          setSelection({ type: 'ceiling', id });
-          onMessage('Dodano sufit w obrysie pomieszczenia');
+          // drugi dotyk w tym samym pomieszczeniu nie dokłada drugiego sufitu (niewidoczny duplikat
+          // zostawał w 3D i w ilościach po usunięciu pierwszego)
+          const same = project.ceilings.find((c) => sameOutline(c.points, room));
+          if (same) {
+            setSelection({ type: 'ceiling', id: same.id });
+            onMessage('W tym pomieszczeniu jest już sufit');
+          } else {
+            const c = createCeiling(project, room);
+            update((d) => void d.ceilings.push(structuredClone(c)));
+            setSelection({ type: 'ceiling', id: c.id });
+            onMessage('Dodano sufit w obrysie pomieszczenia');
+          }
         } else onMessage('Przeciągnij prostokąt sufitu albo dotknij wnętrza zamkniętego pomieszczenia');
       } else if (w >= 20 && h >= 20) {
         const x0 = Math.min(start.x, end.x);
@@ -444,13 +448,13 @@ export function PlanCanvas(props: Props) {
           { x: x0, y: y0 + h },
         ];
         if (g.mode === 'ceiling') {
-          let id = '';
-          update((d) => {
-            const c = createCeiling(d, pts);
-            id = c.id;
-            d.ceilings.push(c);
-          });
-          setSelection({ type: 'ceiling', id });
+          const same = project.ceilings.find((c) => sameOutline(c.points, pts));
+          if (same) setSelection({ type: 'ceiling', id: same.id });
+          else {
+            const c = createCeiling(project, pts);
+            update((d) => void d.ceilings.push(structuredClone(c)));
+            setSelection({ type: 'ceiling', id: c.id });
+          }
         } else {
           update((d) => {
             pts.forEach((pt, i) => addWall(d, pt, pts[(i + 1) % 4], layer === 'existing' ? { kind: 'existing' } : {}));
@@ -856,3 +860,4 @@ function ScaleBar({ z }: { z: number }) {
     </div>
   );
 }
+

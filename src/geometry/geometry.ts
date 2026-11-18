@@ -57,6 +57,27 @@ function angleBetween(center: Point, p1: Point, p2: Point): number {
 }
 
 /**
+ * Ściana „ciągła” w trójniku i skrzyżowaniu: para najbardziej współliniowych ścian w węźle.
+ * Ta sama reguła obowiązuje w wyliczeniach, w modelu styków i w widoku 3D.
+ */
+export function throughPair(center: Point, list: Wall[], far: (w: Wall) => Point): [Wall, Wall] {
+  let best: [Wall, Wall] = [list[0], list[1]];
+  let bestAng = -1;
+  for (let i = 0; i < list.length; i++)
+    for (let k = i + 1; k < list.length; k++) {
+      const a = angleBetween(center, far(list[i]), far(list[k]));
+      if (a > bestAng + 1e-9) {
+        bestAng = a;
+        best = [list[i], list[k]];
+      }
+    }
+  return best;
+}
+
+/** Ściana, która w narożniku L przechodzi do zewnętrznego lica (druga do niej dochodzi) */
+export const cornerThrough = (w1: Wall, w2: Wall) => (w1.id < w2.id ? w1 : w2);
+
+/**
  * Analiza połączeń ścian. Reguły (uproszczone wg detali Rigips):
  * - narożnik L: +1 słupek CW (do przykręcenia płyt od wewnątrz), 1 krawędź zewnętrzna
  * - trójnik T: ściana przechodząca dostaje +1 słupek CW
@@ -88,6 +109,8 @@ export function analyzeJunctions(p: Project): Map<Id, WallJunctions> {
     });
 
   const other = (w: Wall, nid: Id) => nodes.get(w.a === nid ? w.b : w.a)!;
+  const throughOwner = (nid: Id, node: Point, list: Wall[]) =>
+    throughPair(node, list, (x) => other(x, nid)).sort((x, y) => (x.id < y.id ? -1 : 1))[0];
 
   for (const w of fresh) {
     const info = result.get(w.id)!;
@@ -126,12 +149,10 @@ export function analyzeJunctions(p: Project): Map<Id, WallJunctions> {
             info.externalEdges += 1;
           }
         }
-      } else if (connected.length === 2) {
-        kind = 'tee-through';
-        if ([w, ...connected].sort((x, y) => (x.id < y.id ? -1 : 1))[0].id === w.id) info.extraStuds += 1;
       } else {
-        kind = 'cross';
-        if ([w, ...connected].sort((x, y) => (x.id < y.id ? -1 : 1))[0].id === w.id) info.extraStuds += 2;
+        kind = connected.length === 2 ? 'tee-through' : 'cross';
+        // dodatkowe słupki dostaje ściana ciągła (z pary współliniowej – ta o mniejszym id)
+        if (throughOwner(nid, node, [w, ...connected]).id === w.id) info.extraStuds += kind === 'cross' ? 2 : 1;
       }
       if (end === 'a') info.endA = kind;
       else info.endB = kind;
@@ -141,6 +162,13 @@ export function analyzeJunctions(p: Project): Map<Id, WallJunctions> {
 }
 
 // ---------- Wielokąty (sufity) ----------
+/** Ten sam obrys (te same wierzchołki z dokładnością do 1 cm, dowolny punkt startowy i kierunek) */
+export function sameOutline(a: { x: number; y: number }[], b: { x: number; y: number }[]): boolean {
+  if (a.length !== b.length || !a.length) return false;
+  const near = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.abs(p.x - q.x) <= 1 && Math.abs(p.y - q.y) <= 1;
+  return b.every((q) => a.some((p) => near(p, q))) && a.every((p) => b.some((q) => near(p, q)));
+}
+
 
 export function polygonArea(pts: Point[]): number {
   let s = 0;

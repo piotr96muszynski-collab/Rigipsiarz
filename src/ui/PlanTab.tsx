@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBack } from './back';
 import { ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { liningKey, summarize, type ProjectCalc } from '../calc/materials';
-import { dist, isNewWall, wallEnds } from '../geometry/geometry';
+import { dist, isNewWall, sameOutline, wallEnds } from '../geometry/geometry';
 import { deleteWall } from '../model/ops';
 import type { Project } from '../model/types';
 import { CeilingEditor, ExistingWallEditor, WallEditor } from './ElementsPanel';
@@ -138,7 +138,8 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList }: Pro
       setSelection(null);
       onMessage('Usunięto ścianę – możesz cofnąć');
     } else if (ceiling) {
-      update((d) => void (d.ceilings = d.ceilings.filter((c) => c.id !== ceiling.id)));
+      // razem z niewidocznymi duplikatami o tym samym obrysie (dawniej powstawały przy podwójnym dotknięciu)
+      update((d) => void (d.ceilings = d.ceilings.filter((c) => c.id !== ceiling.id && !sameOutline(c.points, ceiling.points))));
       setSelection(null);
       onMessage('Usunięto sufit – możesz cofnąć');
     }

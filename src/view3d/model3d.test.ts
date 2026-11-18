@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { calculateProject, ceilingGrid } from '../calc/materials';
 import { createCeiling, createOpening, createProject, createWall, sampleProject, uid } from '../model/factory';
 import type { Project } from '../model/types';
+import { overlapArea, wallSection } from '../geometry/contacts';
 import { boardSheets, buildModel3D, subtractRects, type BoxPart } from './model3d';
 
 function wall(lengthCm: number, heightCm = 260, angleDeg = 0): Project {
@@ -126,4 +127,56 @@ describe('model 3D sufitu', () => {
     expect(m.parts.length).toBeGreaterThan(50);
     for (const x of m.parts) if (x.type === 'box') x.c.forEach((v) => expect(Number.isFinite(v)).toBe(true));
   });
+});
+
+describe('narożniki w 3D z modelu styków', () => {
+  const plan = (b: BoxPart) => {
+    const [L, , T] = b.s;
+    const c = Math.cos(-b.rotY);
+    const s = Math.sin(-b.rotY);
+    return [
+      [-L / 2, -T / 2],
+      [L / 2, -T / 2],
+      [L / 2, T / 2],
+      [-L / 2, T / 2],
+    ].map(([u, n]) => ({ x: b.c[0] + u * c - n * s, y: b.c[2] + u * s + n * c }));
+  };
+  const lCorner = (systemId: string) => {
+    const p = createProject();
+    p.nodes = [
+      { id: 'n0', x: 0, y: 0 },
+      { id: 'n1', x: 300, y: 0 },
+      { id: 'n2', x: 300, y: 250 },
+    ];
+    p.walls = [
+      createWall(p, 'n0', 'n1', { id: 'w1', systemId, boardId: 'RB12.5', height: 260 }),
+      createWall(p, 'n1', 'n2', { id: 'w2', systemId, boardId: 'RB12.5', height: 260 }),
+    ];
+    return p;
+  };
+
+  for (const sys of ['W-CW75-1', 'W-CW75-2', 'W-2CW75-2'])
+    it(`${sys}: płyty i ruszt dwóch ścian nie przenikają się, a narożnik zewnętrzny jest domknięty`, () => {
+      const p = lCorner(sys);
+      const parts = buildModel3D(p, calculateProject(p)).parts.filter(
+        (x): x is BoxPart => x.type === 'box' && (x.layer === 'wallBoards' || x.layer === 'wallFrame') && x.c[1] - x.s[1] / 2 < 0.5 && x.c[1] + x.s[1] / 2 > 0.5,
+      );
+      const w1 = parts.filter((x) => x.owner === 'w1');
+      const w2 = parts.filter((x) => x.owner === 'w2');
+      for (const a of w1) for (const b of w2) expect(overlapArea(plan(a), plan(b))).toBeLessThan(1e-6);
+      // punkt tuż przy zewnętrznym rogu (x > 3, y < 0) leży w płycie
+      const sec = wallSection(p.walls[0]);
+      const t = sec.core + sec.bt * sec.layers[0];
+      const outer = { x: 3 + t - 0.002, y: -t + 0.002 };
+      const inside = (poly: { x: number; y: number }[], q: { x: number; y: number }) =>
+        poly.every((A, i) => {
+          const B = poly[(i + 1) % poly.length];
+          return (B.x - A.x) * (q.y - A.y) - (B.y - A.y) * (q.x - A.x) >= 0;
+        }) ||
+        poly.every((A, i) => {
+          const B = poly[(i + 1) % poly.length];
+          return (B.x - A.x) * (q.y - A.y) - (B.y - A.y) * (q.x - A.x) <= 0;
+        });
+      expect(parts.some((x) => x.layer === 'wallBoards' && inside(plan(x), outer))).toBe(true);
+    });
 });

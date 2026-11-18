@@ -130,6 +130,13 @@ export function WallFrameDrawing({ l, title }: { l: WallLayout; title: string })
   );
 }
 
+/** Opis końców płyty z modelu styków (narożnik, trójnik, mur, wolny koniec) */
+function endNote(face: BoardFace, L: number) {
+  const part = (d: number, at: string) =>
+    Math.abs(d) < 0.0005 ? '' : d > 0 ? ` ${at}: płyta wychodzi ${cm(d * 100)} cm poza oś węzła (zachodzi na czoło sąsiedniej ściany).` : ` ${at}: płyta kończy się ${cm(-d * 100)} cm przed osią węzła (dochodzi do sąsiedniej ściany).`;
+  return part(-face.x0, 'Lewy koniec') + part(face.x1 - L, 'Prawy koniec');
+}
+
 const faceName = (face: BoardFace, sides: number, layers: number) =>
   `${sides > 1 ? `Strona ${face.side === 0 ? 'A' : 'B'}` : 'Okładzina'}${layers > 1 ? `, warstwa ${face.layer + 1}` : ''}`;
 
@@ -178,7 +185,7 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
         {face.jambJoints.map((x) => (
           <line key={x} x1={x * 100} y1={0} x2={x * 100} y2={Hc} stroke={C.warn} strokeWidth={2.4} {...nss} />
         ))}
-        <ChainH xs={[0, ...face.pieces.map((p) => p.x1 * 100)]} y={Hc} off={f * 2} f={f * 0.85} />
+        <ChainH xs={[face.x0 * 100, ...face.pieces.filter((p) => p.y0 < 1e-6).map((p) => p.x1 * 100)]} y={Hc} off={f * 2} f={f * 0.85} />
         <Dim x1={0} y1={Hc} x2={Lc} y2={Hc} off={f * 4.2} f={f} label={`${cm(Lc)} cm`} />
         <Dim x1={0} y1={0} x2={0} y2={Hc} off={-f * 2.2} f={f} label={`${cm(Hc)} cm`} />
       </Paper>
@@ -193,6 +200,7 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
       <figcaption className="muted small">
         Styki pionowe zawsze na słupku. {face.offset > 0 ? `Pierwszy pas docięty na ${cm(face.offset * 100)} cm, żeby styki mijały się z sąsiednią okładziną.` : 'Zaczynasz od pełnego arkusza przy lewej krawędzi.'}{' '}
         Wymiary elementów w cm, przed wycięciem otworów.
+        {endNote(face, l.L)}
       </figcaption>
     </figure>
   );

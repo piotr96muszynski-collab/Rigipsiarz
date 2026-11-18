@@ -63,9 +63,32 @@ describe('rysunek ściany = wyliczenie', () => {
     p.walls = [createWall(p, 'n0', 'n1', { id: 'w1' }), createWall(p, 'n1', 'n2', { id: 'w2' })];
     const extra1 = layoutOf(p, 0).studs.filter((s) => s.kind === 'extra');
     const extra2 = layoutOf(p, 1).studs.filter((s) => s.kind === 'extra');
-    expect(extra1.map((s) => s.x)).toEqual([3]);
+    // tuż za rusztem ściany dochodzącej (połowa CW 75 + połowa półki słupka), pod krawędziami płyt
+    expect(extra1.map((s) => +s.x.toFixed(4))).toEqual([3 - 0.0375 - 0.025]);
     expect(extra2).toHaveLength(0);
     expect(drawnCW(p, 0)).toBeCloseTo(calcCW(p, 0), 6);
+    // ruszt ściany ciągłej sięga do zewnętrznego lica rusztu drugiej ściany, płyty zachodzą na narożnik
+    const l1 = layoutOf(p, 0);
+    expect(Math.max(...l1.studs.map((s) => s.x))).toBeCloseTo(3.0375, 6);
+    expect(l1.faces.map((f) => +f.x1.toFixed(4)).sort()).toEqual([2.95, 3.05]);
+    // druga ściana zaczyna się za rusztem pierwszej
+    expect(layoutOf(p, 1).faces.map((f) => +f.x0.toFixed(4)).sort()).toEqual([-0.0375, 0.0375]);
+  });
+
+  it('narożnik przy dwóch warstwach: słupek trzyma krawędzie obu warstw od wewnątrz', () => {
+    const p = createProject();
+    p.nodes = [
+      { id: 'n0', x: 0, y: 0 },
+      { id: 'n1', x: 300, y: 0 },
+      { id: 'n2', x: 300, y: 200 },
+    ];
+    const opt = { systemId: 'W-CW75-2', boardId: 'RB12.5' };
+    p.walls = [createWall(p, 'n0', 'n1', { id: 'w1', ...opt }), createWall(p, 'n1', 'n2', { id: 'w2', ...opt })];
+    const l = layoutOf(p, 0);
+    const stud = l.studs.find((s) => s.kind === 'extra')!.x;
+    const innerEnds = l.faces.filter((f) => f.x1 < 3).map((f) => f.x1);
+    expect(innerEnds).toHaveLength(2);
+    for (const x of innerEnds) expect(Math.abs(x - stud)).toBeLessThan(0.025);
   });
 
   it('trójnik: dodatkowy słupek w miejscu dochodzącej ściany', () => {
