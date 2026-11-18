@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useBack } from './back';
 import {
   BOARDS,
   CEILING_KIND_LABEL,
@@ -37,6 +38,7 @@ type Draft = { type: 'wall'; sys: WallSystem } | { type: 'ceiling'; sys: Ceiling
 export function CatalogView({ onClose, onSave }: Props) {
   const [tab, setTab] = useState<Tab>('ceilings');
   const [draft, setDraft] = useState<Draft | null>(null);
+  useBack(!!draft, () => setDraft(null));
 
   const saveWall = (s: WallSystem) => {
     const c = customSystems();

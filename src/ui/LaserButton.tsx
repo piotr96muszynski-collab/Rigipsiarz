@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useBack } from './back';
 import { connectLaser, disconnectLaser } from '../device/laser';
 import { fmtMeters, useLaser } from './useLaser';
 
@@ -14,6 +15,7 @@ export function LaserButton() {
   const s = useLaser();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  useBack(open, () => setOpen(false));
 
   useEffect(() => {
     if (!open) return;
