@@ -833,6 +833,29 @@ li.done .item-qty strong {
   max-width: 560px;
 }
 
+/* ---------- łączenia i wykończenie ---------- */
+.finishing {
+  max-width: 760px;
+}
+.plain-list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.45;
+}
+.finishing details summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+.joint > strong {
+  font-size: 0.95rem;
+}
+
 /* ---------- komunikat o aktualizacji ---------- */
 .toast {
   position: fixed;

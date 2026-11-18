@@ -8,6 +8,7 @@ import { deleteProject, getKV, getProject, listProjects, requestPersistence, sav
 import { CatalogView } from './CatalogView';
 import { DrawingsPanel } from './DrawingsPanel';
 import { ElementsPanel } from './ElementsPanel';
+import { FinishingPanel } from './FinishingPanel';
 import { PlanTab } from './PlanTab';
 import { ProjectList, UndoToast } from './ProjectList';
 import { LaserButton } from './LaserButton';
@@ -239,7 +240,7 @@ function Home({
   );
 }
 
-type Tab = 'plan' | 'list' | 'elements' | '3d' | 'drawings' | 'settings';
+type Tab = 'plan' | 'list' | 'elements' | 'joints' | '3d' | 'drawings' | 'settings';
 
 function ProjectView({
   initial,
@@ -297,6 +298,7 @@ function ProjectView({
     ? [
         { id: 'plan', label: 'Plan' },
         { id: 'elements', label: 'Ściany, sufity i materiały' },
+        { id: 'joints', label: 'Łączenia i wykończenie' },
         { id: '3d', label: 'Widok 3D' },
         { id: 'drawings', label: 'Rysunki' },
         { id: 'settings', label: 'Ustawienia' },
@@ -305,6 +307,7 @@ function ProjectView({
         { id: 'plan', label: 'Plan' },
         { id: 'list', label: 'Zakupy' },
         { id: 'elements', label: 'Elementy' },
+        { id: 'joints', label: 'Łączenia' },
         { id: '3d', label: '3D' },
         { id: 'drawings', label: 'Rysunki' },
         { id: 'settings', label: 'Ustawienia' },
@@ -406,6 +409,7 @@ function ProjectView({
             </div>
           </div>
         )}
+        {activeTab === 'joints' && <FinishingPanel project={project} calc={calc} update={update} />}
         {tab === 'drawings' && <DrawingsPanel project={project} calc={calc} />}
         {activeTab === 'settings' && (
           <div className="card settings">

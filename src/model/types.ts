@@ -1,5 +1,6 @@
 // Wszystkie wymiary w modelu są w centymetrach.
 
+import type { FinishingSettings } from '../catalog/finishing';
 import type { WoolChoice } from '../catalog/insulation';
 
 export type Id = string;
@@ -98,6 +99,17 @@ export interface ProjectSettings {
   gridSnap: number;
   /** Wybrany produkt wełny dla każdej grubości (klucz = grubość w mm) */
   wool?: Record<string, WoolChoice>;
+  /** Spoinowanie (Q1) i domyślne wykończenie narożników i styków; brak = wartości domyślne */
+  finishing?: Partial<FinishingSettings>;
+}
+
+/**
+ * Wybór wykończenia dla jednego połączenia (klucz = id połączenia z `analyzeJoints`).
+ * outer = krawędzie zewnętrzne, inner = kąty wewnętrzne i styki.
+ */
+export interface JointFinishOverride {
+  outer?: string;
+  inner?: string;
 }
 
 export interface Project {
@@ -111,4 +123,6 @@ export interface Project {
   settings: ProjectSettings;
   /** Lista zakupów: pozycje odhaczone jako kupione */
   bought: Record<string, boolean>;
+  /** Wykończenie wybrane ręcznie dla połączeń (narożniki, trójniki, styki) */
+  jointFinish?: Record<string, JointFinishOverride>;
 }
