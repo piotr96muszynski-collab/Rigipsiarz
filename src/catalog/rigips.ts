@@ -330,6 +330,7 @@ export const PRODUCTS: Record<string, Product> = {
   WELNA50: { id: 'WELNA50', name: 'Wełna mineralna 50 mm', group: 'Izolacja', unit: 'm²' },
   WELNA75: { id: 'WELNA75', name: 'Wełna mineralna 75 mm', group: 'Izolacja', unit: 'm²' },
   WELNA100: { id: 'WELNA100', name: 'Wełna mineralna 100 mm', group: 'Izolacja', unit: 'm²' },
+  WELNA150: { id: 'WELNA150', name: 'Wełna mineralna 150 mm', group: 'Izolacja', unit: 'm²' },
   ...ATLAS_PRODUCTS,
 };
 

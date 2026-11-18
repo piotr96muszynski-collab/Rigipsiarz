@@ -1,5 +1,7 @@
 // Wszystkie wymiary w modelu są w centymetrach.
 
+import type { WoolChoice } from '../catalog/insulation';
+
 export type Id = string;
 
 export interface Point {
@@ -64,6 +66,8 @@ export interface Wall {
   /** Rozstaw słupków CW, cm */
   studSpacing: 60 | 40 | 30;
   insulation: boolean;
+  /** Grubość wełny, mm (brak = pełna głębokość rusztu) */
+  insulationThickness?: number;
   endA: FreeEndType;
   endB: FreeEndType;
   openings: Opening[];
@@ -75,6 +79,8 @@ export interface Ceiling {
   systemId: string;
   boardId: string;
   insulation: boolean;
+  /** Grubość wełny na suficie, mm (brak = 100 mm) */
+  insulationThickness?: number;
   /** Kierunek profili nośnych: 0 = wzdłuż osi X, 90 = wzdłuż osi Y */
   direction: 0 | 90;
   /** Wysokość sufitu od posadzki (do widoku 3D), cm */
@@ -90,6 +96,8 @@ export interface ProjectSettings {
   defaultWallSystem: string;
   defaultCeilingSystem: string;
   gridSnap: number;
+  /** Wybrany produkt wełny dla każdej grubości (klucz = grubość w mm) */
+  wool?: Record<string, WoolChoice>;
 }
 
 export interface Project {
