@@ -1,4 +1,4 @@
-import type { BoardFace, StudKind, WallLayout } from '../calc/layout';
+import { OPENING_JOINT_MIN, pieceOutline, type BoardFace, type BoardPiece, type CutRect, type StudKind, type WallLayout } from '../calc/layout';
 import { C, ChainH, Dim, INK, Legend, Paper, clamp, cm, dedupe, nss } from './svg';
 
 const STUD_COLOR: Record<StudKind, string> = {
@@ -142,26 +142,44 @@ const faceName = (face: BoardFace, sides: number, layers: number) =>
 
 export { faceName };
 
+/** Obrys elementu (z wycięciem L/U) jako ścieżka SVG w cm, oś Y w dół */
+function piecePath(p: BoardPiece, Hc: number): string {
+  return pieceOutline(p)
+    .map((loop) => 'M' + loop.map((q) => `${q.x * 100},${Hc - q.y * 100}`).join('L') + 'Z')
+    .join(' ');
+}
+
+/** Największy pas elementu poza wycięciami (miejsce na opis), m */
+function labelRect(p: BoardPiece) {
+  const ns = p.notches ?? [];
+  const nx0 = Math.min(...ns.map((n) => n.x0));
+  const nx1 = Math.max(...ns.map((n) => n.x1));
+  const ny0 = Math.min(...ns.map((n) => n.y0));
+  const ny1 = Math.max(...ns.map((n) => n.y1));
+  const strips = [
+    { x0: p.x0, x1: nx0, y0: p.y0, y1: p.y1 },
+    { x0: nx1, x1: p.x1, y0: p.y0, y1: p.y1 },
+    { x0: p.x0, x1: p.x1, y0: p.y0, y1: ny0 },
+    { x0: p.x0, x1: p.x1, y0: ny1, y1: p.y1 },
+  ].filter((r) => r.x1 - r.x0 > 0.01 && r.y1 - r.y0 > 0.01);
+  // pas szeroki na tyle, by zmieścić opis, ma pierwszeństwo przed niskim paskiem
+  const score = (r: CutRect) => Math.min(r.x1 - r.x0, 0.6) * Math.min(r.y1 - r.y0, 0.6);
+  return strips.sort((a, b) => score(b) - score(a))[0] ?? p;
+}
+
 /** Widok ściany: rozkład płyt na jednej okładzinie */
 export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: BoardFace; title: string }) {
   const { Lc, Hc, f, vb } = frame(l);
   const full = face.pieces.filter((p) => !p.cut).length;
+  const shaped = face.pieces.filter((p) => p.shape && p.shape !== 'rect').length;
   return (
     <figure className="drawing">
       <Paper viewBox={vb} title={title} minWidth={minW(Lc)}>
         <rect x={-f} y={-f * 0.8} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
         <rect x={-f} y={Hc} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
-        {face.pieces.map((p, i) => {
-          const x = p.x0 * 100;
-          const y = Hc - p.y1 * 100;
-          const w = (p.x1 - p.x0) * 100;
-          const h = (p.y1 - p.y0) * 100;
-          return (
-            <g key={i}>
-              <rect x={x} y={y} width={w} height={h} fill={p.cut ? 'url(#hatch-cut)' : C.board} stroke={INK} strokeWidth={1.1} {...nss} />
-            </g>
-          );
-        })}
+        {face.pieces.map((p, i) => (
+          <path key={i} d={piecePath(p, Hc)} fillRule="evenodd" fill={p.cut ? 'url(#hatch-cut)' : C.board} stroke={INK} strokeWidth={1.1} {...nss} />
+        ))}
         {/* linie wkrętów na słupkach */}
         {dedupe(l.studs.map((s) => s.x * 100), 0.5).map((x) => (
           <line key={x} x1={clamp(x, 1, Lc - 1)} y1={0} x2={clamp(x, 1, Lc - 1)} y2={Hc} stroke={C.stud} strokeWidth={0.6} strokeDasharray="2 6" {...nss} />
@@ -171,6 +189,37 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
           const w = (p.x1 - p.x0) * 100;
           const h = (p.y1 - p.y0) * 100;
           if (w < f * 3 || h < f * 3) return null;
+          const n = p.notches?.[0];
+          if (n && p.shape !== 'rect') {
+            // element L/U: opis w najszerszej części płyty (poza wycięciem), w wąskim pasie – pionowo
+            const r = labelRect(p);
+            const cx = ((r.x0 + r.x1) / 2) * 100;
+            const cy = Hc - ((r.y0 + r.y1) / 2) * 100;
+            const rw = (r.x1 - r.x0) * 100;
+            const vertical = rw < f * 6 && (r.y1 - r.y0) * 100 > rw;
+            const sub = `${p.shape === 'L' ? 'L' : p.shape === 'U' ? 'U' : 'ramka'}, wycięcie ${cm((n.x1 - n.x0) * 100)}×${cm((n.y1 - n.y0) * 100)}`;
+            return (
+              <text
+                key={i}
+                x={cx}
+                y={cy}
+                transform={vertical ? `rotate(-90 ${cx} ${cy})` : undefined}
+                fontSize={f * 0.85}
+                textAnchor="middle"
+                fill={INK}
+                stroke="#fff"
+                strokeWidth={f * 0.25}
+                paintOrder="stroke"
+              >
+                <tspan x={cx} dy={-f * 0.15}>
+                  {cm(w)}×{cm(h)}
+                </tspan>
+                <tspan x={cx} dy={f * 1.0} fontSize={f * 0.7}>
+                  {sub}
+                </tspan>
+              </text>
+            );
+          }
           const cx = (p.x0 + p.x1) / 2;
           const cy = (p.y0 + p.y1) / 2;
           // etykieta nie może wypaść w otworze – wtedy przy górnej krawędzi elementu
@@ -182,24 +231,27 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
             </text>
           );
         })}
-        {face.jambJoints.map((x) => (
+        {[...new Set([...face.jambJoints, ...face.layerJoints])].map((x) => (
           <line key={x} x1={x * 100} y1={0} x2={x * 100} y2={Hc} stroke={C.warn} strokeWidth={2.4} {...nss} />
         ))}
-        <ChainH xs={[face.x0 * 100, ...face.pieces.filter((p) => p.y0 < 1e-6).map((p) => p.x1 * 100)]} y={Hc} off={f * 2} f={f * 0.85} />
+        <ChainH xs={[face.x0 * 100, ...face.joints.map((x) => x * 100), face.x1 * 100]} y={Hc} off={f * 2} f={f * 0.85} />
         <Dim x1={0} y1={Hc} x2={Lc} y2={Hc} off={f * 4.2} f={f} label={`${cm(Lc)} cm`} />
         <Dim x1={0} y1={0} x2={0} y2={Hc} off={-f * 2.2} f={f} label={`${cm(Hc)} cm`} />
       </Paper>
       <Legend
         items={[
           { color: C.board, label: `arkusz pełny ${cm(l.sheet.width * 100)}×${cm(l.sheet.length * 100)} cm (${full} szt.)` },
-          { pattern: 'cut', label: `element docinany (${face.pieces.length - full} szt.)` },
+          { pattern: 'cut', label: `element docinany (${face.pieces.length - full} szt.${shaped ? `, w tym ${shaped} wycinane w kształt L lub U przy otworach` : ''})` },
           { color: C.stud, dashed: true, label: 'oś słupka – linia wkręcania' },
-          ...(face.jambJoints.length ? [{ color: C.warn, label: 'styk w linii ościeża – przesuń płytę lub wytnij ją w kształt litery L' }] : []),
+          ...(face.jambJoints.length ? [{ color: C.warn, label: 'styk w linii ościeża – brak słupka w dobrym miejscu, dodaj słupek i przesuń styk' }] : []),
+          ...(face.layerJoints.length ? [{ color: C.warn, label: 'styk na styku niższej warstwy – dodaj słupek i rozsuń styki' }] : []),
         ]}
       />
       <figcaption className="muted small">
         Styki pionowe zawsze na słupku. {face.offset > 0 ? `Pierwszy pas docięty na ${cm(face.offset * 100)} cm, żeby styki mijały się z sąsiednią okładziną.` : 'Zaczynasz od pełnego arkusza przy lewej krawędzi.'}{' '}
-        Wymiary elementów w cm, przed wycięciem otworów.
+        Wymiary elementów w cm (prostokąt arkusza przed wycięciem).
+        {l.openings.length > 0 &&
+          ` Przy otworach płyta zachodzi na ościeże i jest wycinana w kształt litery L (U przy wąskim otworze), a styk wypada nad lub pod otworem, co najmniej ${cm(OPENING_JOINT_MIN * 100)} cm od ościeża – dzięki temu narożniki otworu nie pękają.`}
         {endNote(face, l.L)}
       </figcaption>
     </figure>

@@ -4,7 +4,7 @@
 
 import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingGrid, liningKey, pickBoardLength, type ProjectCalc } from '../calc/materials';
-import { wallLayout } from '../calc/layout';
+import { pieceArea, pieceOutline, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
 import { analyzeJunctions, existingRooms, interiorSide, isNewWall, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Ceiling, Point, Project, Wall } from '../model/types';
@@ -42,7 +42,25 @@ export interface SlabPart {
   owner: string;
 }
 
-export type Part3D = BoxPart | SlabPart;
+/** Płyta o dowolnym obrysie (np. wycięta w kształt L przy otworze) w płaszczyźnie ściany */
+export interface PanelPart {
+  type: 'panel';
+  layer: Layer3D;
+  mat: MatKey;
+  /** Początek układu ściany (węzeł a) na posadzce */
+  origin: [number, number, number];
+  rotY: number;
+  /** Środek grubości płyty od osi ściany, m */
+  n: number;
+  thickness: number;
+  /** Obrys w układzie ściany (x wzdłuż, y wysokość); pierwszy zewnętrzny, kolejne – otwory */
+  loops: Point[][];
+  /** Pole płyty, m² */
+  area: number;
+  owner: string;
+}
+
+export type Part3D = BoxPart | SlabPart | PanelPart;
 
 export interface Model3D {
   parts: Part3D[];
@@ -216,9 +234,26 @@ function buildWall(
   const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
   for (const face of lay?.faces ?? []) {
     const n = (face.side === 0 ? 1 : -1) * (sec.core + bt * face.layer + bt / 2);
-    for (const pc of face.pieces)
+    for (const pc of face.pieces) {
+      if (pc.notches?.length) {
+        // wycięcie L/U – jedna płyta z obrysem, bez sztucznych spoin w 3D
+        parts.push({
+          type: 'panel',
+          layer: 'wallBoards',
+          mat: `board:${board.id}`,
+          origin: [ax, 0, az],
+          rotY,
+          n,
+          thickness: bt,
+          loops: pieceOutline(pc),
+          area: pieceArea(pc),
+          owner: w.id,
+        });
+        continue;
+      }
       for (const r of subtractRects({ x0: pc.x0, x1: pc.x1, y0: pc.y0, y1: pc.y1 }, holes))
         box('wallBoards', `board:${board.id}`, r.x0, r.x1, r.y0, r.y1, n, bt);
+    }
   }
 
   // --- Pasek płyty zamykający czoło wolnego końca ---
@@ -417,7 +452,11 @@ export function buildModel3D(p: Project, calc?: ProjectCalc): Model3D {
   };
   for (const pt of parts) {
     if (pt.type === 'box') grow(pt.c[0], pt.c[1] + pt.s[1] / 2, pt.c[2]);
-    else for (const q of pt.points) grow(q.x, pt.y + pt.thickness, q.y);
+    else if (pt.type === 'panel') {
+      const c = Math.cos(pt.rotY);
+      const sn = Math.sin(pt.rotY);
+      for (const q of pt.loops[0] ?? []) grow(pt.origin[0] + q.x * c, q.y, pt.origin[2] - q.x * sn);
+    } else for (const q of pt.points) grow(q.x, pt.y + pt.thickness, q.y);
   }
   if (!parts.length) {
     min[0] = min[2] = -2;
