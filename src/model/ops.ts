@@ -1,4 +1,4 @@
-import { dist, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
+import { dist, existingRooms, interiorSide, isNewWall, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
 import { createExistingWall, createWall, uid } from './factory';
 import type { Id, Point, Project, Wall } from './types';
 
@@ -123,6 +123,67 @@ export function snapPoint(p: Project, pt: Point, tol: number, from?: Point, grid
     if (pr.d < tol * 0.7 && pr.t > 0.02 && pr.t < 0.98) return { point: pr.point, kind: 'wall' };
   }
   return { point: res, kind };
+}
+
+/**
+ * Nowa ściana nie może przechodzić przez istniejący mur: koniec odcinka from→to
+ * zostaje przycięty do pierwszego lica muru, w które wchodzi. Mur leży po stronie
+ * zewnętrznej osi ściany obrysu (oś = lico od strony pomieszczenia), a przy murze
+ * bez wyznaczonego wnętrza – symetrycznie wokół osi.
+ */
+export function clipToMasonry(p: Project, from: Point, to: Point): { point: Point; clipped: boolean } {
+  const existing = p.walls.filter((w) => !isNewWall(w));
+  if (!existing.length) return { point: to, clipped: false };
+  const len = dist(from, to);
+  if (len < 1) return { point: to, clipped: false };
+  const rooms = existingRooms(p);
+  const nodes = nodeMap(p);
+  let best = 1;
+  for (const w of existing) {
+    const a = nodes.get(w.a);
+    const b = nodes.get(w.b);
+    if (!a || !b) continue;
+    const L = dist(a, b);
+    if (L < 1) continue;
+    const ux = (b.x - a.x) / L;
+    const uy = (b.y - a.y) / L;
+    // normalna jak w rysunku planu: (-uy, ux)
+    const nx = -uy;
+    const ny = ux;
+    const t = w.thickness ?? 25;
+    const inner = interiorSide(p, w, rooms);
+    const vMin = inner === 1 ? -t : inner === -1 ? 0 : -t / 2;
+    const vMax = vMin + t;
+    const ext = t / 2; // narożniki muru są przedłużone
+    const loc = (q: Point) => ({ u: (q.x - a.x) * ux + (q.y - a.y) * uy, v: (q.x - a.x) * nx + (q.y - a.y) * ny });
+    const f = loc(from);
+    const e = loc(to);
+    const du = e.u - f.u;
+    const dv = e.v - f.v;
+    // Liang–Barsky w układzie ściany
+    let tE = 0;
+    let tL = 1;
+    let ok = true;
+    const edge = (pp: number, q: number) => {
+      if (Math.abs(pp) < 1e-9) {
+        if (q < 0) ok = false;
+        return;
+      }
+      const r = q / pp;
+      if (pp < 0) tE = Math.max(tE, r);
+      else tL = Math.min(tL, r);
+    };
+    edge(-du, f.u + ext);
+    edge(du, L + ext - f.u);
+    edge(-dv, f.v - vMin);
+    edge(dv, vMax - f.v);
+    if (!ok || tE >= tL) continue;
+    // start na licu lub w murze – nie przycinamy; samo dotknięcie lica na końcu też jest w porządku
+    if (tE * len < 0.5 || (1 - tE) * len < 0.5) continue;
+    best = Math.min(best, tE);
+  }
+  if (best >= 1) return { point: to, clipped: false };
+  return { point: { x: from.x + (to.x - from.x) * best, y: from.y + (to.y - from.y) * best }, clipped: true };
 }
 
 /** Pozycja punktu wzdłuż ściany (cm od węzła a) */
