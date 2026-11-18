@@ -1,14 +1,15 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculateProject } from '../calc/materials';
 import { PRODUCT_ALIASES, setCustomSystems, type CustomCatalog } from '../catalog/rigips';
-import { createProject, sampleProject } from '../model/factory';
+import { createProject, duplicateProject, sampleProject } from '../model/factory';
 import { migrateKeys, type PriceBook } from '../model/prices';
 import type { Project } from '../model/types';
-import { deleteProject, getKV, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
+import { deleteProject, getKV, getProject, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
 import { CatalogView } from './CatalogView';
 import { DrawingsPanel } from './DrawingsPanel';
 import { ElementsPanel } from './ElementsPanel';
 import { PlanTab } from './PlanTab';
+import { ProjectList, UndoToast } from './ProjectList';
 import { LaserButton } from './LaserButton';
 import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
@@ -64,6 +65,35 @@ export function App() {
     setOpenId(p.id);
   };
 
+  // usunięty projekt trzymamy w pamięci, żeby dało się go przywrócić przyciskiem Cofnij
+  const [removed, setRemoved] = useState<Project | null>(null);
+  const removedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const remove = async (p: Project) => {
+    const latest = (await getProject(p.id)) ?? p;
+    await deleteProject(p.id);
+    if (openId === p.id) setOpenId(null);
+    await refresh();
+    setRemoved(latest);
+    clearTimeout(removedTimer.current);
+    removedTimer.current = setTimeout(() => setRemoved(null), 6000);
+  };
+  const undoRemove = async () => {
+    if (!removed) return;
+    clearTimeout(removedTimer.current);
+    setRemoved(null);
+    await saveProject(removed);
+    await refresh();
+  };
+  const duplicate = async (p: Project) => {
+    await saveProject(duplicateProject((await getProject(p.id)) ?? p));
+    await refresh();
+  };
+  const rename = async (p: Project, name: string) => {
+    const latest = (await getProject(p.id)) ?? p;
+    await saveProject({ ...latest, name, updatedAt: Date.now() });
+    await refresh();
+  };
+
   const current = projects?.find((p) => p.id === openId);
 
   return (
@@ -84,11 +114,7 @@ export function App() {
             setOpenId(null);
             refresh();
           }}
-          onDelete={async () => {
-            await deleteProject(current.id);
-            setOpenId(null);
-            refresh();
-          }}
+          onDelete={() => remove(current)}
         />
       ) : (
         <Home
@@ -97,10 +123,14 @@ export function App() {
           setQuick={setQuick}
           onOpen={open}
           onSelect={setOpenId}
+          onDelete={remove}
+          onDuplicate={duplicate}
+          onRename={rename}
           onOpenCatalog={() => setCatalogOpen(true)}
         />
       )}
       </div>
+      {removed && <UndoToast name={removed.name} onUndo={undoRemove} onDismiss={() => setRemoved(null)} />}
       <UpdatePrompt />
     </div>
   );
@@ -112,6 +142,9 @@ function Home({
   setQuick,
   onOpen,
   onSelect,
+  onDelete,
+  onDuplicate,
+  onRename,
   onOpenCatalog,
 }: {
   projects: Project[] | null;
@@ -120,6 +153,9 @@ function Home({
   setQuick: (v: boolean) => void;
   onOpen: (p: Project) => void;
   onSelect: (id: string) => void;
+  onDelete: (p: Project) => void;
+  onDuplicate: (p: Project) => void;
+  onRename: (p: Project, name: string) => void;
 }) {
   return (
     <main className="home">
@@ -170,18 +206,7 @@ function Home({
             </button>
           </div>
         ) : (
-          <ul className="project-list">
-            {projects.map((p) => (
-              <li key={p.id}>
-                <button onClick={() => onSelect(p.id)}>
-                  <strong>{p.name}</strong>
-                  <span className="muted small">
-                    {p.walls.length} ścian · {p.ceilings.length} sufitów · {new Date(p.updatedAt).toLocaleDateString('pl-PL')}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ProjectList projects={projects} onSelect={onSelect} onDelete={onDelete} onDuplicate={onDuplicate} onRename={onRename} />
         )}
       </section>
 
@@ -378,7 +403,7 @@ function ProjectView({
               Katalog systemów i systemy własne
             </button>
             <hr />
-            <button className="btn danger" onClick={() => confirm('Usunąć projekt z tego urządzenia?') && onDelete()}>
+            <button className="btn danger" onClick={onDelete}>
               Usuń projekt
             </button>
           </div>

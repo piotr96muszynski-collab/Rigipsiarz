@@ -159,3 +159,13 @@ function distributeOpenings(w: Wall, lengthCm: number, doors: number, windows: n
   }
   w.openings = items;
 }
+
+/** Kopia projektu z nowym id i nazwą „… (kopia)”. Identyfikatory elementów zostają – są unikalne tylko w obrębie projektu. */
+export function duplicateProject(p: Project, now = Date.now()): Project {
+  const copy: Project = structuredClone(p);
+  copy.id = uid();
+  copy.name = `${p.name} (kopia)`;
+  copy.createdAt = now;
+  copy.updatedAt = now;
+  return copy;
+}
