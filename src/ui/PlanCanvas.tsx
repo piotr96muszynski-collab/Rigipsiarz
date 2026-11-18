@@ -3,7 +3,7 @@ import { bbox, dist, existingRooms, interiorSide, isNewWall, nodeMap, pointInPol
 import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
 import { createCeiling, createOpening } from '../model/factory';
-import { addWall, hitWall, mergeNodeIfOverlaps, offsetAlongWall, snapPoint, type SnapResult } from '../model/ops';
+import { addWall, clipToMasonry, hitWall, mergeNodeIfOverlaps, offsetAlongWall, snapPoint, type SnapResult } from '../model/ops';
 import type { Point, Project } from '../model/types';
 import { awayFromFinger, BUBBLE_H, BUBBLE_W } from './labelPlace';
 import { fmtCm, liningThickness, wallColor, wallThickness } from './wallStyle';
@@ -327,6 +327,11 @@ export function PlanCanvas(props: Props) {
         if (chain && dist(g.down, chain) > tolCm * 2) g.start = g.down;
       }
       g.snap = snapPoint(project, w, tolCm, g.start, grid);
+      if (layer === 'new') {
+        // nowa ściana zatrzymuje się na licu istniejącego muru
+        const c = clipToMasonry(project, g.start, g.snap.point);
+        if (c.clipped) g.snap = { point: c.point, kind: 'wall' };
+      }
       g.end = g.snap.point;
       rerender();
       return;
@@ -494,7 +499,8 @@ export function PlanCanvas(props: Props) {
 
   const preview = (() => {
     if (g?.kind === 'draw' && (g.moved || chain)) return { a: g.start, b: g.end };
-    if (!g && chain && hover && tool === 'wall') return { a: chain, b: hover.point };
+    if (!g && chain && hover && tool === 'wall')
+      return { a: chain, b: layer === 'new' ? clipToMasonry(project, chain, hover.point).point : hover.point };
     return null;
   })();
   const snapMark = g?.kind === 'draw' ? g.snap : !g && tool === 'wall' ? hover : null;

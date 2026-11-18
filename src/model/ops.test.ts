@@ -3,7 +3,7 @@ import { calculateProject } from '../calc/materials';
 import { analyzeJunctions } from '../geometry/geometry';
 import { findRoomAt } from '../geometry/rooms';
 import { createProject } from './factory';
-import { addWall, mergeNodeIfOverlaps, moveNode, snapPoint } from './ops';
+import { addWall, clipToMasonry, mergeNodeIfOverlaps, moveNode, snapPoint } from './ops';
 
 /** Prostokątny pokój narysowany jak narzędziem „Pokój” na planie */
 function drawRoom(w: number, h: number) {
@@ -93,5 +93,44 @@ describe('rysowanie na planie', () => {
     expect(calc.walls.size).toBe(5);
     expect(calc.stats.wallLengthM).toBeCloseTo(5 + 4 + 5 + 4 + 4);
     expect(calc.total.length).toBeGreaterThan(0);
+  });
+});
+
+describe('nowa ściana nie przechodzi przez mur', () => {
+  function room() {
+    const p = createProject();
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 400 },
+      { x: 0, y: 400 },
+    ];
+    pts.forEach((pt, i) => addWall(p, pt, pts[(i + 1) % 4], { kind: 'existing' }));
+    return p;
+  }
+
+  it('przycina koniec do lica muru po stronie pokoju', () => {
+    const r = clipToMasonry(room(), { x: 200, y: 200 }, { x: 200, y: 450 });
+    expect(r.clipped).toBe(true);
+    expect(r.point.x).toBeCloseTo(200);
+    expect(r.point.y).toBeCloseTo(400);
+  });
+
+  it('ściana poprowadzona w głąb muru za narożnikiem też się zatrzymuje', () => {
+    const r = clipToMasonry(room(), { x: 100, y: 100 }, { x: 600, y: 100 });
+    expect(r.clipped).toBe(true);
+    expect(r.point.x).toBeCloseTo(500);
+  });
+
+  it('nie rusza ściany kończącej się na licu ani zaczynającej się na nim', () => {
+    const p = room();
+    expect(clipToMasonry(p, { x: 200, y: 200 }, { x: 200, y: 400 }).clipped).toBe(false);
+    expect(clipToMasonry(p, { x: 200, y: 0 }, { x: 200, y: 300 }).clipped).toBe(false);
+    expect(clipToMasonry(p, { x: 100, y: 100 }, { x: 300, y: 300 }).clipped).toBe(false);
+  });
+
+  it('bez istniejących ścian nic nie zmienia', () => {
+    const r = clipToMasonry(createProject(), { x: 0, y: 0 }, { x: 900, y: 0 });
+    expect(r).toEqual({ point: { x: 900, y: 0 }, clipped: false });
   });
 });
