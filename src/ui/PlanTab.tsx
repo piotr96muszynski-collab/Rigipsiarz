@@ -7,6 +7,7 @@ import { deleteWall } from '../model/ops';
 import type { Project } from '../model/types';
 import { CeilingEditor, ExistingWallEditor, WallEditor } from './ElementsPanel';
 import { PlanCanvas, type Selection, type Tool } from './PlanCanvas';
+import { EXIT_FULLSCREEN_ICON, FULLSCREEN_ICON } from './fullscreen';
 import { fmtNum } from './wallStyle';
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
   update: (fn: (d: Project) => void, opts?: { transient?: boolean }) => void;
   commit: () => void;
   wide: boolean;
+  /** Tryb pełnoekranowy (chowa nagłówek z Cofnij/Ponów – wtedy te przyciski są na planie) */
+  fullscreen?: FullscreenControl;
   /** Przejście do listy zakupów (telefon) */
   onShowList: () => void;
 }
@@ -70,7 +73,16 @@ const EXISTING_HINT = {
   room: 'Przeciągnij prostokąt – powstanie obrys z 4 istniejących ścian (np. pustego pokoju). Okna i drzwi dodasz narzędziami obok.',
 };
 
-export function PlanTab({ project, calc, update, commit, wide, onShowList }: Props) {
+export interface FullscreenControl {
+  on: boolean;
+  toggle: () => void;
+  undo?: () => void;
+  redo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+}
+
+export function PlanTab({ project, calc, update, commit, wide, onShowList, fullscreen }: Props) {
   const [tool, setTool] = useState<Tool>(project.walls.length ? 'select' : 'wall');
   // pusty projekt zaczynamy od obrysu istniejącej przestrzeni, potem wstawia się nową zabudowę
   const [layer, setLayer] = useState<Layer>(project.walls.length || project.ceilings.length ? 'new' : 'existing');
@@ -228,6 +240,33 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList }: Pro
         </div>
 
         <div className="plan-view-btns">
+          {fullscreen && (
+            <button
+              className={`fab ${fullscreen.on ? 'on' : ''}`}
+              onClick={fullscreen.toggle}
+              aria-label={fullscreen.on ? 'Zamknij pełny ekran' : 'Pełny ekran'}
+              title={fullscreen.on ? 'Zamknij pełny ekran' : 'Pełny ekran'}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d={fullscreen.on ? EXIT_FULLSCREEN_ICON : FULLSCREEN_ICON} />
+              </svg>
+            </button>
+          )}
+          {fullscreen?.on && fullscreen.undo && (
+            <>
+              <button className="fab" onClick={fullscreen.undo} disabled={!fullscreen.canUndo} aria-label="Cofnij">
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3" />
+                </svg>
+              </button>
+              <button className="fab" onClick={fullscreen.redo} disabled={!fullscreen.canRedo} aria-label="Ponów">
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <path d="M15 14l5-5-5-5M20 9H10a6 6 0 000 12h3" />
+                </svg>
+              </button>
+              <span className="fab-gap" aria-hidden />
+            </>
+          )}
           <button className="fab" onClick={() => setZoom((z) => ({ seq: z.seq + 1, factor: 1.4 }))} aria-label="Powiększ">
             <svg viewBox="0 0 24 24" aria-hidden>
               <path d="M12 5v14M5 12h14" />

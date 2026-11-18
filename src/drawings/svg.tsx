@@ -1,7 +1,8 @@
 // Wspólne elementy rysunków technicznych (SVG). Rysunki są zawsze na „białym papierze”,
 // także w trybie ciemnym – tak samo wyglądają na ekranie, w druku i w PDF.
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode, type Ref } from 'react';
+import { ZoomViewer } from './ZoomViewer';
 
 export const INK = '#1f2933';
 export const DIM = '#3b4652';
@@ -31,46 +32,92 @@ export const cm = (v: number) => {
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-export function Paper({
+/** Sam rysunek SVG (na ekranie, w druku i w podglądzie powiększenia) */
+export function PaperSvg({
   viewBox,
   title,
   children,
-  minWidth,
+  svgRef,
 }: {
   viewBox: [number, number, number, number];
   title: string;
   children: ReactNode;
-  /** minimalna szerokość w px (na telefonie rysunek można przewijać w poziomie) */
-  minWidth?: number;
+  svgRef?: Ref<SVGSVGElement>;
 }) {
   const [x, y, w, h] = viewBox;
   return (
-    <div className="paper">
-      <svg
-        viewBox={`${x} ${y} ${w} ${h}`}
-        role="img"
-        aria-label={title}
-        style={minWidth ? { minWidth } : undefined}
-        preserveAspectRatio="xMidYMid meet"
-        fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    <svg
+      ref={svgRef}
+      viewBox={`${x} ${y} ${w} ${h}`}
+      role="img"
+      aria-label={title}
+      preserveAspectRatio="xMidYMid meet"
+      fontFamily="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    >
+      <defs>
+        <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="#8a939d" strokeWidth="1.2" />
+        </pattern>
+        <pattern id="hatch-cut" patternUnits="userSpaceOnUse" width="14" height="14" patternTransform="rotate(-45)">
+          <rect width="14" height="14" fill={C.boardCut} />
+          <line x1="0" y1="0" x2="0" y2="14" stroke="#e0b46a" strokeWidth="2" />
+        </pattern>
+        <pattern id="wool" patternUnits="userSpaceOnUse" width="20" height="20">
+          <rect width="20" height="20" fill={C.wool} />
+          <path d="M0 10 Q5 2 10 10 T20 10" fill="none" stroke="#c9b13c" strokeWidth="1.2" />
+        </pattern>
+      </defs>
+      <rect x={x} y={y} width={w} height={h} fill="#fff" />
+      {children}
+    </svg>
+  );
+}
+
+/**
+ * Arkusz z rysunkiem: mieści się w szerokości ekranu, a dotknięcie otwiera
+ * podgląd na pełnym ekranie z powiększaniem dwoma palcami i przesuwaniem.
+ */
+export function Paper({
+  viewBox,
+  title,
+  children,
+}: {
+  viewBox: [number, number, number, number];
+  title: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div
+        className="paper zoomable"
+        role="button"
+        tabIndex={0}
+        aria-label={`${title} – dotknij, aby powiększyć`}
+        onClick={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
       >
-        <defs>
-          <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
-            <line x1="0" y1="0" x2="0" y2="8" stroke="#8a939d" strokeWidth="1.2" />
-          </pattern>
-          <pattern id="hatch-cut" patternUnits="userSpaceOnUse" width="14" height="14" patternTransform="rotate(-45)">
-            <rect width="14" height="14" fill={C.boardCut} />
-            <line x1="0" y1="0" x2="0" y2="14" stroke="#e0b46a" strokeWidth="2" />
-          </pattern>
-          <pattern id="wool" patternUnits="userSpaceOnUse" width="20" height="20">
-            <rect width="20" height="20" fill={C.wool} />
-            <path d="M0 10 Q5 2 10 10 T20 10" fill="none" stroke="#c9b13c" strokeWidth="1.2" />
-          </pattern>
-        </defs>
-        <rect x={x} y={y} width={w} height={h} fill="#fff" />
-        {children}
-      </svg>
-    </div>
+        <PaperSvg viewBox={viewBox} title={title}>
+          {children}
+        </PaperSvg>
+        <span className="paper-zoom no-print" aria-hidden>
+          <svg viewBox="0 0 24 24">
+            <circle cx="10.5" cy="10.5" r="6" />
+            <path d="M15 15l5 5M10.5 8v5M8 10.5h5" />
+          </svg>
+        </span>
+      </div>
+      {open && (
+        <ZoomViewer viewBox={viewBox} title={title} onClose={() => setOpen(false)}>
+          {children}
+        </ZoomViewer>
+      )}
+    </>
   );
 }
 

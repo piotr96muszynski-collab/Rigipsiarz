@@ -15,6 +15,7 @@ import { createCeiling, createLining, createOpening } from '../model/factory';
 import { addWall, deleteWall, setWallLength } from '../model/ops';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { DimInput } from './DimInput';
+import { Picker, type PickOption } from './Picker';
 import { WoolField } from './WoolField';
 import { fmtNum } from './wallStyle';
 
@@ -33,6 +34,22 @@ const JUNCTION_LABEL: Record<string, string> = {
   'tee-abut': 'dochodzi do ściany',
   cross: 'skrzyżowanie',
 };
+
+const SPACING_OPTIONS: PickOption<Wall['studSpacing']>[] = [
+  { value: 60, label: '60 cm' },
+  { value: 40, label: '40 cm', hint: 'pod płytki' },
+  { value: 30, label: '30 cm' },
+];
+const END_OPTIONS: PickOption<Wall['endA']>[] = [
+  { value: 'existing-wall', label: 'przy murze' },
+  { value: 'free', label: 'wolny' },
+];
+const DIRECTION_OPTIONS: PickOption<0 | 90>[] = [
+  { value: 0, label: 'wzdłuż długości' },
+  { value: 90, label: 'wzdłuż szerokości' },
+];
+/** Płyty z katalogu – w arkuszu z opisem zastosowania */
+const BOARD_OPTIONS = (): PickOption<string>[] => BOARDS.map((b) => ({ value: b.id, label: b.name, hint: b.description }));
 
 export function ElementsPanel({ project, calc, update }: Props) {
   const count = project.walls.length + project.ceilings.length;
@@ -149,15 +166,13 @@ export function WallEditor({
         <DimInput label="Wysokość" unit="m" value={wall.height} min={30} max={1000} onChange={(v) => edit((w) => void (w.height = v))} />
         <div className="field">
           <label htmlFor={`sp-${wall.id}`}>{sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW'}</label>
-          <select
+          <Picker
             id={`sp-${wall.id}`}
+            label={sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW'}
             value={wall.studSpacing}
-            onChange={(e) => edit((w) => void (w.studSpacing = Number(e.target.value) as Wall['studSpacing']))}
-          >
-            <option value={60}>60 cm</option>
-            <option value={40}>40 cm (płytki)</option>
-            <option value={30}>30 cm</option>
-          </select>
+            options={SPACING_OPTIONS}
+            onChange={(v) => edit((w) => void (w.studSpacing = v))}
+          />
         </div>
       </div>
 
@@ -181,13 +196,7 @@ export function WallEditor({
         </div>
         <div className="field">
           <label htmlFor={`bd-${wall.id}`}>Płyta</label>
-          <select id={`bd-${wall.id}`} value={wall.boardId} onChange={(e) => edit((w) => void (w.boardId = e.target.value))}>
-            {BOARDS.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          <Picker id={`bd-${wall.id}`} label="Płyta" value={wall.boardId} options={BOARD_OPTIONS()} onChange={(v) => edit((w) => void (w.boardId = v))} />
         </div>
       </div>
 
@@ -214,20 +223,18 @@ export function WallEditor({
               <div key={k} className="end">
                 <span className="muted small">Koniec {k}</span>
                 {editable ? (
-                  <select
-                    value={kind}
-                    onChange={(e) =>
+                  <Picker
+                    label={`Koniec ${k}`}
+                    value={kind as Wall['endA']}
+                    mode="segments"
+                    options={END_OPTIONS}
+                    onChange={(v) =>
                       edit((w) => {
-                        const v = e.target.value as Wall['endA'];
                         if (k === 'A') w.endA = v;
                         else w.endB = v;
                       })
                     }
-                    aria-label={`Koniec ${k}`}
-                  >
-                    <option value="existing-wall">przy istniejącej ścianie</option>
-                    <option value="free">wolny koniec</option>
-                  </select>
+                  />
                 ) : (
                   <span className="tag">{JUNCTION_LABEL[kind]}</span>
                 )}
@@ -405,23 +412,21 @@ export function CeilingEditor({
         </div>
         <div className="field">
           <label htmlFor={`cb-${ceiling.id}`}>Płyta</label>
-          <select id={`cb-${ceiling.id}`} value={ceiling.boardId} onChange={(e) => edit((c) => void (c.boardId = e.target.value))}>
-            {BOARDS.map((bd) => (
-              <option key={bd.id} value={bd.id}>
-                {bd.name}
-              </option>
-            ))}
-          </select>
+          <Picker id={`cb-${ceiling.id}`} label="Płyta" value={ceiling.boardId} options={BOARD_OPTIONS()} onChange={(v) => edit((c) => void (c.boardId = v))} />
         </div>
       </div>
       <Warnings items={r?.warnings} />
       <div className="grid-2">
         <div className="field">
           <label htmlFor={`cd-${ceiling.id}`}>{sys.kind === 'cw-span' || sys.kind === 'ua-span' ? 'Profile przęsłowe biegną' : 'Profile nośne biegną'}</label>
-          <select id={`cd-${ceiling.id}`} value={ceiling.direction} onChange={(e) => edit((c) => void (c.direction = Number(e.target.value) as 0 | 90))}>
-            <option value={0}>wzdłuż długości</option>
-            <option value={90}>wzdłuż szerokości</option>
-          </select>
+          <Picker
+            id={`cd-${ceiling.id}`}
+            label="Kierunek profili"
+            value={ceiling.direction}
+            mode="segments"
+            options={DIRECTION_OPTIONS}
+            onChange={(v) => edit((c) => void (c.direction = v))}
+          />
         </div>
       </div>
       <WoolField
@@ -608,28 +613,20 @@ function LiningEditor({
             </div>
             <div className="field">
               <label htmlFor={`lb-${idBase}`}>Płyta</label>
-              <select id={`lb-${idBase}`} value={lining.boardId} onChange={(e) => onEdit((l) => void (l.boardId = e.target.value))}>
-                {BOARDS.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+              <Picker id={`lb-${idBase}`} label="Płyta" value={lining.boardId} options={BOARD_OPTIONS()} onChange={(v) => onEdit((l) => void (l.boardId = v))} />
             </div>
           </div>
           {sys.frame !== 'glued' && (
             <div className="grid-2">
               <div className="field">
                 <label htmlFor={`lsp-${idBase}`}>Rozstaw profili</label>
-                <select
+                <Picker
                   id={`lsp-${idBase}`}
+                  label="Rozstaw profili"
                   value={lining.studSpacing}
-                  onChange={(e) => onEdit((l) => void (l.studSpacing = Number(e.target.value) as Lining['studSpacing']))}
-                >
-                  <option value={60}>60 cm</option>
-                  <option value={40}>40 cm (płytki)</option>
-                  <option value={30}>30 cm</option>
-                </select>
+                  options={SPACING_OPTIONS}
+                  onChange={(v) => onEdit((l) => void (l.studSpacing = v))}
+                />
               </div>
               {wallWoolOptions(sys).length > 0 && (
                 <label className="check">

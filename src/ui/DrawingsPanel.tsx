@@ -143,7 +143,7 @@ export function DrawingsPanel({ project, calc }: Props) {
       <div className="card drawings-intro no-print">
         <p>
           Rysunki powstają z tych samych wyliczeń co lista zakupów: każdy słupek, profil i wieszak na schemacie jest policzony w
-          materiałach. Na telefonie rysunek możesz przesuwać palcem w bok.
+          materiałach. Dotknij rysunku, żeby otworzyć go na całym ekranie i powiększać dwoma palcami.
         </p>
         <div className="actions wrap">
           <button className="btn primary" onClick={() => window.print()}>

@@ -68,7 +68,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
 
   return (
     <figure className="drawing">
-      <Paper viewBox={vb} title={title} minWidth={clamp(w * 1.4, 480, 1100)}>
+      <Paper viewBox={vb} title={title}>
         <defs>
           <clipPath id={clip}>
             <polygon points={poly(c)} />
@@ -160,7 +160,7 @@ export function CeilingBoardsDrawing({ c, title }: { c: Ceiling; title: string }
   const full = pieces.filter((p) => !p.cut).length;
   return (
     <figure className="drawing">
-      <Paper viewBox={vb} title={title} minWidth={clamp(w * 1.4, 480, 1100)}>
+      <Paper viewBox={vb} title={title}>
         <defs>
           <clipPath id={clip}>
             <polygon points={poly(c)} />

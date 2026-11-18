@@ -24,6 +24,7 @@ import {
 import type { PointFixer } from '../catalog/atlas';
 import { REF_CEILING, REF_WALL, ceilingConsumption, wallConsumption, type ConsumptionLine } from '../calc/materials';
 import { uid } from '../model/factory';
+import { Picker, type PickOption } from './Picker';
 import { fmtNum } from './wallStyle';
 
 interface Props {
@@ -417,17 +418,22 @@ function NumField({ id, label, unit, value, min, max, step = 1, onChange }: { id
   );
 }
 
+const PROFILE_OPTIONS: PickOption<50 | 75 | 100>[] = [
+  { value: 50, label: '50 mm' },
+  { value: 75, label: '75 mm' },
+  { value: 100, label: '100 mm' },
+];
+const SPACING_OPTIONS: PickOption<StudSpacing>[] = [
+  { value: 60, label: '60 cm' },
+  { value: 40, label: '40 cm' },
+  { value: 30, label: '30 cm' },
+];
+
 function BoardSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
   return (
     <div className="field">
       <label htmlFor={id}>Płyta</label>
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
-        {BOARDS.map((b) => (
-          <option key={b.id} value={b.id}>
-            {b.name}
-          </option>
-        ))}
-      </select>
+      <Picker id={id} label="Płyta" value={value} options={BOARDS.map((b) => ({ value: b.id, label: b.name, hint: b.description }))} onChange={onChange} />
     </div>
   );
 }
@@ -452,52 +458,52 @@ function WallEditor({ initial, onSave, onCancel }: { initial: WallSystem; onSave
       <div className="grid-2">
         <div className="field">
           <label htmlFor="ew-cat">Rodzaj</label>
-          <select id="ew-cat" value={s.category} onChange={(e) => set({ category: e.target.value as WallCategory })}>
-            {(Object.keys(WALL_CATEGORY_LABEL) as WallCategory[]).map((c) => (
-              <option key={c} value={c}>
-                {WALL_CATEGORY_LABEL[c]}
-              </option>
-            ))}
-          </select>
+          <Picker
+            id="ew-cat"
+            label="Rodzaj"
+            value={s.category}
+            mode="sheet"
+            options={(Object.keys(WALL_CATEGORY_LABEL) as WallCategory[]).map((c) => ({ value: c, label: WALL_CATEGORY_LABEL[c] }))}
+            onChange={(v) => set({ category: v })}
+          />
         </div>
         <div className="field">
           <label htmlFor="ew-frame">Ruszt</label>
-          <select id="ew-frame" value={s.frame} onChange={(e) => set({ frame: e.target.value as WallFrame })}>
-            {(Object.keys(WALL_FRAME_LABEL) as WallFrame[]).map((f) => (
-              <option key={f} value={f}>
-                {WALL_FRAME_LABEL[f]}
-              </option>
-            ))}
-          </select>
+          <Picker
+            id="ew-frame"
+            label="Ruszt"
+            value={s.frame}
+            mode="sheet"
+            options={(Object.keys(WALL_FRAME_LABEL) as WallFrame[]).map((f) => ({ value: f, label: WALL_FRAME_LABEL[f] }))}
+            onChange={(v) => set({ frame: v })}
+          />
         </div>
       </div>
       <div className="grid-3">
         {s.frame !== 'cd-lining' && s.frame !== 'glued' && s.frame !== 'point-fix' && (
           <div className="field">
             <label htmlFor="ew-prof">Profil CW/UW</label>
-            <select id="ew-prof" value={s.profile} onChange={(e) => set({ profile: Number(e.target.value) as WallSystem['profile'] })}>
-              <option value={50}>50 mm</option>
-              <option value={75}>75 mm</option>
-              <option value={100}>100 mm</option>
-            </select>
+            <Picker id="ew-prof" label="Profil CW/UW" value={s.profile} options={PROFILE_OPTIONS} onChange={(v) => set({ profile: v })} />
           </div>
         )}
         {s.frame !== 'glued' && (
           <div className="field">
             <label htmlFor="ew-sp">{s.frame === 'point-fix' ? 'Rozstaw łączników poziomo' : 'Rozstaw profili'}</label>
-            <select id="ew-sp" value={s.studSpacing} onChange={(e) => set({ studSpacing: Number(e.target.value) as StudSpacing })}>
-              <option value={60}>60 cm</option>
-              <option value={40}>40 cm</option>
-              <option value={30}>30 cm</option>
-            </select>
+            <Picker id="ew-sp" label="Rozstaw" value={s.studSpacing} options={SPACING_OPTIONS} onChange={(v) => set({ studSpacing: v })} />
           </div>
         )}
         <div className="field">
           <label htmlFor="ew-sides">Płyty</label>
-          <select id="ew-sides" value={s.sides} onChange={(e) => set({ sides: Number(e.target.value) as 1 | 2 })}>
-            <option value={2}>obustronnie</option>
-            <option value={1}>jednostronnie</option>
-          </select>
+          <Picker
+            id="ew-sides"
+            label="Płyty"
+            value={s.sides}
+            options={[
+              { value: 2, label: 'obustronnie', short: 'obie strony' },
+              { value: 1, label: 'jednostronnie', short: 'jedna' },
+            ]}
+            onChange={(v) => set({ sides: v })}
+          />
         </div>
       </div>
       <div className="grid-3">
@@ -563,20 +569,16 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
       <div className="grid-2">
         <div className="field">
           <label htmlFor="ec-kind">Rodzaj</label>
-          <select
+          <Picker
             id="ec-kind"
+            label="Rodzaj"
             value={s.kind}
-            onChange={(e) => {
-              const kind = e.target.value as CeilingKind;
-              set({ kind, profile: kind === 'cw-span' ? (s.profile ?? 75) : s.profile, hangerType: kind === 'direct' ? 'es' : 'noniusz' });
-            }}
-          >
-            {(Object.keys(CEILING_KIND_LABEL) as CeilingKind[]).map((k) => (
-              <option key={k} value={k}>
-                {CEILING_KIND_LABEL[k]}
-              </option>
-            ))}
-          </select>
+            mode="sheet"
+            options={(Object.keys(CEILING_KIND_LABEL) as CeilingKind[]).map((k) => ({ value: k, label: CEILING_KIND_LABEL[k] }))}
+            onChange={(kind) =>
+              set({ kind, profile: kind === 'cw-span' ? (s.profile ?? 75) : s.profile, hangerType: kind === 'direct' ? 'es' : 'noniusz' })
+            }
+          />
         </div>
         <NumField id="ec-layers" label="Warstwy płyt" unit="szt." value={s.layers} min={1} max={3} onChange={(v) => set({ layers: Math.round(v) })} />
       </div>
@@ -599,20 +601,22 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
         {s.kind === 'cw-span' && (
           <div className="field">
             <label htmlFor="ec-prof">Profil CW/UW</label>
-            <select id="ec-prof" value={s.profile ?? 75} onChange={(e) => set({ profile: Number(e.target.value) as 50 | 75 | 100 })}>
-              <option value={50}>50 mm</option>
-              <option value={75}>75 mm</option>
-              <option value={100}>100 mm</option>
-            </select>
+            <Picker id="ec-prof" label="Profil CW/UW" value={s.profile ?? 75} options={PROFILE_OPTIONS} onChange={(v) => set({ profile: v })} />
           </div>
         )}
         {s.kind === 'direct' && (
           <div className="field">
             <label htmlFor="ec-ht">Mocowanie</label>
-            <select id="ec-ht" value={s.hangerType ?? 'es'} onChange={(e) => set({ hangerType: e.target.value as HangerType })}>
-              <option value="es">uchwyty ES</option>
-              <option value="elastic">uchwyty elastyczne</option>
-            </select>
+            <Picker
+              id="ec-ht"
+              label="Mocowanie"
+              value={s.hangerType ?? 'es'}
+              options={[
+                { value: 'es' as HangerType, label: 'uchwyty ES', short: 'ES' },
+                { value: 'elastic' as HangerType, label: 'uchwyty elastyczne', short: 'elastyczne' },
+              ]}
+              onChange={(v) => set({ hangerType: v })}
+            />
           </div>
         )}
       </div>

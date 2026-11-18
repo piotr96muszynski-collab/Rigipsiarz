@@ -23,7 +23,6 @@ function frame(l: WallLayout) {
   return { Lc, Hc, f, vb: [-left, -top, Lc + left + right, Hc + top + bottom] as [number, number, number, number] };
 }
 
-const minW = (Lc: number) => clamp(Lc * 1.4, 480, 1100);
 
 function Openings({ l, f, fill = '#fff' }: { l: WallLayout; f: number; fill?: string }) {
   const Hc = l.H * 100;
@@ -78,7 +77,7 @@ export function WallFrameDrawing({ l, title }: { l: WallLayout; title: string })
   const has = (k: StudKind) => l.studs.some((s) => s.kind === k);
   return (
     <figure className="drawing">
-      <Paper viewBox={vb} title={title} minWidth={minW(Lc)}>
+      <Paper viewBox={vb} title={title}>
         {/* strop i posadzka */}
         <rect x={-f} y={-f * 0.8} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
         <rect x={-f} y={Hc} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
@@ -148,7 +147,7 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
   const full = face.pieces.filter((p) => !p.cut).length;
   return (
     <figure className="drawing">
-      <Paper viewBox={vb} title={title} minWidth={minW(Lc)}>
+      <Paper viewBox={vb} title={title}>
         <rect x={-f} y={-f * 0.8} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
         <rect x={-f} y={Hc} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
         {face.pieces.map((p, i) => {

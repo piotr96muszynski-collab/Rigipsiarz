@@ -6,6 +6,8 @@ import { boardById } from '../catalog/rigips';
 import type { ProjectCalc } from '../calc/materials';
 import type { Project } from '../model/types';
 import { findCollisions } from '../geometry/contacts';
+import { EXIT_FULLSCREEN_ICON, FULLSCREEN_ICON } from '../ui/fullscreen';
+import type { FullscreenControl } from '../ui/PlanTab';
 import { buildModel3D, type Layer3D, type MatKey, type Model3D } from './model3d';
 
 const FRAME_COLORS: Record<string, number> = {
@@ -112,7 +114,7 @@ function webglAvailable() {
   }
 }
 
-export default function View3D({ project, calc }: { project: Project; calc: ProjectCalc }) {
+export default function View3D({ project, calc, fullscreen }: { project: Project; calc: ProjectCalc; fullscreen?: FullscreenControl }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const ctx = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -284,7 +286,22 @@ export default function View3D({ project, calc }: { project: Project; calc: Proj
         >
           Wyśrodkuj
         </button>
+        {fullscreen && !fullscreen.on && (
+          <button className="chip" onClick={fullscreen.toggle}>
+            <svg className="chip-icon" viewBox="0 0 24 24" aria-hidden>
+              <path d={FULLSCREEN_ICON} />
+            </svg>
+            Pełny ekran
+          </button>
+        )}
       </div>
+      {fullscreen?.on && (
+        <button className="fab on view3d-exit" onClick={fullscreen.toggle} aria-label="Zamknij pełny ekran" title="Zamknij pełny ekran">
+          <svg viewBox="0 0 24 24" aria-hidden>
+            <path d={EXIT_FULLSCREEN_ICON} />
+          </svg>
+        </button>
+      )}
       <div className="view3d-canvas" ref={hostRef}>
         {!hasWalls && !hasCeilings && <p className="view3d-hint">Dodaj ścianę lub sufit, żeby zobaczyć model.</p>}
       </div>
