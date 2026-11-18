@@ -14,6 +14,7 @@ import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
 import { UpdatePrompt } from './UpdatePrompt';
+import { useBack, useExitHint } from './back';
 import { useHistory } from './useHistory';
 import { fmtNum } from './wallStyle';
 
@@ -66,6 +67,13 @@ export function App() {
 
   const current = projects?.find((p) => p.id === openId);
 
+  // przycisk Wstecz: najpierw zamyka katalog, potem diagnostykę dalmierza
+  useBack(hash === '#dalmierz', () => {
+    history.replaceState(history.state, '', location.pathname + location.search);
+    window.dispatchEvent(new Event('hashchange'));
+  });
+  useBack(catalogOpen, () => setCatalogOpen(false));
+
   return (
     <div className="app">
       {catalogOpen && <CatalogView onClose={() => setCatalogOpen(false)} onSave={saveCustom} />}
@@ -102,6 +110,18 @@ export function App() {
       )}
       </div>
       <UpdatePrompt />
+      <ExitHint />
+    </div>
+  );
+}
+
+/** Komunikat po ostatnim cofnięciu – drugie Wstecz zamyka aplikację */
+function ExitHint() {
+  const show = useExitHint();
+  if (!show) return null;
+  return (
+    <div className="toast exit-hint" role="status" aria-live="polite">
+      <span>Cofnij jeszcze raz, aby wyjść</span>
     </div>
   );
 }
@@ -121,6 +141,7 @@ function Home({
   onOpen: (p: Project) => void;
   onSelect: (id: string) => void;
 }) {
+  useBack(quick, () => setQuick(false));
   return (
     <main className="home">
       <header className="home-head">
@@ -212,7 +233,8 @@ function ProjectView({
   onDelete: () => void;
 }) {
   const { project, update, commit, undo, redo, canUndo, canRedo } = useHistory(initial);
-  const [tab, setTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'plan');
+  const [startTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'plan');
+  const [tab, setTab] = useState<Tab>(startTab);
   // catalogVersion: przelicz po zmianie systemów własnych
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const calc = useMemo(() => calculateProject(project), [project, catalogVersion]);
@@ -262,6 +284,10 @@ function ProjectView({
         { id: 'settings', label: 'Ustawienia' },
       ];
   const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
+  const homeTab: Tab = wide && startTab === 'list' ? 'elements' : startTab;
+
+  // przycisk Wstecz: z innej zakładki wraca do startowej, a stamtąd do listy projektów
+  useBack(true, () => (activeTab !== homeTab ? setTab(startTab) : onClose()));
 
   return (
     <div className={`project ${activeTab === 'plan' ? 'on-plan' : ''}`}>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useBack } from './back';
 import { ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { liningKey, summarize, type ProjectCalc } from '../calc/materials';
 import { dist, isNewWall, wallEnds } from '../geometry/geometry';
@@ -111,6 +112,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList }: Pro
   const ceiling = selection?.type === 'ceiling' ? project.ceilings.find((c) => c.id === selection.id) : undefined;
   const opening = wall && selection?.type === 'wall' ? wall.openings.find((o) => o.id === selection.openingId) : undefined;
   const hasSel = !!(wall || ceiling);
+  useBack(hasSel, () => setSelection(null));
 
   useEffect(() => {
     const el = sheetRef.current;
