@@ -152,7 +152,7 @@ export function JunctionDetail({ kind, p }: { kind: DetailKind; p: WallParams })
         vb={[-180, -90, L + 220, T + 190]}
         legend={[
           { n: 1, label: 'taśma uszczelniająca pod słupkiem przyściennym' },
-          { n: 2, label: 'słupek CW kotwiony kołkami co max 80 cm (min. 3 szt.)' },
+          { n: 2, label: 'słupek CW kotwiony kołkami co max 100 cm (min. 2 szt.)' },
           { n: 3, label: 'szczelina ok. 5 mm przy murze: taśma rozdzielająca + masa' },
         ]}
         caption="Rzut, schemat poglądowy."

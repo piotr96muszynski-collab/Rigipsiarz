@@ -99,6 +99,8 @@ export function DrawingsPanel({ project, calc }: Props) {
   const details = useMemo(() => {
     const out = new Map<DetailKind, (typeof walls)[number]>();
     for (const w of walls) {
+      const frame = wallSystemById(w.systemId).frame;
+      if (frame === 'glued' || frame === 'cd-lining') continue; // okładziny: detale połączeń ścian nie dotyczą
       const j = junctions.get(w.id);
       if (!j) continue;
       for (const k of [j.endA, j.endB]) {
@@ -112,6 +114,7 @@ export function DrawingsPanel({ project, calc }: Props) {
   const openingDetails = useMemo(() => {
     const m = new Map<string, { kind: 'door' | 'window'; reinforced: boolean; profile: number }>();
     for (const w of walls)
+      if (wallSystemById(w.systemId).frame !== 'glued')
       for (const o of w.openings) {
         const profile = wallSystemById(w.systemId).profile;
         m.set(`${o.kind}|${o.reinforced}|${profile}`, { kind: o.kind, reinforced: o.reinforced, profile });
@@ -251,11 +254,17 @@ function WallSheet({ index, project, wallId, j, req }: { index: number; project:
           {fmtNum(l.L)} × {fmtNum(l.H)} m · {sys.name} · płyta {boardById(w.boardId).short}
         </span>
       </header>
-      <h4>Konstrukcja</h4>
-      <WallFrameDrawing l={l} title={`Ściana ${index} – konstrukcja`} />
-      <p className="small stud-list">
-        <strong>Osie słupków od lewej krawędzi (cm):</strong> {studs.join(' · ')}
-      </p>
+      {l.frame === 'glued' ? (
+        <p className="small">Płyty klejone do ściany na placki z kleju gipsowego – bez rusztu.</p>
+      ) : (
+        <>
+          <h4>Konstrukcja</h4>
+          <WallFrameDrawing l={l} title={`Ściana ${index} – konstrukcja`} />
+          <p className="small stud-list">
+            <strong>Osie {l.frame === 'cd-lining' ? 'profili CD' : 'słupków'} od lewej krawędzi (cm):</strong> {studs.join(' · ')}
+          </p>
+        </>
+      )}
       <h4>Rozkład płyt</h4>
       {l.faces.length > 1 && (
         <div className="seg no-print" role="tablist" aria-label="Okładzina">

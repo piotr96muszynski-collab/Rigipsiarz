@@ -35,7 +35,7 @@ export function createWall(p: Project, a: string, b: string, overrides: Partial<
     height: p.settings.defaultHeight,
     systemId: sys.id,
     boardId: sys.defaultBoard,
-    studSpacing: sys.defaultBoard === 'RBI12.5' ? 40 : 60,
+    studSpacing: sys.studSpacing,
     insulation: sys.insulationDefault,
     endA: 'existing-wall',
     endB: 'existing-wall',

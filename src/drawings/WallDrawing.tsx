@@ -113,12 +113,13 @@ export function WallFrameDrawing({ l, title }: { l: WallLayout; title: string })
       </Paper>
       <Legend
         items={[
-          { color: C.stud, label: `słupek CW ${l.profile} (rozstaw ${cm(l.spacing * 100)} cm)` },
+          { color: C.stud, label: `${l.frame === 'cd-lining' ? 'profil' : 'słupek'} ${l.studLabel} (rozstaw ${cm(l.spacing * 100)} cm)${l.rows > 1 ? ' – dwa rzędy, drugi identyczny' : ''}` },
           ...(has('short') ? [{ color: C.short, label: 'słupek skrócony nad/pod otworem' }] : []),
-          ...(has('jamb') ? [{ color: C.jamb, label: `ościeże CW ${l.profile}` }] : []),
+          ...(has('jamb') ? [{ color: C.jamb, label: `ościeże ${l.studLabel}` }] : []),
           ...(has('jamb-ua') ? [{ color: C.ua, label: `ościeże UA ${l.profile} + kątowniki` }] : []),
-          ...(has('extra') ? [{ color: C.extra, label: 'dodatkowy CW (narożnik / połączenie)' }] : []),
-          { color: C.track, label: `UW ${l.profile} posadzka i strop, nadproża/podokienniki +15 cm na stronę` },
+          ...(has('extra') ? [{ color: C.extra, label: `dodatkowy ${l.studLabel} (narożnik / połączenie)` }] : []),
+          { color: C.track, label: `${l.trackLabel} posadzka i strop, nadproża/podokienniki +15 cm na stronę` },
+          ...(l.frame === 'cd-lining' ? [{ color: C.hanger, label: 'uchwyty ES do ściany wg rozstawu z karty systemu' }] : []),
           ...(l.openings.length ? [{ dashed: true, label: 'otwór w świetle' }] : []),
         ]}
       />

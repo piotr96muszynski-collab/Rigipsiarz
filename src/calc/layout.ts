@@ -3,7 +3,7 @@
 // dzięki czemu schemat zawsze pokazuje dokładnie to, co trafiło na listę zakupów.
 // Jednostki: ściany w metrach (jak w wyliczeniach), sufity w centymetrach (jak ceilingGrid).
 
-import { boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
+import { boardById, ceilingSystemById, wallSystemById, type WallFrame } from '../catalog/rigips';
 import { bbox, nodeMap, projectOnSegment, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Opening, Project, Wall } from '../model/types';
 
@@ -128,7 +128,7 @@ export interface BoardPiece {
 
 export interface BoardFace {
   side: 0 | 1;
-  layer: 0 | 1;
+  layer: number;
   /** przesunięcie pierwszego styku pionowego, m */
   offset: number;
   pieces: BoardPiece[];
@@ -141,6 +141,13 @@ export interface WallLayout {
   H: number;
   spacing: number;
   profile: number;
+  /** rodzaj rusztu z karty systemu */
+  frame: WallFrame;
+  /** liczba rzędów słupków (ściany podwójne i instalacyjne: 2) */
+  rows: number;
+  /** nazwy profili na rysunku, np. „CW 75” / „CD 60” */
+  studLabel: string;
+  trackLabel: string;
   openings: WallOpening[];
   studs: StudElement[];
   tracks: TrackElement[];
@@ -149,14 +156,12 @@ export interface WallLayout {
   faces: BoardFace[];
 }
 
-const BOARD_W = 1.2;
-
 /**
  * Rozkład płyt na jednej okładzinie. Styki pionowe co 1,20 m, na każdej kolejnej
  * warstwie i na przeciwnej stronie przesunięte o rozstaw słupków. Gdy ściana jest wyższa
  * od arkusza – dostawki na przemian u dołu i u góry (styki poziome mijankowo).
  */
-export function boardFace(L: number, H: number, sheetLen: number, offset: number): BoardPiece[] {
+export function boardFace(L: number, H: number, sheetLen: number, offset: number, BOARD_W = 1.2): BoardPiece[] {
   const xs: number[] = [0];
   let x = offset > 0.01 ? offset : BOARD_W;
   while (x < L - 0.01) {
@@ -198,40 +203,63 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions): WallLayout {
   const s = w.studSpacing / 100;
   const openings = wallOpenings(w, L, H);
 
-  const studs = gridStuds(L, H, s, openings);
-  for (const o of openings) {
-    const kind: StudKind = o.reinforced ? 'jamb-ua' : 'jamb';
-    studs.push({ x: o.x0, kind, segments: [[0, H]] }, { x: o.x1, kind, segments: [[0, H]] });
-  }
-  for (const x of junctionStudPositions(p, w, j)) studs.push({ x, kind: 'extra', segments: [[0, H]] });
-  studs.sort((a, b) => a.x - b.x);
+  const frame = sys.frame;
+  const glued = frame === 'glued';
+  const isCD = frame === 'cd-lining';
+  const rows = glued ? 0 : frame === 'double' || frame === 'separate' ? 2 : 1;
 
+  // ruszt jednego rzędu (przy dwóch rzędach drugi jest taki sam)
+  const studs = glued ? [] : gridStuds(L, H, s, openings);
   const tracks: TrackElement[] = [];
-  let cursor = 0;
-  for (const o of [...openings].filter((o) => o.sill <= 0.01).sort((a, b) => a.x0 - b.x0)) {
-    if (o.x0 - cursor > 0.05) tracks.push({ kind: 'floor', x0: cursor, x1: o.x0, y: 0, cut: o.x0 - cursor });
-    cursor = o.x1;
-  }
-  if (L - cursor > 0.05) tracks.push({ kind: 'floor', x0: cursor, x1: L, y: 0, cut: L - cursor });
-  tracks.push({ kind: 'ceiling', x0: 0, x1: L, y: H, cut: L });
-  for (const o of openings) {
-    if (o.top < H - 0.05) tracks.push({ kind: 'header', x0: o.x0, x1: o.x1, y: o.top, cut: o.w + 0.3 });
-    if (o.sill > 0.05) tracks.push({ kind: 'sill', x0: o.x0, x1: o.x1, y: o.sill, cut: o.w + 0.3 });
+  if (!glued) {
+    for (const o of openings) {
+      const kind: StudKind = o.reinforced && !isCD ? 'jamb-ua' : 'jamb';
+      studs.push({ x: o.x0, kind, segments: [[0, H]] }, { x: o.x1, kind, segments: [[0, H]] });
+    }
+    for (const x of junctionStudPositions(p, w, j)) studs.push({ x, kind: 'extra', segments: [[0, H]] });
+    studs.sort((a, b) => a.x - b.x);
+
+    let cursor = 0;
+    for (const o of [...openings].filter((o) => o.sill <= 0.01).sort((a, b) => a.x0 - b.x0)) {
+      if (o.x0 - cursor > 0.05) tracks.push({ kind: 'floor', x0: cursor, x1: o.x0, y: 0, cut: o.x0 - cursor });
+      cursor = o.x1;
+    }
+    if (L - cursor > 0.05) tracks.push({ kind: 'floor', x0: cursor, x1: L, y: 0, cut: L - cursor });
+    tracks.push({ kind: 'ceiling', x0: 0, x1: L, y: H, cut: L });
+    for (const o of openings) {
+      if (o.top < H - 0.05) tracks.push({ kind: 'header', x0: o.x0, x1: o.x1, y: o.top, cut: o.w + 0.3 });
+      if (o.sill > 0.05) tracks.push({ kind: 'sill', x0: o.x0, x1: o.x1, y: o.sill, cut: o.w + 0.3 });
+    }
   }
 
   const sheetLen = pickBoardLengthCm(w.boardId, w.height) / 100;
+  const boardW = boardById(w.boardId).width / 100;
   const faces: BoardFace[] = [];
   for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1) {
-    for (let layer = 0 as 0 | 1; layer < sys.layers; layer = (layer + 1) as 0 | 1) {
-      const offset = round3(((side + layer) * s) % BOARD_W);
-      const pieces = boardFace(L, H, sheetLen, offset);
+    for (let layer = 0; layer < sys.layers; layer++) {
+      const offset = glued ? 0 : round3(((side + layer) * s) % boardW);
+      const pieces = boardFace(L, H, sheetLen, offset, boardW);
       const joints = [...new Set(pieces.map((b) => b.x1).filter((x) => x < L - 0.01))];
       const jambJoints = joints.filter((x) => openings.some((o) => Math.abs(x - o.x0) < 0.1 || Math.abs(x - o.x1) < 0.1));
       faces.push({ side, layer, offset, pieces, jambJoints });
     }
   }
 
-  return { L, H, spacing: s, profile: sys.profile, openings, studs, tracks, sheet: { width: BOARD_W, length: sheetLen }, faces };
+  return {
+    L,
+    H,
+    spacing: s,
+    profile: sys.profile,
+    frame,
+    rows,
+    studLabel: isCD ? 'CD 60' : `CW ${sys.profile}`,
+    trackLabel: isCD ? 'UD 30' : `UW ${sys.profile}`,
+    openings,
+    studs,
+    tracks,
+    sheet: { width: boardW, length: sheetLen },
+    faces,
+  };
 }
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
@@ -278,7 +306,9 @@ export interface CeilingBoardPiece {
 export function ceilingBoardLayout(c: Ceiling): { pieces: CeilingBoardPiece[]; sheetLen: number; stagger: number } {
   const sys = ceilingSystemById(c.systemId);
   const bb = bbox(c.points);
-  const along: 'x' | 'y' = c.direction === 0 ? 'x' : 'y';
+  // płyty poprzecznie do profili, do których się je mocuje (w suficie na CW – poprzecznie do CW)
+  const mainAxis: 'x' | 'y' = c.direction === 0 ? 'x' : 'y';
+  const along: 'x' | 'y' = sys.kind === 'cw-span' ? (mainAxis === 'x' ? 'y' : 'x') : mainAxis;
   const [a0, a1] = along === 'x' ? [bb.minX, bb.maxX] : [bb.minY, bb.maxY];
   const [c0, c1] = along === 'x' ? [bb.minY, bb.maxY] : [bb.minX, bb.maxX];
   const sp = sys.secondarySpacing;

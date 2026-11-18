@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CEILING_SYSTEMS, WALL_SYSTEMS } from '../catalog/rigips';
+import { CeilingSystemSelect, WallSystemSelect } from './SystemSelect';
 import { quickProject, type QuickInput } from '../model/factory';
 import type { Project } from '../model/types';
 import { DimInput } from './DimInput';
@@ -77,13 +77,7 @@ export function QuickForm({ onCreate, onCancel }: Props) {
         <>
           <div className="field">
             <label htmlFor="q-wall">System ściany</label>
-            <select id="q-wall" value={q.wallSystemId} onChange={(e) => set({ wallSystemId: e.target.value })}>
-              {WALL_SYSTEMS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <WallSystemSelect id="q-wall" value={q.wallSystemId} onChange={(id) => set({ wallSystemId: id })} />
           </div>
           <div className="grid-3">
             <Stepper label="Drzwi" value={q.doors} onChange={(v) => set({ doors: v })} />
@@ -102,13 +96,7 @@ export function QuickForm({ onCreate, onCancel }: Props) {
       {showCeiling && (
         <div className="field">
           <label htmlFor="q-ceil">System sufitu</label>
-          <select id="q-ceil" value={q.ceilingSystemId} onChange={(e) => set({ ceilingSystemId: e.target.value })}>
-            {CEILING_SYSTEMS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <CeilingSystemSelect id="q-ceil" value={q.ceilingSystemId} onChange={(id) => set({ ceilingSystemId: id })} />
         </div>
       )}
 

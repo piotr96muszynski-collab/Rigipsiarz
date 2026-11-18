@@ -162,3 +162,59 @@ describe('ruszt sufitu', () => {
     expect(stagger).toBeGreaterThanOrEqual(40);
   });
 });
+
+describe('rysunek ściany – inne rodzaje rusztu', () => {
+  const sumOf = (p: Project, pid: string) =>
+    (calculateProject(p).walls.get(p.walls[0].id)!.req.pieces[pid] ?? []).reduce((a, b) => a + b, 0);
+  const drawn = (p: Project) =>
+    layoutOf(p)
+      .studs.filter((s) => s.kind !== 'jamb-ua')
+      .flatMap((s) => s.segments)
+      .reduce((a, [y0, y1]) => a + (y1 - y0), 0);
+
+  it('okładzina na CD: profile CD 60 i UD 30, bez UA', () => {
+    const p = wallProject(400, 260, 'O-CD-1');
+    p.walls[0].openings.push(createOpening('door', 100));
+    const l = layoutOf(p);
+    expect(l.studLabel).toBe('CD 60');
+    expect(l.trackLabel).toBe('UD 30');
+    expect(l.studs.some((s) => s.kind === 'jamb-ua')).toBe(false);
+    expect(drawn(p)).toBeCloseTo(sumOf(p, 'CD60'), 6);
+  });
+
+  it('ściana podwójna: dwa rzędy, w wyliczeniu dwa razy tyle CW co na rysunku jednego rzędu', () => {
+    const p = wallProject(300, 260, 'W-2CW75-2');
+    const l = layoutOf(p);
+    expect(l.rows).toBe(2);
+    expect(2 * drawn(p)).toBeCloseTo(sumOf(p, 'CW75'), 6);
+  });
+
+  it('suchy tynk na klej: bez rusztu, same płyty', () => {
+    const l = layoutOf(wallProject(300, 260, 'O-KLEJ'));
+    expect(l.studs).toHaveLength(0);
+    expect(l.tracks).toHaveLength(0);
+    expect(l.faces[0].pieces.length).toBeGreaterThan(0);
+  });
+});
+
+describe('sufit przęsłowy na CW', () => {
+  it('płyty poprzecznie do CW, styki na profilach', () => {
+    const p = createProject();
+    const c = createCeiling(
+      p,
+      [
+        { x: 0, y: 0 },
+        { x: 300, y: 0 },
+        { x: 300, y: 250 },
+        { x: 0, y: 250 },
+      ],
+      { systemId: 'S-CW50-1', direction: 90 },
+    );
+    const sp = 50;
+    const { pieces } = ceilingBoardLayout(c);
+    // CW biegną wzdłuż Y (kierunek 90°), płyty wzdłuż X – styki w X na wielokrotności rozstawu
+    for (const b of pieces) if (b.x1 < 300) expect(b.x1 % sp === 0 || b.x1 % 40 === 0).toBe(true);
+    const area = pieces.reduce((a, b) => a + (b.x1 - b.x0) * (b.y1 - b.y0), 0);
+    expect(area).toBeCloseTo(300 * 250, 3);
+  });
+});

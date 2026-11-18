@@ -45,13 +45,26 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
             .map((s) => (m.axis === 'x' ? { x: s.at, y: m.at } : { x: m.at, y: s.at }))
             .filter((p) => pointInPolygon(p, c.points)),
         );
+  const kind = sys.kind;
+  const hung = kind === 'two-level' || kind === 'one-level' || kind === 'direct';
+  const cwSpan = kind === 'cw-span';
   // najdłuższy odcinek nośny – na nim wymiarujemy wieszaki
-  const longest = mains
+  const longest = !hung ? undefined : mains
     .flatMap((g) => g.segments.map((s) => ({ g, s })))
     .sort((a, b) => b.s[1] - b.s[0] - (a.s[1] - a.s[0]))[0];
-  const hangers = mains.flatMap((g) => g.segments.flatMap(([a, b]) => hangerPositions(a, b, sys.hangerSpacing).map((s) => pt(g, s))));
-  const splices = grid.flatMap((g) => g.segments.flatMap(([a, b]) => splicePositions(a, b).map((s) => ({ g, ...pt(g, s) }))));
-  const mainLabel = sys.kind === 'direct' ? 'CD 60 na wieszakach ES' : 'CD 60 nośny (górny)';
+  const hangers = !hung ? [] : mains.flatMap((g) => g.segments.flatMap(([a, b]) => hangerPositions(a, b, sys.hangerSpacing).map((s) => pt(g, s))));
+  // łączniki wzdłużne tylko na CD (UA i CW docina się na długość przęsła)
+  const splices = grid.filter((g) => g.level === 'secondary' || kind === 'two-level' || kind === 'one-level' || kind === 'direct').flatMap((g) => g.segments.flatMap(([a, b]) => splicePositions(a, b).map((s) => ({ g, ...pt(g, s) }))));
+  const mainLabel =
+    kind === 'direct'
+      ? `CD 60 na uchwytach ${sys.hangerType === 'elastic' ? 'elastycznych' : 'ES'}`
+      : cwSpan
+        ? `CW ${sys.profile ?? 50} oparty na UW (przęsło)`
+        : kind === 'ua-span'
+          ? 'UA 50 oparty na ścianach (przęsło)'
+          : 'CD 60 nośny (górny)';
+  const mainSpacing = kind === 'direct' || cwSpan ? sys.secondarySpacing : sys.mainSpacing;
+  const crossLabel = kind === 'two-level' ? 'łącznik krzyżowy' : kind === 'ua-span' ? 'łącznik UA–CD ×2' : 'łącznik jednopoziomowy ×2';
 
   return (
     <figure className="drawing">
@@ -117,19 +130,20 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
       </Paper>
       <Legend
         items={[
-          { color: C.ud, label: 'UD 27 po obwodzie na taśmie, kołki co 60 cm' },
-          { color: C.main, label: `${mainLabel} co ${sys.kind === 'direct' ? sys.secondarySpacing : sys.mainSpacing} cm (${mains.length} linii)` },
+          { color: C.ud, label: `${cwSpan ? `UW ${sys.profile ?? 50}` : 'UD 30'} po obwodzie na taśmie, kołki` },
+          { color: C.main, label: `${mainLabel} co ${mainSpacing} cm (${mains.length} linii)` },
           ...(secs.length ? [{ color: C.secondary, label: `CD 60 montażowy (dolny) co ${sys.secondarySpacing} cm (${secs.length} linii)` }] : []),
-          { color: C.hanger, label: `${sys.kind === 'direct' ? 'wieszak ES' : 'wieszak noniuszowy + kotwa'}, max co ${sys.hangerSpacing} cm (${hangers.length} szt.)` },
+          ...(hung
+            ? [{ color: C.hanger, label: `${kind === 'direct' ? 'uchwyt bezpośredni + kotwa' : 'wieszak noniuszowy + kotwa'}, max co ${sys.hangerSpacing} cm (${hangers.length} szt.)` }]
+            : []),
           ...(crossings.length
-            ? [{ color: '#fff', label: `${sys.kind === 'two-level' ? 'łącznik krzyżowy' : 'łącznik jednopoziomowy ×2'} (${crossings.length} skrzyżowań)` }]
+            ? [{ color: '#fff', label: `${crossLabel} (${crossings.length} skrzyżowań)` }]
             : []),
           ...(splices.length ? [{ color: INK, label: `łącznik wzdłużny CD (${splices.length} szt.)` }] : []),
         ]}
       />
       <figcaption className="muted small">
-        Rzut od dołu, wymiary w cm od krawędzi ścian. Łańcuchy przy krawędziach: rozstaw profili. Czerwony łańcuch: rozmieszczenie
-        wieszaków na najdłuższym profilu nośnym.
+        Rzut od dołu, wymiary w cm od krawędzi ścian. Łańcuchy przy krawędziach: rozstaw profili. {hung ? 'Czerwony łańcuch: rozmieszczenie wieszaków na najdłuższym profilu nośnym.' : ''}
       </figcaption>
     </figure>
   );
@@ -140,7 +154,7 @@ export function CeilingBoardsDrawing({ c, title }: { c: Ceiling; title: string }
   const sys = ceilingSystemById(c.systemId);
   const { bb, w, h, f, vb } = frame(c);
   const grid = ceilingGrid(c);
-  const carriers = grid.filter((g) => g.level === (sys.kind === 'direct' ? 'main' : 'secondary'));
+  const carriers = grid.filter((g) => g.level === (sys.kind === 'direct' || sys.kind === 'cw-span' ? 'main' : 'secondary'));
   const { pieces, sheetLen, stagger } = ceilingBoardLayout(c);
   const clip = `clipb-${c.id}`;
   const full = pieces.filter((p) => !p.cut).length;

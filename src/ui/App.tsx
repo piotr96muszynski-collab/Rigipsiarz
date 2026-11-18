@@ -1,29 +1,52 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculateProject } from '../calc/materials';
+import { PRODUCT_ALIASES, setCustomSystems, type CustomCatalog } from '../catalog/rigips';
 import { createProject, sampleProject } from '../model/factory';
-import type { PriceBook } from '../model/prices';
+import { migrateKeys, type PriceBook } from '../model/prices';
 import type { Project } from '../model/types';
 import { deleteProject, getKV, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
+import { CatalogView } from './CatalogView';
 import { DrawingsPanel } from './DrawingsPanel';
 import { ElementsPanel } from './ElementsPanel';
+import { PlanTab } from './PlanTab';
+import { LaserButton } from './LaserButton';
+import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
 import { UpdatePrompt } from './UpdatePrompt';
 import { useHistory } from './useHistory';
 import { fmtNum } from './wallStyle';
 
+// three.js ładujemy dopiero przy otwarciu widoku 3D (mniejszy start aplikacji; offline działa z pamięci podręcznej)
+const View3D = lazy(() => import('../view3d/View3D'));
+
 export function App() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [quick, setQuick] = useState(false);
   const [prices, setPrices] = useState<PriceBook>({});
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  /** Zmienia się po każdej zmianie systemów własnych – odświeża wyliczenia */
+  const [catalogVersion, setCatalogVersion] = useState(0);
+  const hash = useHash();
 
   const refresh = useCallback(() => listProjects().then(setProjects).catch(() => setProjects([])), []);
   useEffect(() => {
     refresh();
     requestPersistence();
-    getKV<PriceBook>('prices').then((p) => p && setPrices(p));
+    getKV<PriceBook>('prices').then((p) => p && setPrices(migrateKeys(p, PRODUCT_ALIASES)));
+    getKV<CustomCatalog>('customSystems').then((c) => {
+      if (!c) return;
+      setCustomSystems(c);
+      setCatalogVersion((v) => v + 1);
+    });
   }, [refresh]);
+
+  const saveCustom = (c: CustomCatalog) => {
+    setCustomSystems(c);
+    setKV('customSystems', c);
+    setCatalogVersion((v) => v + 1);
+  };
 
   const setPrice = (key: string, value: number | undefined) =>
     setPrices((prev) => {
@@ -45,12 +68,18 @@ export function App() {
 
   return (
     <div className="app">
-      {current ? (
+      {catalogOpen && <CatalogView onClose={() => setCatalogOpen(false)} onSave={saveCustom} />}
+      <div hidden={catalogOpen}>
+      {hash === '#dalmierz' ? (
+        <LaserDiagnostics onClose={() => (history.length > 1 ? history.back() : (location.hash = ''))} />
+      ) : current ? (
         <ProjectView
           key={current.id}
           initial={current}
           prices={prices}
           setPrice={setPrice}
+          catalogVersion={catalogVersion}
+          onOpenCatalog={() => setCatalogOpen(true)}
           onClose={() => {
             setOpenId(null);
             refresh();
@@ -62,8 +91,16 @@ export function App() {
           }}
         />
       ) : (
-        <Home projects={projects} quick={quick} setQuick={setQuick} onOpen={open} onSelect={setOpenId} />
+        <Home
+          projects={projects}
+          quick={quick}
+          setQuick={setQuick}
+          onOpen={open}
+          onSelect={setOpenId}
+          onOpenCatalog={() => setCatalogOpen(true)}
+        />
       )}
+      </div>
       <UpdatePrompt />
     </div>
   );
@@ -75,8 +112,10 @@ function Home({
   setQuick,
   onOpen,
   onSelect,
+  onOpenCatalog,
 }: {
   projects: Project[] | null;
+  onOpenCatalog: () => void;
   quick: boolean;
   setQuick: (v: boolean) => void;
   onOpen: (p: Project) => void;
@@ -97,6 +136,7 @@ function Home({
             <p className="muted small">Planer suchej zabudowy · działa bez internetu</p>
           </div>
         </div>
+        <LaserButton />
       </header>
 
       {quick ? (
@@ -110,6 +150,10 @@ function Home({
           <button className="tile" onClick={() => onOpen(createProject())}>
             <strong>Nowy projekt</strong>
             <span>Pusty projekt, elementy dodasz ręcznie</span>
+          </button>
+          <button className="tile" onClick={onOpenCatalog}>
+            <strong>Katalog systemów</strong>
+            <span>Ściany i sufity Rigips, zużycie na m², systemy własne</span>
           </button>
         </div>
       )}
@@ -140,28 +184,38 @@ function Home({
           </ul>
         )}
       </section>
+
+      <p className="home-foot small">
+        <a href="#dalmierz">Dalmierz Bluetooth – diagnostyka</a>
+      </p>
     </main>
   );
 }
 
-type Tab = 'list' | 'elements' | 'drawings' | 'settings';
+type Tab = 'plan' | 'list' | 'elements' | '3d' | 'drawings' | 'settings';
 
 function ProjectView({
   initial,
   prices,
   setPrice,
+  catalogVersion,
+  onOpenCatalog,
   onClose,
   onDelete,
 }: {
   initial: Project;
+  catalogVersion: number;
+  onOpenCatalog: () => void;
   prices: PriceBook;
   setPrice: (k: string, v: number | undefined) => void;
   onClose: () => void;
   onDelete: () => void;
 }) {
-  const { project, update, undo, redo, canUndo, canRedo } = useHistory(initial);
-  const [tab, setTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'elements');
-  const calc = useMemo(() => calculateProject(project), [project]);
+  const { project, update, commit, undo, redo, canUndo, canRedo } = useHistory(initial);
+  const [tab, setTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'plan');
+  // catalogVersion: przelicz po zmianie systemów własnych
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const calc = useMemo(() => calculateProject(project), [project, catalogVersion]);
 
   // autozapis
   const first = useRef(true);
@@ -193,20 +247,24 @@ function ProjectView({
   const wide = useMediaQuery('(min-width: 1024px)');
   const tabs: { id: Tab; label: string }[] = wide
     ? [
+        { id: 'plan', label: 'Plan' },
         { id: 'elements', label: 'Ściany, sufity i materiały' },
+        { id: '3d', label: 'Widok 3D' },
         { id: 'drawings', label: 'Rysunki' },
         { id: 'settings', label: 'Ustawienia' },
       ]
     : [
+        { id: 'plan', label: 'Plan' },
         { id: 'list', label: 'Zakupy' },
         { id: 'elements', label: 'Elementy' },
+        { id: '3d', label: '3D' },
         { id: 'drawings', label: 'Rysunki' },
         { id: 'settings', label: 'Ustawienia' },
       ];
   const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
 
   return (
-    <div className="project">
+    <div className={`project ${activeTab === 'plan' ? 'on-plan' : ''}`}>
       <header className="topbar">
         <button className="icon-btn" onClick={onClose} aria-label="Wróć do projektów">
           <svg viewBox="0 0 24 24" aria-hidden>
@@ -220,6 +278,7 @@ function ProjectView({
           aria-label="Nazwa projektu"
         />
         <div className="topbar-actions">
+          <LaserButton />
           <button className="icon-btn" onClick={undo} disabled={!canUndo} aria-label="Cofnij">
             <svg viewBox="0 0 24 24" aria-hidden>
               <path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -233,6 +292,7 @@ function ProjectView({
         </div>
       </header>
 
+      {activeTab !== 'plan' && (
       <div className="stats">
         <div>
           <span>Ściany</span>
@@ -250,6 +310,7 @@ function ProjectView({
           <small>drzwi i okna</small>
         </div>
       </div>
+      )}
 
       <nav className="tabs" role="tablist">
         {tabs.map((t) => (
@@ -266,6 +327,14 @@ function ProjectView({
       </nav>
 
       <div className="tab-body">
+        {activeTab === 'plan' && (
+          <PlanTab project={project} calc={calc} update={update} commit={commit} wide={wide} onShowList={() => setTab(wide ? 'elements' : 'list')} />
+        )}
+        {tab === '3d' && (
+          <Suspense fallback={<p className="muted">Wczytywanie widoku 3D…</p>}>
+            <View3D project={project} calc={calc} />
+          </Suspense>
+        )}
         {(tab === 'list' || tab === 'elements') && (
           <div className="split">
             <div className={tab === 'elements' ? '' : 'panel-hidden'}>
@@ -278,7 +347,7 @@ function ProjectView({
           </div>
         )}
         {tab === 'drawings' && <DrawingsPanel project={project} calc={calc} />}
-        {tab === 'settings' && (
+        {activeTab === 'settings' && (
           <div className="card settings">
             <label className="check">
               <input
@@ -305,6 +374,10 @@ function ProjectView({
               <small className="hint">Dotyczy płyt, wkrętów, taśm, masy i wełny. Profile liczone są z rozkroju.</small>
             </div>
             <hr />
+            <button className="btn" onClick={onOpenCatalog}>
+              Katalog systemów i systemy własne
+            </button>
+            <hr />
             <button className="btn danger" onClick={() => confirm('Usunąć projekt z tego urządzenia?') && onDelete()}>
               Usuń projekt
             </button>
@@ -324,4 +397,14 @@ function useMediaQuery(q: string) {
     return () => m.removeEventListener('change', on);
   }, [q]);
   return match;
+}
+
+function useHash() {
+  const [hash, setHash] = useState(() => (typeof location !== 'undefined' ? location.hash : ''));
+  useEffect(() => {
+    const on = () => setHash(location.hash);
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  return hash;
 }
