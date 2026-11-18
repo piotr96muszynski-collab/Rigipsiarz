@@ -7,6 +7,7 @@ import type { Project } from '../model/types';
 import { deleteProject, getKV, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
 import { CatalogView } from './CatalogView';
 import { ElementsPanel } from './ElementsPanel';
+import { PlanTab } from './PlanTab';
 import { LaserButton } from './LaserButton';
 import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
@@ -152,7 +153,7 @@ function Home({
           </button>
           <button className="tile" onClick={onOpenCatalog}>
             <strong>Katalog systemów</strong>
-            <span>Ściany i sufity Rigips, zużycie na m², systemy własne</span>
+            <span>Ściany i sufity Rigips oraz ATLAS M-System 3G, zużycie na m², systemy własne</span>
           </button>
         </div>
       )}
@@ -191,7 +192,7 @@ function Home({
   );
 }
 
-type Tab = 'list' | 'elements' | '3d' | 'settings';
+type Tab = 'plan' | 'list' | 'elements' | '3d' | 'settings';
 
 function ProjectView({
   initial,
@@ -210,8 +211,8 @@ function ProjectView({
   onClose: () => void;
   onDelete: () => void;
 }) {
-  const { project, update, undo, redo, canUndo, canRedo } = useHistory(initial);
-  const [tab, setTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'elements');
+  const { project, update, commit, undo, redo, canUndo, canRedo } = useHistory(initial);
+  const [tab, setTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'plan');
   // catalogVersion: przelicz po zmianie systemów własnych
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const calc = useMemo(() => calculateProject(project), [project, catalogVersion]);
@@ -246,11 +247,13 @@ function ProjectView({
   const wide = useMediaQuery('(min-width: 1024px)');
   const tabs: { id: Tab; label: string }[] = wide
     ? [
+        { id: 'plan', label: 'Plan' },
         { id: 'elements', label: 'Ściany, sufity i materiały' },
         { id: '3d', label: 'Widok 3D' },
         { id: 'settings', label: 'Ustawienia' },
       ]
     : [
+        { id: 'plan', label: 'Plan' },
         { id: 'list', label: 'Zakupy' },
         { id: 'elements', label: 'Elementy' },
         { id: '3d', label: '3D' },
@@ -259,7 +262,7 @@ function ProjectView({
   const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
 
   return (
-    <div className="project">
+    <div className={`project ${activeTab === 'plan' ? 'on-plan' : ''}`}>
       <header className="topbar">
         <button className="icon-btn" onClick={onClose} aria-label="Wróć do projektów">
           <svg viewBox="0 0 24 24" aria-hidden>
@@ -287,6 +290,7 @@ function ProjectView({
         </div>
       </header>
 
+      {activeTab !== 'plan' && (
       <div className="stats">
         <div>
           <span>Ściany</span>
@@ -304,6 +308,7 @@ function ProjectView({
           <small>drzwi i okna</small>
         </div>
       </div>
+      )}
 
       <nav className="tabs" role="tablist">
         {tabs.map((t) => (
@@ -320,6 +325,9 @@ function ProjectView({
       </nav>
 
       <div className="tab-body">
+        {activeTab === 'plan' && (
+          <PlanTab project={project} calc={calc} update={update} commit={commit} wide={wide} onShowList={() => setTab(wide ? 'elements' : 'list')} />
+        )}
         {tab === '3d' && (
           <Suspense fallback={<p className="muted">Wczytywanie widoku 3D…</p>}>
             <View3D project={project} calc={calc} />
@@ -336,7 +344,7 @@ function ProjectView({
             </div>
           </div>
         )}
-        {tab === 'settings' && (
+        {activeTab === 'settings' && (
           <div className="card settings">
             <label className="check">
               <input

@@ -12,6 +12,7 @@ import {
   type WallSystem,
   type Unit,
 } from '../catalog/rigips';
+import { FIXERS } from '../catalog/atlas';
 import {
   analyzeJunctions,
   bbox,
@@ -139,7 +140,8 @@ export interface WallBreakdown {
 
 /** Grubości wełny, które mieszczą się w ruszcie ściany (mm); pusta lista = bez wełny */
 export function wallWoolOptions(sys: WallSystem): number[] {
-  if (sys.frame === 'glued') return [];
+  // płyta klejona i ATLAS M-System 3G – brak miejsca na wełnę
+  if (sys.frame === 'glued' || sys.frame === 'point-fix') return [];
   // okładzina na CD 60 i uchwytach ES – przestrzeń regulowana uchwytem, typowo 50 mm
   const cavity = sys.frame === 'cd-lining' ? 50 : sys.profile;
   return WOOL_THICKNESSES.filter((t) => t <= cavity);
@@ -193,6 +195,8 @@ export function wallRequirement(
       return { ...o, x0, x1, w: x1 - x0, sill, top, h: top - sill };
     })
     .filter((o) => o.w > 0.05 && o.h > 0.05);
+
+  if (sys.frame === 'point-fix') return pointFixWall(req, w, j, sys, L, H, openings, warnings);
 
   const isCD = sys.frame === 'cd-lining';
   const rows = sys.frame === 'glued' ? 0 : sys.frame === 'double' || sys.frame === 'separate' ? 2 : 1;
@@ -325,6 +329,99 @@ export function wallRequirement(
   };
 }
 
+// ---------------------------------------------------------------------------
+// ATLAS M-SYSTEM 3G – płyty na łącznikach talerzykowych (bez profili)
+// ---------------------------------------------------------------------------
+
+/**
+ * Liczba łączników na prostokącie L×H przy siatce sx×sy (m): rzędy i kolumny także
+ * przy krawędziach płyt, minus łączniki wypadające w otworach.
+ */
+export function pointFixCount(L: number, H: number, sx: number, sy: number, holesArea = 0): number {
+  const cols = Math.ceil(L / sx - 1e-9) + 1;
+  const rows = Math.ceil(H / sy - 1e-9) + 1;
+  return Math.max(0, cols * rows - Math.floor(holesArea / (sx * sy) + 1e-9));
+}
+
+/** Spoinowanie w systemie ATLAS: taśma, STONER na każdą warstwę, GTA na wierzch (zużycie orientacyjne) */
+function addAtlasJointing(req: Requirement, area: number, layers: number, tapePerM2: number) {
+  add(req.meters, 'TASMA_SPOIN', area * tapePerM2);
+  add(req.kg, 'ATLAS_STONER', area * 0.25 * layers);
+  add(req.kg, 'ATLAS_GTA', area * 0.1);
+}
+
+function pointFixWall(
+  req: Requirement,
+  w: Wall,
+  j: WallJunctions,
+  sys: WallSystem,
+  L: number,
+  H: number,
+  openings: { w: number; h: number; sill: number; top: number }[],
+  warnings: string[],
+): { req: Requirement; info: WallBreakdown } {
+  const fixer = sys.fixer ?? FIXERS.L100;
+  const sx = w.studSpacing / 100;
+  const sy = (sys.pointSpacing ?? 50) / 100;
+  const openingArea = openings.reduce((a, o) => a + o.w * o.h, 0);
+  const net = Math.max(0, L * H - openingArea);
+
+  // łączniki (zestaw zawiera talerzyk, kołek i 4 wkręty – osobnych wkrętów TN nie liczymy)
+  const n = pointFixCount(L, H, sx, sy, openingArea);
+  add(req.counts, fixer.product, n);
+  if (fixer.extension) add(req.counts, fixer.extension, n);
+
+  const faceArea = net * sys.sides;
+  add(req.boardArea, `${w.boardId}|${pickBoardLength(w.boardId, w.height)}`, faceArea * sys.layers);
+  addAtlasJointing(req, faceArea, sys.layers, 1.4);
+
+  for (let i = 0; i < j.externalEdges; i++) addPiece(req, 'NAROZNIK', H);
+  for (const o of openings) {
+    addPiece(req, 'NAROZNIK', o.h);
+    addPiece(req, 'NAROZNIK', o.h);
+    if (o.top < H - 0.01) addPiece(req, 'NAROZNIK', o.w);
+    if (o.sill > 0.01) addPiece(req, 'NAROZNIK', o.w);
+  }
+
+  if (w.insulation) warnings.push('W systemie ATLAS M-System 3G aplikacja nie liczy wełny – odstęp płyty od ściany jest za mały na typowe płyty izolacyjne.');
+  if (sys.layers > 1 && sx * sy > 0.36 + 1e-9)
+    warnings.push('Dwie warstwy płyt na łącznikach ATLAS: karta zaleca siatkę 60×60 cm lub gęstszą.');
+
+  return {
+    req,
+    info: { lengthM: L, heightM: H, netAreaM2: net, studPositions: [], jambPositions: [], junctions: j, warnings },
+  };
+}
+
+function pointFixCeiling(c: Ceiling, sys: CeilingSystem, A: number, P: number): CeilingResult {
+  const req = emptyReq();
+  const warnings: string[] = [];
+  const fixer = sys.fixer ?? FIXERS.L100;
+  // siatka łączników od krawędzi do krawędzi (rzędy także przy obwodzie); punkty
+  // przy krawędzi przesunięte o 1 cm do środka, żeby jednoznacznie leżały w obrysie
+  const bb = bbox(c.points);
+  const axis = (lo: number, hi: number, step: number) => {
+    const out: number[] = [];
+    for (let v = lo; v < hi - 1e-6; v += step) out.push(v);
+    out.push(hi);
+    return out.map((v) => Math.min(hi - 1, Math.max(lo + 1, v)));
+  };
+  const xs = axis(bb.minX, bb.maxX, c.direction === 0 ? sys.mainSpacing : sys.secondarySpacing);
+  const ys = axis(bb.minY, bb.maxY, c.direction === 0 ? sys.secondarySpacing : sys.mainSpacing);
+  let n = 0;
+  for (const x of xs) for (const y of ys) if (pointInPolygon({ x, y }, c.points)) n++;
+  add(req.counts, fixer.product, n);
+  if (fixer.extension) add(req.counts, fixer.extension, n);
+
+  const longSide = Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY);
+  add(req.boardArea, `${c.boardId}|${pickBoardLength(c.boardId, Math.min(longSide, 300))}`, A * sys.layers);
+  addAtlasJointing(req, A, sys.layers, 1.2);
+
+  if (sys.layers > 1) warnings.push('Na sufitach system ATLAS M-System 3G dopuszcza tylko jedną warstwę płyt.');
+  if (c.insulation) warnings.push('W systemie ATLAS M-System 3G aplikacja nie liczy wełny na suficie.');
+  return { req, areaM2: A, perimeterM: P, warnings };
+}
+
 export interface CeilingGridLine {
   /** współrzędna linii (cm) w osi poprzecznej */
   at: number;
@@ -364,6 +461,9 @@ export function ceilingGrid(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c
       // CW oparte na ścianach, biegną wzdłuż kierunku „nośnego”
       place(mainAxis, sys.secondarySpacing, 'main', sys.secondarySpacing);
       break;
+    case 'point-fix':
+      // brak profili – płyta na łącznikach punktowych
+      break;
     default:
       place(crossAxis, sys.secondarySpacing, 'main', sys.secondarySpacing);
   }
@@ -383,6 +483,7 @@ export function ceilingRequirement(c: Ceiling, sys: CeilingSystem = ceilingSyste
   const edges = polygonPerimeterEdges(c.points).map((e) => e / 100);
   const P = edges.reduce((a, b) => a + b, 0);
   const warnings: string[] = [];
+  if (sys.kind === 'point-fix') return pointFixCeiling(c, sys, A, P);
 
   // obwodowe UD 30 (w suficie na CW: UW o szerokości profilu)
   const cwSpan = sys.kind === 'cw-span';

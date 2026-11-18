@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BOARDS, ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { CeilingSystemSelect, Warnings, WallSystemSelect } from './SystemSelect';
 import { CEILING_WOOL_OPTIONS, ceilingInsulation, wallInsulation, wallWoolOptions, type ProjectCalc } from '../calc/materials';
@@ -79,17 +79,6 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
   const [open, setOpen] = useState(startOpen);
   const L = dist(...wallEnds(project, wall));
   const sys = wallSystemById(wall.systemId);
-  const info = calc.walls.get(wall.id)?.info;
-  const edit = (fn: (w: Wall, d: Project) => void) =>
-    update((d) => {
-      const w = d.walls.find((x) => x.id === wall.id);
-      if (w) fn(w, d);
-    });
-  const editOpening = (id: string, fn: (o: Opening) => void) =>
-    edit((w) => {
-      const o = w.openings.find((x) => x.id === id);
-      if (o) fn(o);
-    });
 
   return (
     <article className="card element">
@@ -108,14 +97,49 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
           Usuń
         </button>
       </header>
-      {open && (
-        <>
+      {open && <WallEditor wall={wall} project={project} calc={calc} update={update} />}
+    </article>
+  );
+}
 
+/** Edytor ściany – używany w karcie elementu i w inspektorze planu */
+export function WallEditor({
+  wall,
+  project,
+  calc,
+  update,
+  activeOpeningId,
+}: {
+  wall: Wall;
+  activeOpeningId?: string;
+} & Props) {
+  const L = dist(...wallEnds(project, wall));
+  const sys = wallSystemById(wall.systemId);
+  const info = calc.walls.get(wall.id)?.info;
+  const edit = (fn: (w: Wall, d: Project) => void) =>
+    update((d) => {
+      const w = d.walls.find((x) => x.id === wall.id);
+      if (w) fn(w, d);
+    });
+  const editOpening = (id: string, fn: (o: Opening) => void) =>
+    edit((w) => {
+      const o = w.openings.find((x) => x.id === id);
+      if (o) fn(o);
+    });
+
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!activeOpeningId) return;
+    root.current?.querySelector(`[data-opening="${activeOpeningId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeOpeningId]);
+
+  return (
+    <div className="editor" ref={root}>
       <div className="grid-3">
         <DimInput label="Długość" unit="m" value={L} min={10} onChange={(v) => edit((w, d) => setWallLength(d, w, v))} />
         <DimInput label="Wysokość" unit="m" value={wall.height} min={30} max={1000} onChange={(v) => edit((w) => void (w.height = v))} />
         <div className="field">
-          <label htmlFor={`sp-${wall.id}`}>Rozstaw CW</label>
+          <label htmlFor={`sp-${wall.id}`}>{sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW'}</label>
           <select
             id={`sp-${wall.id}`}
             value={wall.studSpacing}
@@ -179,7 +203,7 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
             const editable = kind === 'free' || kind === 'existing-wall';
             return (
               <div key={k} className="end">
-                <span className="muted small">Koniec {k === 'A' ? 'początkowy' : 'końcowy'}</span>
+                <span className="muted small">Koniec {k}</span>
                 {editable ? (
                   <select
                     value={kind}
@@ -190,7 +214,7 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
                         else w.endB = v;
                       })
                     }
-                    aria-label={`Koniec ${k === 'A' ? 'początkowy' : 'końcowy'}`}
+                    aria-label={`Koniec ${k}`}
                   >
                     <option value="existing-wall">przy istniejącej ścianie</option>
                     <option value="free">wolny koniec</option>
@@ -206,7 +230,7 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
 
       <div className="openings">
         {wall.openings.map((o, i) => (
-          <div key={o.id} className="opening">
+          <div key={o.id} className={`opening ${o.id === activeOpeningId ? 'active' : ''}`} data-opening={o.id}>
             <div className="opening-head">
               <strong>
                 {o.kind === 'door' ? 'Drzwi' : 'Okno'} {i + 1}
@@ -238,9 +262,7 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
           </button>
         </div>
       </div>
-        </>
-      )}
-    </article>
+    </div>
   );
 }
 
@@ -268,22 +290,6 @@ function CeilingCard({
   const [open, setOpen] = useState(startOpen);
   const sys = ceilingSystemById(ceiling.systemId);
   const r = calc.ceilings.get(ceiling.id);
-  const rect = isAxisRect(ceiling);
-  const b = bbox(ceiling.points);
-  const edit = (fn: (c: Ceiling) => void) =>
-    update((d) => {
-      const c = d.ceilings.find((x) => x.id === ceiling.id);
-      if (c) fn(c);
-    });
-  const resize = (w: number, h: number) =>
-    edit((c) => {
-      c.points = [
-        { x: b.minX, y: b.minY },
-        { x: b.minX + w, y: b.minY },
-        { x: b.minX + w, y: b.minY + h },
-        { x: b.minX, y: b.minY + h },
-      ];
-    });
 
   return (
     <article className="card element">
@@ -302,8 +308,44 @@ function CeilingCard({
           Usuń
         </button>
       </header>
-      {open && (
-        <>
+      {open && <CeilingEditor ceiling={ceiling} wool={wool} calc={calc} update={update} />}
+    </article>
+  );
+}
+
+/** Edytor sufitu – używany w karcie elementu i w inspektorze planu */
+export function CeilingEditor({
+  ceiling,
+  wool,
+  calc,
+  update,
+}: {
+  ceiling: Ceiling;
+  wool?: Project['settings']['wool'];
+  calc: ProjectCalc;
+  update: Props['update'];
+}) {
+  const sys = ceilingSystemById(ceiling.systemId);
+  const r = calc.ceilings.get(ceiling.id);
+  const rect = isAxisRect(ceiling);
+  const b = bbox(ceiling.points);
+  const edit = (fn: (c: Ceiling) => void) =>
+    update((d) => {
+      const c = d.ceilings.find((x) => x.id === ceiling.id);
+      if (c) fn(c);
+    });
+  const resize = (w: number, h: number) =>
+    edit((c) => {
+      c.points = [
+        { x: b.minX, y: b.minY },
+        { x: b.minX + w, y: b.minY },
+        { x: b.minX + w, y: b.minY + h },
+        { x: b.minX, y: b.minY + h },
+      ];
+    });
+
+  return (
+    <div className="editor">
       {rect && (
         <div className="grid-3">
           <DimInput label="Długość" unit="m" value={b.maxX - b.minX} min={20} onChange={(v) => resize(v, b.maxY - b.minY)} />
@@ -359,9 +401,8 @@ function CeilingCard({
         onToggle={(on) => edit((c) => void (c.insulation = on))}
         onThickness={(mm) => edit((c) => void (c.insulationThickness = mm))}
       />
-        </>
-      )}
-    </article>
+      {!rect && <small className="hint">Kształt sufitu zmienisz na planie, przeciągając jego narożniki.</small>}
+    </div>
   );
 }
 

@@ -14,6 +14,10 @@
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 8%);
   --tap: 44px;
+  --canvas: #fbfcfd;
+  --grid-minor: #eef0f3;
+  --grid-major: #dde1e7;
+  --wall-edge: #3b4350;
   color-scheme: light;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 16px;
@@ -36,6 +40,10 @@
     --accent-soft: #1b2a42;
     --danger: #f07171;
     --ok: #4cc283;
+    --canvas: #12181e;
+    --grid-minor: #1a2129;
+    --grid-major: #26303a;
+    --wall-edge: #aab3bf;
     color-scheme: dark;
   }
 }
@@ -721,6 +729,7 @@ li.done .item-qty strong {
 /* ---------- komunikat o aktualizacji ---------- */
 .toast {
   position: fixed;
+  width: max-content;
   left: 50%;
   bottom: calc(16px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
@@ -976,6 +985,596 @@ a.btn {
   letter-spacing: 0.04em;
   color: var(--muted);
   margin: 4px 0 10px;
+}
+
+/* ---------- planer 2D ---------- */
+.project.on-plan {
+  height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px);
+  min-height: 460px;
+  gap: 10px;
+}
+.app:has(.project.on-plan) {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+.project.on-plan .tab-body {
+  flex: 1;
+  min-height: 0;
+}
+.plan-layout {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.plan-layout.wide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 16px;
+}
+.plan-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--canvas);
+}
+@media (max-width: 1023px) {
+  .plan-stage {
+    margin: 0 -16px;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+}
+.plan-wrap {
+  position: absolute;
+  inset: 0;
+}
+svg.plan {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+svg.plan.tool-wall,
+svg.plan.tool-room,
+svg.plan.tool-ceiling {
+  cursor: crosshair;
+}
+svg.plan.tool-door,
+svg.plan.tool-window {
+  cursor: copy;
+}
+.plan .grid-minor {
+  stroke: var(--grid-minor);
+}
+.plan .grid-major {
+  stroke: var(--grid-major);
+}
+.plan .ceiling {
+  fill: rgb(29 95 209 / 7%);
+  stroke: var(--accent);
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+.plan .ceiling.selected {
+  fill: rgb(29 95 209 / 14%);
+  stroke-dasharray: none;
+}
+.plan .wall-edge {
+  stroke: var(--wall-edge);
+  stroke-linecap: square;
+}
+.plan .wall {
+  stroke-linecap: square;
+}
+.plan .wall-halo {
+  stroke: var(--accent);
+  stroke-opacity: 0.35;
+  stroke-linecap: round;
+}
+.plan .wall-axis {
+  stroke: var(--wall-edge);
+  stroke-opacity: 0.35;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+.plan .opening-gap {
+  stroke: var(--canvas);
+}
+.plan .door,
+.plan .window {
+  fill: none;
+  stroke: var(--text);
+}
+.plan .door.selected,
+.plan .window.selected {
+  stroke: var(--accent);
+}
+.plan .node {
+  fill: var(--surface);
+  stroke: var(--wall-edge);
+}
+.plan .handle {
+  fill: var(--surface);
+  stroke: var(--accent);
+}
+.plan .preview {
+  stroke: var(--accent);
+  stroke-opacity: 0.55;
+  stroke-linecap: square;
+}
+.plan .preview-room,
+.plan .preview-ceiling {
+  fill: rgb(29 95 209 / 10%);
+  stroke: var(--accent);
+  stroke-dasharray: 8 5;
+  vector-effect: non-scaling-stroke;
+}
+.plan .chain-start {
+  fill: var(--accent);
+  stroke: var(--surface);
+}
+.plan .snap {
+  fill: none;
+}
+.plan .snap-node {
+  stroke: var(--ok);
+}
+.plan .snap-wall {
+  stroke: #d97706;
+}
+.plan .snap-angle {
+  stroke: var(--accent);
+  stroke-dasharray: 3 3;
+}
+.plan .labels text {
+  font: 600 12px system-ui, sans-serif;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 4px;
+  fill: var(--text);
+  pointer-events: none;
+}
+.plan .labels .ceiling-label {
+  fill: var(--accent);
+  font-size: 13px;
+}
+.plan .labels .dim-bubble {
+  fill: var(--text);
+}
+.plan .labels .dim-bubble-text {
+  fill: var(--bg);
+  stroke: none;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.plan .labels .end-tag circle {
+  fill: var(--accent);
+}
+.plan .labels .end-tag text {
+  fill: var(--accent-ink);
+  stroke: none;
+  font-size: 11px;
+}
+.plan .labels g {
+  pointer-events: none;
+}
+
+/* pasek narzędzi */
+.plan-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  gap: 2px;
+  width: max-content;
+  max-width: calc(100% - 20px);
+  margin: 0 auto;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgb(16 24 40 / 12%);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.plan-layout.wide .plan-toolbar {
+  margin: 0;
+}
+.plan-toolbar button {
+  flex: 0 0 auto;
+  min-width: 52px;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 0.7rem/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.plan-toolbar button svg,
+.fab svg,
+.plan-summary svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.plan-toolbar button:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.plan-toolbar button.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+@media (max-width: 380px) {
+  .plan-toolbar button {
+    min-width: 46px;
+    padding: 4px 4px;
+  }
+}
+
+.plan-view-btns {
+  position: absolute;
+  right: 10px;
+  top: 76px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fab {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.fab:hover {
+  background: var(--surface-2);
+}
+
+.plan-hint {
+  position: absolute;
+  top: 76px;
+  left: 10px;
+  right: 64px;
+  max-width: 460px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 6px 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--muted);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(6px);
+}
+.plan-hint span {
+  flex: 1;
+  padding-top: 2px;
+}
+.plan-hint.msg {
+  background: var(--text);
+  color: var(--bg);
+  border-color: transparent;
+  padding-right: 12px;
+}
+.hint-close {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  margin: -4px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1.3rem;
+  line-height: 1;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.plan-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  padding: 120px 40px;
+  text-align: center;
+  color: var(--muted);
+}
+.plan-empty p {
+  max-width: 280px;
+}
+
+.chip.chain-stop {
+  position: absolute;
+  left: 50%;
+  bottom: 80px;
+  transform: translateX(-50%);
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: none;
+  background: var(--text);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 20%);
+  cursor: pointer;
+}
+.plan-layout.wide .chip.chain-stop {
+  bottom: 20px;
+}
+.scalebar {
+  position: absolute;
+  left: 12px;
+  bottom: 78px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+.plan-layout.wide .scalebar {
+  bottom: 12px;
+}
+.scalebar div {
+  height: 6px;
+  border: 1.5px solid var(--muted);
+  border-top: none;
+}
+
+/* podsumowanie na dole planu (telefon) */
+.plan-summary {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  box-shadow: 0 4px 16px rgb(16 24 40 / 12%);
+  cursor: pointer;
+}
+.plan-summary strong {
+  font-variant-numeric: tabular-nums;
+}
+.plan-summary-cta {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 8px 4px 8px 10px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.plan-summary-cta svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* inspektor: arkusz na telefonie, kolumna na komputerze */
+.plan-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 56%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 30px rgb(16 24 40 / 16%);
+}
+.plan-side {
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.plan-sheet .inspector {
+  padding: 4px 12px 12px;
+}
+.plan-sheet .inspector.open {
+  overflow: hidden;
+}
+.plan-sheet .insp-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 -12px;
+  padding: 0 12px 8px;
+}
+.insp-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.insp-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 10px 4px 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  position: relative;
+}
+button.insp-title {
+  cursor: pointer;
+}
+.insp-title strong {
+  font-size: 1.02rem;
+}
+.insp-title .small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.insp-title .grab {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.icon-btn.danger {
+  color: var(--danger);
+}
+.insp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.opening.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.insp-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.insp-stats > div {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.insp-stats span,
+.insp-stats small {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.insp-stats strong {
+  font-variant-numeric: tabular-nums;
+}
+.shortcuts {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+kbd {
+  font: 600 0.72rem ui-monospace, monospace;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.insp-materials {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+}
+.insp-materials summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+.insp-materials ul {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.insp-materials li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.86rem;
+}
+.insp-materials li strong {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.insp-materials .hint {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.plan-side .grid-2 {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 400px) {
+  .tabs button {
+    padding: 0 6px;
+    font-size: 0.84rem;
+  }
+  .plan-summary {
+    font-size: 0.8rem;
+  }
 }
 
 /* ---------- katalog systemów ---------- */
