@@ -47,3 +47,46 @@ describe('rysunki dla wszystkich systemów', () => {
     expect(html).not.toContain('Infinity');
   });
 });
+
+describe('wełna w przekrojach', () => {
+  it('przekrój ściany pokazuje grubość wełny wybraną dla ściany', () => {
+    const p = createProject();
+    p.nodes = [
+      { id: uid(), x: 0, y: 0 },
+      { id: uid(), x: 300, y: 0 },
+    ];
+    p.walls = [createWall(p, p.nodes[0].id, p.nodes[1].id, { systemId: 'W-CW100-1', insulation: true, insulationThickness: 50 })];
+    const html = renderToStaticMarkup(createElement(DrawingsPanel, { project: p, calc: calculateProject(p) }));
+    expect(html).toContain('wełna mineralna 50 mm');
+    expect(html).not.toContain('wełna mineralna 100 mm');
+  });
+
+  it('ściana podwójna: wełna w obu rzędach', () => {
+    const p = createProject();
+    p.nodes = [
+      { id: uid(), x: 0, y: 0 },
+      { id: uid(), x: 300, y: 0 },
+    ];
+    p.walls = [createWall(p, p.nodes[0].id, p.nodes[1].id, { systemId: 'W-2CW75-2', insulation: true })];
+    const html = renderToStaticMarkup(createElement(DrawingsPanel, { project: p, calc: calculateProject(p) }));
+    expect(html).toContain('2 warstwy');
+  });
+
+  it('przekrój sufitu pokazuje grubość wełny wybraną dla sufitu', () => {
+    const p = createProject();
+    p.ceilings = [
+      createCeiling(
+        p,
+        [
+          { x: 0, y: 0 },
+          { x: 400, y: 0 },
+          { x: 400, y: 300 },
+          { x: 0, y: 300 },
+        ],
+        { insulation: true, insulationThickness: 150 },
+      ),
+    ];
+    const html = renderToStaticMarkup(createElement(DrawingsPanel, { project: p, calc: calculateProject(p) }));
+    expect(html).toContain('wełna mineralna 150 mm');
+  });
+});
