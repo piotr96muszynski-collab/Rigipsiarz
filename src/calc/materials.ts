@@ -217,6 +217,10 @@ export function wallRequirement(
   const tape = isCD ? 'TASMA_USZ30' : TAPE_FOR_PROFILE[sys.profile];
   const bracketM = (sys.bracketSpacing ?? 100) / 100;
 
+  // rozkład płyt i rusztu (ten sam co na rysunku i w 3D) – tylko dla ściany z projektu
+  const m = contacts ?? (p.walls.includes(w) ? buildContacts(p) : undefined);
+  const layout = m && sys.id === w.systemId ? wallLayout(p, w, j, m) : undefined;
+
   /** Słupek (CW) lub pionowy CD; CD okładziny mocujemy do ściany uchwytami ES */
   const addStud = (product: string, len: number) => {
     if (len <= 0.01) return;
@@ -252,6 +256,8 @@ export function wallRequirement(
       // słupki pokrywające się z ościeżem zastępuje słupek ościeżnicowy
     }
     for (let i = 0; i < j.extraStuds; i++) addStud(stud, H);
+    // słupki dodane pod styk płyt (przy otworach styki warstw nie miały się na czym minąć)
+    for (const st of layout?.studs ?? []) if (st.kind === 'joint') for (const [y0, y1] of st.segments) addStud(stud, y1 - y0);
 
     // --- Ościeża, nadproża, podokienniki ---
     for (const o of openings) {
@@ -308,13 +314,12 @@ export function wallRequirement(
   const sheetKey = `${w.boardId}|${sheetLen}`;
   // każda warstwa na swoją długość z modelu styków: w narożniku płyta zachodzi na czoło sąsiedniej
   // ściany albo dochodzi do jej płyty, w trójniku i przy okładzinie muru kończy się na ich licu
-  const m = contacts ?? (p.walls.includes(w) ? buildContacts(p) : undefined);
   let boardsArea = 0;
   let cutWaste = 0;
-  if (m && sys.id === w.systemId) {
+  if (layout) {
     // z rozkładu płyt (ten sam co na rysunku i w 3D): elementy po wycięciu otworów
     // + odpad z wycięć L/U, z którego nie da się już nic przykręcić (pas węższy niż 30 cm)
-    for (const face of wallLayout(p, w, j, m).faces)
+    for (const face of layout.faces)
       for (const pc of face.pieces) {
         boardsArea += pieceArea(pc);
         for (const n of pc.notches ?? []) if (Math.min(n.x1 - n.x0, n.y1 - n.y0) < OFFCUT_MIN) cutWaste += (n.x1 - n.x0) * (n.y1 - n.y0);

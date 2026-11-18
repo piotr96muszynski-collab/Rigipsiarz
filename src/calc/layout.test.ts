@@ -180,14 +180,26 @@ describe('płyty przy otworach: wycięcie w kształt L', () => {
     }
   });
 
-  it('gdy przy otworze nie da się rozsunąć styków warstw – rysunek dostaje ostrzeżenie', () => {
-    // drzwi 90 cm przy rozstawie 60: obie warstwy muszą mieć styk na tym samym słupku
+  it('styki warstw bez miejsca na minięcie: dodatkowy słupek pod styk, doliczony do CW', () => {
+    // drzwi 90 cm przy rozstawie 60: bez dodatkowego słupka obie warstwy miałyby styk na tym samym słupku
     const p = wallProject(500, 260, 'W-CW75-2');
-    p.walls[0].openings.push(createOpening('door', 100, { reinforced: false }));
+    p.walls[0].openings.push(createOpening('door', 100, { reinforced: false }), createOpening('window', 300, { width: 100 }));
     const l = layoutOf(p);
-    const outer = l.faces.find((f) => f.side === 0 && f.layer === 1)!;
-    expect(outer.layerJoints.length).toBeGreaterThan(0);
-    expect(outer.jambJoints).toEqual([]);
+    const extra = l.studs.filter((st) => st.kind === 'joint');
+    expect(extra.length).toBeGreaterThan(0);
+    for (const f of l.faces) {
+      expect(f.layerJoints).toEqual([]);
+      expect(f.jambJoints).toEqual([]);
+      for (const x of f.joints) expect(l.studs.some((st) => Math.abs(st.x - x) < 0.005 && st.segments.length)).toBe(true);
+    }
+    // słupek pod styk w połowie rozstawu, zawsze z dala od ościeży
+    for (const st of extra) for (const o of l.openings) expect(Math.min(Math.abs(st.x - o.x0), Math.abs(st.x - o.x1))).toBeGreaterThanOrEqual(OPENING_JOINT_MIN - 1e-6);
+    expect(drawnCW(p)).toBeCloseTo(calcCW(p), 6);
+  });
+
+  it('bez otworów dodatkowych słupków nie ma', () => {
+    for (const sys of ['W-CW75-1', 'W-CW75-2'])
+      expect(layoutOf(wallProject(500, 260, sys)).studs.filter((st) => st.kind === 'joint')).toHaveLength(0);
   });
 
   it('element L: obrys z sześciu wierzchołków, pole = arkusz − wycięcie', () => {

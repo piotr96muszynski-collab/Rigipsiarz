@@ -12,6 +12,7 @@ export const C = {
   jamb: '#d9822b',
   ua: '#c0392b',
   extra: '#7b4fb5',
+  joint: '#16a3a3',
   track: '#4a5a6a',
   main: '#1d5fd1',
   secondary: '#2e9e5b',
