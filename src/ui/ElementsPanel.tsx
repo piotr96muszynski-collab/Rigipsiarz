@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { BOARDS, CEILING_SYSTEMS, WALL_SYSTEMS, ceilingSystemById, wallSystemById } from '../catalog/rigips';
+import { BOARDS, ceilingSystemById, wallSystemById } from '../catalog/rigips';
+import { CeilingSystemSelect, Warnings, WallSystemSelect } from './SystemSelect';
 import type { ProjectCalc } from '../calc/materials';
 import { bbox, dist, wallEnds } from '../geometry/geometry';
 import { createCeiling, createOpening } from '../model/factory';
@@ -129,23 +130,19 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
       <div className="grid-2">
         <div className="field">
           <label htmlFor={`sys-${wall.id}`}>System</label>
-          <select
+          <WallSystemSelect
             id={`sys-${wall.id}`}
             value={wall.systemId}
-            onChange={(e) =>
+            onChange={(id) =>
               edit((w) => {
-                const s = wallSystemById(e.target.value);
+                const s = wallSystemById(id);
                 w.systemId = s.id;
                 w.boardId = s.defaultBoard;
+                w.studSpacing = s.studSpacing;
+                w.insulation = s.insulationDefault;
               })
             }
-          >
-            {WALL_SYSTEMS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          />
           <small className="hint">{sys.info}</small>
         </div>
         <div className="field">
@@ -160,9 +157,11 @@ function WallCard({ wall, index, project, calc, update, startOpen }: { wall: Wal
         </div>
       </div>
 
+      <Warnings items={info?.warnings} />
+
       <label className="check">
         <input type="checkbox" checked={wall.insulation} onChange={(e) => edit((w) => void (w.insulation = e.target.checked))} />
-        Wełna mineralna {sys.profile} mm
+        Wełna mineralna {sys.frame === 'cd-lining' ? 50 : sys.profile} mm{sys.frame === 'double' ? ' (w obu rusztach)' : ''}
       </label>
 
       {info && (
@@ -305,23 +304,17 @@ function CeilingCard({
       <div className="grid-2">
         <div className="field">
           <label htmlFor={`cs-${ceiling.id}`}>System</label>
-          <select
+          <CeilingSystemSelect
             id={`cs-${ceiling.id}`}
             value={ceiling.systemId}
-            onChange={(e) =>
+            onChange={(id) =>
               edit((c) => {
-                const s = ceilingSystemById(e.target.value);
+                const s = ceilingSystemById(id);
                 c.systemId = s.id;
                 c.boardId = s.defaultBoard;
               })
             }
-          >
-            {CEILING_SYSTEMS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          />
           <small className="hint">{sys.info}</small>
         </div>
         <div className="field">
@@ -335,9 +328,10 @@ function CeilingCard({
           </select>
         </div>
       </div>
+      <Warnings items={r?.warnings} />
       <div className="grid-2">
         <div className="field">
-          <label htmlFor={`cd-${ceiling.id}`}>Profile nośne biegną</label>
+          <label htmlFor={`cd-${ceiling.id}`}>{sys.kind === 'cw-span' || sys.kind === 'ua-span' ? 'Profile przęsłowe biegną' : 'Profile nośne biegną'}</label>
           <select id={`cd-${ceiling.id}`} value={ceiling.direction} onChange={(e) => edit((c) => void (c.direction = Number(e.target.value) as 0 | 90))}>
             <option value={0}>wzdłuż długości</option>
             <option value={90}>wzdłuż szerokości</option>

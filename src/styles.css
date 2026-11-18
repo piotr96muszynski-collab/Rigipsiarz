@@ -978,6 +978,128 @@ a.btn {
   margin: 4px 0 10px;
 }
 
+/* ---------- katalog systemów ---------- */
+:root {
+  --warn-bg: #fff6e0;
+  --warn-ink: #7a4b00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --warn-bg: #3a2c0c;
+    --warn-ink: #ffd88a;
+  }
+}
+.catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.topbar-title {
+  font-size: 1.15rem;
+  margin: 0;
+  padding: 8px;
+}
+.catalog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.catalog-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.catalog-group h2 {
+  font-size: 1rem;
+  margin: 8px 0 0;
+}
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.badge.custom {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.system-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.params {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+.params dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.params dd {
+  margin: 0;
+}
+.consumption {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.consumption caption {
+  text-align: left;
+  font-weight: 700;
+  padding-bottom: 6px;
+}
+.consumption th,
+.consumption td {
+  text-align: left;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.consumption td:not(:first-child),
+.consumption th:not(:first-child) {
+  text-align: right;
+  white-space: nowrap;
+}
+.board-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.board-list li {
+  flex-direction: row;
+  align-items: flex-start;
+}
+.swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  flex: none;
+}
+.editor {
+  gap: 12px;
+}
+.warnings {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 0.92rem;
+}
+
 /* ---------- widok 3D ---------- */
 .view3d {
   display: flex;
