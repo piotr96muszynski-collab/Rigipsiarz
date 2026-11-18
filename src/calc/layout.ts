@@ -38,7 +38,8 @@ export function wallOpenings(w: Wall, L: number, H: number): WallOpening[] {
     .filter((o) => o.w > 0.05 && o.h > 0.05);
 }
 
-export type StudKind = 'stud' | 'short' | 'jamb' | 'jamb-ua' | 'extra';
+/** joint – słupek dodany pod styk płyt, gdy styki warstw przy otworze nie miały się na czym minąć */
+export type StudKind = 'stud' | 'short' | 'jamb' | 'jamb-ua' | 'extra' | 'joint';
 
 export interface StudElement {
   /** oś słupka, m od początku ściany */
@@ -290,7 +291,14 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
   const boardW = boardById(w.boardId).width / 100;
   const faces: BoardFace[] = [];
   // miejsca, w których może wypaść styk pionowy: słupki (bez ościeży – te i tak są zabronione)
-  const studXs = glued ? undefined : studs.filter((st) => st.segments.length).map((st) => st.x);
+  const baseXs = glued ? undefined : studs.filter((st) => st.segments.length).map((st) => st.x);
+  // możliwe dodatkowe słupki pod styk: w połowie między sąsiednimi słupkami (przesunięcie 30 cm przy rozstawie 60)
+  const sorted = [...new Set(baseXs ?? [])].sort((a, b) => a - b);
+  const extraCands = sorted.slice(1).flatMap((x, i) => (x - sorted[i] >= 0.3 - 1e-9 ? [round3((x + sorted[i]) / 2)] : []));
+  const added = new Set<number>();
+  const onBase = (x: number) => (baseXs ?? []).some((b) => Math.abs(b - x) < 0.005);
+  const studXs = () => (baseXs ? [...baseXs, ...added] : undefined);
+  const extraXs = () => (baseXs ? extraCands.filter((x) => !added.has(x)) : undefined);
   const bottomFirst = (i: number, c0: number, c1: number) => rowPattern(i, c0, c1, H, sheetLen, openings);
   const inside = (x: number, r: [number, number]) => x > r[0] + 0.01 && x < r[1] - 0.01;
   for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1) {
@@ -306,13 +314,34 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     const others = (layer: number) => layers.filter((q) => q.layer !== layer && q.joints.length).flatMap((q) => q.joints.filter((x) => inside(x, q.range)));
     // warstwy tej strony nie mogą mieć wspólnych styków: kilka przebiegów, każda warstwa
     // dopasowuje się do pozostałych (przy otworach pierwsza warstwa też może ustąpić drugiej)
-    for (let round = 0; round < (sys.layers > 1 ? 3 : 1); round++)
+    // najpierw tylko na istniejących słupkach; dodatkowy słupek dopiero, gdy styki dalej się pokrywają
+    // albo styk zostaje w linii ościeża
+    const rounds = sys.layers > 1 ? 3 : 1;
+    const conflict = () =>
+      layers.some((q) => q.bad.length || q.joints.some((x) => inside(x, q.range) && others(q.layer).some((y) => Math.abs(y - x) < 0.05)));
+    for (let round = 0; round <= rounds; round++) {
+      const withExtra = round === rounds;
+      if (withExtra && !conflict()) break;
       for (const q of layers) {
         const [x0, x1] = q.range;
-        const r = placeJoints({ L, x0, x1, offset: q.offset, boardW, step: s, openings, studXs, hard: others(q.layer), soft: soft(q.layer) });
+        const r = placeJoints({
+          L,
+          x0,
+          x1,
+          offset: q.offset,
+          boardW,
+          step: s,
+          openings,
+          studXs: studXs(),
+          extraXs: withExtra ? extraXs() : undefined,
+          hard: others(q.layer),
+          soft: soft(q.layer),
+        });
         q.joints = r.joints;
+        for (const x of r.joints) if (!onBase(x)) added.add(x);
         q.bad = r.bad;
       }
+    }
     for (const q of layers) {
       const [x0, x1] = q.range;
       // styki liczone od węzła a (jak ruszt), płyta przycięta do zakresu z modelu styków
@@ -323,6 +352,20 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
       faces.push({ side, layer: q.layer, x0, x1, offset: q.offset, joints: inRange, pieces, jambJoints: q.bad, layerJoints });
     }
   }
+
+  // dodatkowe słupki zostają tylko tam, gdzie ostatecznie wypadł styk
+  const used = baseXs ? [...new Set(faces.flatMap((f) => f.joints).filter((x) => !onBase(x)).map(round3))] : [];
+  for (const x of used) {
+    const op = openings.find((o) => x > o.x0 && x < o.x1);
+    const segments: [number, number][] = !op
+      ? [[0, H]]
+      : ([
+          [0, op.sill],
+          [op.top, H],
+        ].filter(([a, b]) => b - a > 0.01) as [number, number][]);
+    if (segments.length) studs.push({ x, kind: 'joint', segments });
+  }
+  studs.sort((a, b) => a.x - b.x);
 
   return {
     L,
@@ -383,6 +426,8 @@ export function placeJoints(o: {
   openings: WallOpening[];
   /** położenie słupków (brak = okładzina klejona, styk w dowolnym miejscu siatki) */
   studXs?: number[];
+  /** miejsca, w których można dostawić słupek pod styk (drożej niż styk na istniejącym słupku) */
+  extraXs?: number[];
   /** styki, z którymi nie wolno się pokryć (niższe warstwy tej samej strony) */
   hard?: number[];
   /** styki, z którymi lepiej się nie pokrywać (druga strona ściany) */
@@ -398,18 +443,20 @@ export function placeJoints(o: {
   const plain: number[] = [];
   for (let x = o.offset > 0.01 ? o.offset : boardW; x < end - 0.01; x = round3(x + boardW)) plain.push(x);
   const grid: number[] = [];
-  if (o.studXs) grid.push(...o.studXs);
+  if (o.studXs) grid.push(...o.studXs, ...(o.extraXs ?? []));
   else for (let x = step; x < end; x = round3(x + step)) grid.push(x);
   const cands = [...new Set([...grid, ...plain].map(round3))].filter((x) => x > lo - 0.05 && x < end - MIN_W).sort((a, b) => a - b);
   if (o.studXs) {
     // bez słupka styk możliwy tylko tam, gdzie był w zwykłym rozkładzie (np. siatka inna niż arkusz)
     for (let i = cands.length - 1; i >= 0; i--)
-      if (!o.studXs.some((x) => Math.abs(x - cands[i]) < 0.005) && !plain.some((x) => Math.abs(x - cands[i]) < 0.005)) cands.splice(i, 1);
+      if (![...o.studXs, ...(o.extraXs ?? [])].some((x) => Math.abs(x - cands[i]) < 0.005) && !plain.some((x) => Math.abs(x - cands[i]) < 0.005)) cands.splice(i, 1);
   }
   const cost = (x: number) =>
     (nearJamb(x, openings) ? 100 : 0) +
     (hits(x, o.hard) ? 10 : 0) +
     (hits(x, o.soft) ? 1 : 0) +
+    // dodatkowy słupek: lepszy niż wspólny styk warstw lub styk w linii ościeża, ale nie za darmo
+    (o.studXs && !o.studXs.some((sx) => Math.abs(sx - x) < 0.005) && (o.extraXs ?? []).some((e) => Math.abs(e - x) < 0.005) ? 5 : 0) +
     0.5 +
     (plain.some((p) => Math.abs(p - x) < 0.005) ? 0 : 0.2);
   // dp[i]: najmniejszy koszt z ostatnim stykiem w cands[i]; start w 0

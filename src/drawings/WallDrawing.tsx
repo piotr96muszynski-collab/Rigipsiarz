@@ -7,6 +7,7 @@ const STUD_COLOR: Record<StudKind, string> = {
   jamb: C.jamb,
   'jamb-ua': C.ua,
   extra: C.extra,
+  joint: C.joint,
 };
 
 const STUD_W = 5; // cm – szerokość półki profilu na widoku
@@ -117,6 +118,7 @@ export function WallFrameDrawing({ l, title }: { l: WallLayout; title: string })
           ...(has('jamb') ? [{ color: C.jamb, label: `ościeże ${l.studLabel}` }] : []),
           ...(has('jamb-ua') ? [{ color: C.ua, label: `ościeże UA ${l.profile} + kątowniki` }] : []),
           ...(has('extra') ? [{ color: C.extra, label: `dodatkowy ${l.studLabel} (narożnik / połączenie)` }] : []),
+          ...(has('joint') ? [{ color: C.joint, label: `dodatkowy ${l.studLabel} pod styk płyt przy otworze (styki warstw muszą się minąć)` }] : []),
           { color: C.track, label: `${l.trackLabel} posadzka i strop, nadproża/podokienniki +15 cm na stronę` },
           ...(l.frame === 'cd-lining' ? [{ color: C.hanger, label: 'uchwyty ES do ściany wg rozstawu z karty systemu' }] : []),
           ...(l.openings.length ? [{ dashed: true, label: 'otwór w świetle' }] : []),
@@ -242,8 +244,8 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
           { color: C.board, label: `arkusz pełny ${cm(l.sheet.width * 100)}×${cm(l.sheet.length * 100)} cm (${full} szt.)` },
           { pattern: 'cut', label: `element docinany (${face.pieces.length - full} szt.${shaped ? `, w tym ${shaped} wycinane w kształt L lub U przy otworach` : ''})` },
           { color: C.stud, dashed: true, label: 'oś słupka – linia wkręcania' },
-          ...(face.jambJoints.length ? [{ color: C.warn, label: 'styk w linii ościeża – brak słupka w dobrym miejscu, dodaj słupek i przesuń styk' }] : []),
-          ...(face.layerJoints.length ? [{ color: C.warn, label: 'styk na styku niższej warstwy – dodaj słupek i rozsuń styki' }] : []),
+          ...(face.jambJoints.length ? [{ color: C.warn, label: 'styk w linii ościeża – nie było gdzie dostawić słupka' }] : []),
+          ...(face.layerJoints.length ? [{ color: C.warn, label: 'styk na styku niższej warstwy – nie było gdzie dostawić słupka' }] : []),
         ]}
       />
       <figcaption className="muted small">
