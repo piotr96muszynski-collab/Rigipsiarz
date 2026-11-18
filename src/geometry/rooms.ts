@@ -1,5 +1,5 @@
 import type { Point, Project } from '../model/types';
-import { nodeMap, pointInPolygon, polygonArea } from './geometry';
+import { nodeMap, pointInPolygon, polygonArea, projectOnSegment } from './geometry';
 
 /**
  * Szuka najmniejszego zamkniętego obrysu ścian zawierającego punkt (np. do utworzenia sufitu
@@ -8,10 +8,25 @@ import { nodeMap, pointInPolygon, polygonArea } from './geometry';
 export function findRoomAt(p: Project, pt: Point): Point[] | null {
   const nodes = nodeMap(p);
   const adj = new Map<string, string[]>();
+  const link = (u: string, v: string) => {
+    if (u === v || adj.get(u)?.includes(v)) return;
+    adj.set(u, [...(adj.get(u) ?? []), v]);
+    adj.set(v, [...(adj.get(v) ?? []), u]);
+  };
   for (const w of p.walls) {
-    if (!nodes.has(w.a) || !nodes.has(w.b)) continue;
-    adj.set(w.a, [...(adj.get(w.a) ?? []), w.b]);
-    adj.set(w.b, [...(adj.get(w.b) ?? []), w.a]);
+    const a = nodes.get(w.a);
+    const b = nodes.get(w.b);
+    if (!a || !b) continue;
+    // Ściana działowa dochodząca do środka innej ściany (trójnik) dzieli ją w grafie –
+    // dzięki temu pokój podzielony działówką daje dwa osobne obrysy.
+    const onWall = p.nodes
+      .filter((n) => n.id !== w.a && n.id !== w.b)
+      .map((n) => ({ n, pr: projectOnSegment(n, a, b) }))
+      .filter(({ pr }) => pr.d < 2 && pr.t > 0.001 && pr.t < 0.999)
+      .sort((x, y) => x.pr.t - y.pr.t)
+      .map(({ n }) => n.id);
+    const chain = [w.a, ...onWall, w.b];
+    for (let i = 0; i + 1 < chain.length; i++) link(chain[i], chain[i + 1]);
   }
   const angle = (from: string, to: string) => {
     const a = nodes.get(from)!;
