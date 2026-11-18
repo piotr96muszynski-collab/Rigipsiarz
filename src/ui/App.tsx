@@ -4,6 +4,7 @@ import { createProject, sampleProject } from '../model/factory';
 import type { PriceBook } from '../model/prices';
 import type { Project } from '../model/types';
 import { deleteProject, getKV, listProjects, requestPersistence, saveProject, setKV } from '../storage/db';
+import { DrawingsPanel } from './DrawingsPanel';
 import { ElementsPanel } from './ElementsPanel';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
@@ -143,7 +144,7 @@ function Home({
   );
 }
 
-type Tab = 'list' | 'elements' | 'settings';
+type Tab = 'list' | 'elements' | 'drawings' | 'settings';
 
 function ProjectView({
   initial,
@@ -193,11 +194,13 @@ function ProjectView({
   const tabs: { id: Tab; label: string }[] = wide
     ? [
         { id: 'elements', label: 'Ściany, sufity i materiały' },
+        { id: 'drawings', label: 'Rysunki' },
         { id: 'settings', label: 'Ustawienia' },
       ]
     : [
         { id: 'list', label: 'Zakupy' },
         { id: 'elements', label: 'Elementy' },
+        { id: 'drawings', label: 'Rysunki' },
         { id: 'settings', label: 'Ustawienia' },
       ];
   const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
@@ -263,7 +266,7 @@ function ProjectView({
       </nav>
 
       <div className="tab-body">
-        {tab !== 'settings' && (
+        {(tab === 'list' || tab === 'elements') && (
           <div className="split">
             <div className={tab === 'elements' ? '' : 'panel-hidden'}>
               <ElementsPanel project={project} calc={calc} update={update} />
@@ -274,6 +277,7 @@ function ProjectView({
             </div>
           </div>
         )}
+        {tab === 'drawings' && <DrawingsPanel project={project} calc={calc} />}
         {tab === 'settings' && (
           <div className="card settings">
             <label className="check">

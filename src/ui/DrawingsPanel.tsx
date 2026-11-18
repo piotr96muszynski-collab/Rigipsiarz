@@ -1,0 +1,305 @@
+import { useMemo, useState } from 'react';
+import { wallLayout } from '../calc/layout';
+import type { MaterialLine, ProjectCalc, Requirement } from '../calc/materials';
+import { PRODUCTS, boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
+import { CeilingBoardsDrawing, CeilingGridDrawing } from '../drawings/CeilingDrawing';
+import { JunctionDetail, OpeningDetail, type DetailKind } from '../drawings/Details';
+import { CeilingSection, WallSection } from '../drawings/Sections';
+import { WallBoardsDrawing, WallFrameDrawing, faceName } from '../drawings/WallDrawing';
+import { analyzeJunctions, type WallJunctions } from '../geometry/geometry';
+import type { Project } from '../model/types';
+import { fmtNum } from './wallStyle';
+
+interface Props {
+  project: Project;
+  calc: ProjectCalc;
+}
+
+const fmtQty = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ','));
+
+/** Lista cięć profili jednego elementu: produkt → [długość cm, sztuk] */
+function cutList(req: Requirement) {
+  return Object.entries(req.pieces)
+    .map(([pid, lens]) => {
+      const m = new Map<number, number>();
+      for (const l of lens) {
+        const k = Math.round(l * 100);
+        m.set(k, (m.get(k) ?? 0) + 1);
+      }
+      return {
+        pid,
+        name: PRODUCTS[pid]?.name ?? pid,
+        rows: [...m.entries()].sort((a, b) => b[0] - a[0]),
+        total: lens.reduce((a, b) => a + b, 0),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+}
+
+function CutTable({ req, title }: { req: Requirement; title: string }) {
+  const list = cutList(req);
+  if (!list.length) return null;
+  return (
+    <div className="cut-list">
+      <h4>{title}</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Element</th>
+            <th>Długości do cięcia</th>
+            <th className="num">Razem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((r) => (
+            <tr key={r.pid}>
+              <td>{r.name}</td>
+              <td>
+                {r.rows.map(([len, n]) => (
+                  <span key={len} className="cut-chip">
+                    {n} × {len} cm
+                  </span>
+                ))}
+              </td>
+              <td className="num">{fmtNum(r.total)} mb</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">Bez zapasu. Liczbę sztuk profili handlowych (po rozkroju) znajdziesz w zestawieniu materiałów.</p>
+    </div>
+  );
+}
+
+const JUNCTION_DETAIL: Record<string, DetailKind | undefined> = {
+  corner: 'corner',
+  'tee-through': 'tee',
+  'tee-abut': 'tee',
+  cross: 'cross',
+  'existing-wall': 'existing-wall',
+  free: 'free',
+};
+
+export function DrawingsPanel({ project, calc }: Props) {
+  const junctions = useMemo(() => analyzeJunctions(project), [project]);
+  const walls = project.walls.filter((w) => calc.walls.has(w.id));
+  const ceilings = project.ceilings.filter((c) => calc.ceilings.has(c.id));
+
+  // unikalne systemy i detale w projekcie
+  const wallSystems = useMemo(() => {
+    const m = new Map<string, (typeof walls)[number]>();
+    for (const w of walls) m.set(`${w.systemId}|${w.boardId}|${w.studSpacing}|${w.insulation}`, w);
+    return [...m.values()];
+  }, [walls]);
+  const ceilingSystems = useMemo(() => {
+    const m = new Map<string, (typeof ceilings)[number]>();
+    for (const c of ceilings) m.set(`${c.systemId}|${c.boardId}`, c);
+    return [...m.values()];
+  }, [ceilings]);
+  const details = useMemo(() => {
+    const out = new Map<DetailKind, (typeof walls)[number]>();
+    for (const w of walls) {
+      const j = junctions.get(w.id);
+      if (!j) continue;
+      for (const k of [j.endA, j.endB]) {
+        const d = JUNCTION_DETAIL[k];
+        if (d && !out.has(d)) out.set(d, w);
+      }
+    }
+    const order: DetailKind[] = ['corner', 'tee', 'cross', 'existing-wall', 'free'];
+    return order.filter((k) => out.has(k)).map((k) => ({ kind: k, wall: out.get(k)! }));
+  }, [walls, junctions]);
+  const openingDetails = useMemo(() => {
+    const m = new Map<string, { kind: 'door' | 'window'; reinforced: boolean; profile: number }>();
+    for (const w of walls)
+      for (const o of w.openings) {
+        const profile = wallSystemById(w.systemId).profile;
+        m.set(`${o.kind}|${o.reinforced}|${profile}`, { kind: o.kind, reinforced: o.reinforced, profile });
+      }
+    return [...m.values()];
+  }, [walls]);
+
+  if (!walls.length && !ceilings.length)
+    return (
+      <div className="empty">
+        <h3>Brak rysunków</h3>
+        <p>Dodaj ścianę lub sufit, a rysunki montażowe przygotują się automatycznie.</p>
+      </div>
+    );
+
+  return (
+    <div className="drawings">
+      <div className="print-only print-head">
+        <h1>{project.name}</h1>
+        <p>
+          Rysunki montażowe i zestawienie materiałów · {new Date().toLocaleDateString('pl-PL')} · Rigipsiarz
+        </p>
+      </div>
+
+      <div className="card drawings-intro no-print">
+        <p>
+          Rysunki powstają z tych samych wyliczeń co lista zakupów: każdy słupek, profil i wieszak na schemacie jest policzony w
+          materiałach. Na telefonie rysunek możesz przesuwać palcem w bok.
+        </p>
+        <div className="actions wrap">
+          <button className="btn primary" onClick={() => window.print()}>
+            Drukuj / PDF z listą materiałów
+          </button>
+        </div>
+      </div>
+
+      {walls.map((w) => {
+        const i = project.walls.indexOf(w) + 1;
+        const j = junctions.get(w.id)!;
+        return <WallSheet key={w.id} index={i} project={project} wallId={w.id} j={j} req={calc.walls.get(w.id)!.req} />;
+      })}
+
+      {ceilings.map((c) => {
+        const i = project.ceilings.indexOf(c) + 1;
+        const sys = ceilingSystemById(c.systemId);
+        const r = calc.ceilings.get(c.id)!;
+        return (
+          <section key={c.id} className="card sheet">
+            <header className="sheet-head">
+              <h3>Sufit {i}</h3>
+              <span className="muted small">
+                {fmtNum(r.areaM2, 1)} m² · obwód {fmtNum(r.perimeterM)} m · {sys.name}
+              </span>
+            </header>
+            <h4>Ruszt – rzut</h4>
+            <CeilingGridDrawing c={c} title={`Sufit ${i} – ruszt`} />
+            <h4>Rozkład płyt</h4>
+            <CeilingBoardsDrawing c={c} title={`Sufit ${i} – płyty`} />
+            <CutTable req={r.req} title="Lista cięć profili" />
+          </section>
+        );
+      })}
+
+      <section className="card sheet">
+        <header className="sheet-head">
+          <h3>Przekroje systemów</h3>
+          <span className="muted small">Budowa przegród użytych w projekcie</span>
+        </header>
+        {wallSystems.map((w) => {
+          const sys = wallSystemById(w.systemId);
+          return (
+            <div key={w.id}>
+              <h4>{sys.name}</h4>
+              <WallSection sys={sys} board={boardById(w.boardId)} spacing={w.studSpacing} insulation={w.insulation} />
+            </div>
+          );
+        })}
+        {ceilingSystems.map((c) => {
+          const sys = ceilingSystemById(c.systemId);
+          return (
+            <div key={c.id}>
+              <h4>{sys.name}</h4>
+              <CeilingSection sys={sys} board={boardById(c.boardId)} />
+            </div>
+          );
+        })}
+      </section>
+
+      {(details.length > 0 || openingDetails.length > 0) && (
+        <section className="card sheet">
+          <header className="sheet-head">
+            <h3>Detale połączeń</h3>
+            <span className="muted small">Tylko te, które występują w projekcie</span>
+          </header>
+          <div className="detail-grid">
+            {details.map(({ kind, wall }) => {
+              const sys = wallSystemById(wall.systemId);
+              return (
+                <JunctionDetail
+                  key={kind}
+                  kind={kind}
+                  p={{ profile: sys.profile, layers: sys.layers, sides: sys.sides, boardColor: boardById(wall.boardId).color }}
+                />
+              );
+            })}
+            {openingDetails.map((o) => (
+              <OpeningDetail key={`${o.kind}-${o.reinforced}-${o.profile}`} {...o} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="card sheet materials-sheet">
+        <header className="sheet-head">
+          <h3>Zestawienie materiałów</h3>
+          <span className="muted small">
+            {project.settings.wasteEnabled ? `Z zapasem ${project.settings.waste}% na płyty, wkręty, taśmy, masę i wełnę` : 'Bez zapasu'} · profile z rozkroju
+          </span>
+        </header>
+        <MaterialsTable lines={calc.total} />
+      </section>
+    </div>
+  );
+}
+
+function WallSheet({ index, project, wallId, j, req }: { index: number; project: Project; wallId: string; j: WallJunctions; req: Requirement }) {
+  const w = project.walls.find((x) => x.id === wallId)!;
+  const l = useMemo(() => wallLayout(project, w, j), [project, w, j]);
+  const sys = wallSystemById(w.systemId);
+  const [face, setFace] = useState(0);
+  const studs = [...new Set(l.studs.map((s) => Math.round(s.x * 100)))];
+  return (
+    <section className="card sheet">
+      <header className="sheet-head">
+        <h3>Ściana {index}</h3>
+        <span className="muted small">
+          {fmtNum(l.L)} × {fmtNum(l.H)} m · {sys.name} · płyta {boardById(w.boardId).short}
+        </span>
+      </header>
+      <h4>Konstrukcja</h4>
+      <WallFrameDrawing l={l} title={`Ściana ${index} – konstrukcja`} />
+      <p className="small stud-list">
+        <strong>Osie słupków od lewej krawędzi (cm):</strong> {studs.join(' · ')}
+      </p>
+      <h4>Rozkład płyt</h4>
+      {l.faces.length > 1 && (
+        <div className="seg no-print" role="tablist" aria-label="Okładzina">
+          {l.faces.map((f, i) => (
+            <button key={i} role="tab" aria-selected={face === i} className={face === i ? 'on' : ''} onClick={() => setFace(i)}>
+              {faceName(f, sys.sides, sys.layers)}
+            </button>
+          ))}
+        </div>
+      )}
+      {l.faces.map((f, i) => (
+        <div key={i} className={i === face ? '' : 'print-only'}>
+          {l.faces.length > 1 && <h5 className="print-only">{faceName(f, sys.sides, sys.layers)}</h5>}
+          <WallBoardsDrawing l={l} face={f} title={`Ściana ${index} – ${faceName(f, sys.sides, sys.layers)}`} />
+        </div>
+      ))}
+      <CutTable req={req} title="Lista cięć profili" />
+    </section>
+  );
+}
+
+function MaterialsTable({ lines }: { lines: MaterialLine[] }) {
+  return (
+    <table className="materials-table">
+      <thead>
+        <tr>
+          <th>Materiał</th>
+          <th className="num">Ilość</th>
+          <th>Uwagi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((l) => (
+          <tr key={l.key}>
+            <td>{l.name}</td>
+            <td className="num">
+              <strong>{l.packs ? `${l.packs} ${l.packUnit}` : `${fmtQty(l.qty)} ${l.unit}`}</strong>
+              {l.packs ? <span className="muted small"> ({fmtQty(l.qty)} {l.unit})</span> : null}
+            </td>
+            <td className="muted small">{l.note ?? ''}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+

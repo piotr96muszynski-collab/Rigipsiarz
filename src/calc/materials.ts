@@ -20,6 +20,7 @@ import {
   type WallJunctions,
 } from '../geometry/geometry';
 import type { Ceiling, Project, Wall } from '../model/types';
+import { gridStuds, hangerPositions, pickBoardLengthCm, splicePositions, wallOpenings } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -53,10 +54,7 @@ const addPiece = (req: Requirement, product: string, len: number) => {
 };
 
 /** Dobór długości arkusza: najkrótszy ≥ wysokości, inaczej najdłuższy (z dostawką) */
-export function pickBoardLength(boardId: string, heightCm: number): number {
-  const lens = [...boardById(boardId).lengths].sort((a, b) => a - b);
-  return lens.find((l) => l >= heightCm) ?? lens[lens.length - 1];
-}
+export const pickBoardLength = pickBoardLengthCm;
 
 const TAPE_FOR_PROFILE: Record<number, string> = { 50: 'TASMA_USZ50', 75: 'TASMA_USZ70', 100: 'TASMA_USZ95' };
 
@@ -82,34 +80,13 @@ export function wallRequirement(p: Project, w: Wall, j: WallJunctions): { req: R
   const uw = `UW${sys.profile}`;
   const ua = `UA${sys.profile}`;
 
-  // Otwory przycięte do ściany, w metrach
-  const openings = w.openings
-    .map((o) => {
-      const x0 = Math.max(0, o.offset / 100);
-      const x1 = Math.min(L, (o.offset + o.width) / 100);
-      const sill = o.kind === 'door' ? 0 : o.sill / 100;
-      const top = Math.min(H, sill + o.height / 100);
-      return { ...o, x0, x1, w: x1 - x0, sill, top, h: top - sill };
-    })
-    .filter((o) => o.w > 0.05 && o.h > 0.05);
+  const openings = wallOpenings(w, L, H);
 
-  // --- Słupki ---
-  const positions: number[] = [];
-  for (let x = 0; x < L - 0.1; x += s) positions.push(x);
-  positions.push(L);
+  // --- Słupki (wspólna geometria z rysunkiem ściany) ---
   const studPositions: number[] = [];
-  for (const x of positions) {
-    const op = openings.find((o) => x > o.x0 - 0.05 && x < o.x1 + 0.05);
-    if (!op) {
-      addPiece(req, cw, H);
-      studPositions.push(x);
-    } else if (x > op.x0 + 0.05 && x < op.x1 - 0.05) {
-      // słupek w świetle otworu → krótkie odcinki nad i pod otworem
-      addPiece(req, cw, H - op.top);
-      addPiece(req, cw, op.sill);
-      studPositions.push(x);
-    }
-    // słupki pokrywające się z ościeżem zastępuje słupek ościeżnicowy
+  for (const st of gridStuds(L, H, s, openings)) {
+    for (const [y0, y1] of st.segments) addPiece(req, cw, y1 - y0);
+    studPositions.push(st.x);
   }
   for (let i = 0; i < j.extraStuds; i++) addPiece(req, cw, H);
 
@@ -256,9 +233,9 @@ export function ceilingRequirement(c: Ceiling): { req: Requirement; areaM2: numb
     for (const [s0, s1] of g.segments) {
       const run = (s1 - s0) / 100;
       addPiece(req, 'CD60', run);
-      add(req.counts, 'LACZNIK_WZDL', Math.max(0, Math.ceil(run / 4) - 1));
+      add(req.counts, 'LACZNIK_WZDL', splicePositions(s0, s1).length);
       if (g.level === 'main') {
-        const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100)));
+        const hangers = hangerPositions(s0, s1, sys.hangerSpacing).length;
         if (sys.kind === 'direct') {
           add(req.counts, 'WIESZAK_ES', hangers);
           add(req.counts, 'LN9', hangers * 2);

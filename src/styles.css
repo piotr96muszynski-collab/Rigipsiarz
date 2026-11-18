@@ -836,3 +836,200 @@ li.done .item-qty strong {
   color: var(--muted);
   margin: 4px 0 10px;
 }
+
+/* ---------- rysunki montażowe ---------- */
+.drawings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.drawings h4 {
+  font-size: 0.95rem;
+  margin: 4px 0 0;
+}
+.drawings h5 {
+  font-size: 0.85rem;
+  margin: 6px 0 0;
+}
+.sheet-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.drawing {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.paper {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.paper svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 78vh;
+}
+.dw-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 0.85rem;
+}
+.dw-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dw-swatch {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid #0003;
+  flex: none;
+}
+.dw-swatch.dw-dashed {
+  height: 0;
+  border: none;
+  border-top: 2px dashed currentColor;
+  background: none !important;
+}
+.dw-swatch.dw-cut {
+  background: repeating-linear-gradient(-45deg, #f6d9a8 0 4px, #e0b46a 4px 6px);
+}
+.dw-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex: none;
+}
+.detail-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+}
+.detail .paper svg {
+  max-height: 420px;
+}
+.stud-list {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.seg button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.seg button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.cut-list,
+.materials-table {
+  font-size: 0.9rem;
+}
+.cut-list table,
+.materials-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cut-list th,
+.cut-list td,
+.materials-table th,
+.materials-table td {
+  text-align: left;
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.cut-list th,
+.materials-table th {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.cut-list .num,
+.materials-table .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cut-chip {
+  display: inline-block;
+  margin: 0 8px 2px 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  .print-only {
+    display: block;
+  }
+  .stats,
+  .drawings-intro {
+    display: none !important;
+  }
+  .card {
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+  .sheet ~ .sheet {
+    break-before: page;
+  }
+  .drawings h4,
+  .drawings h5 {
+    break-after: avoid;
+  }
+  .drawing,
+  .cut-list,
+  .materials-table tr {
+    break-inside: avoid;
+  }
+  .paper {
+    overflow: visible;
+    border-color: #ccc;
+  }
+  .paper svg {
+    min-width: 0 !important;
+    max-height: 165mm;
+  }
+  .detail .paper svg {
+    max-height: 80mm;
+  }
+  .print-head h1 {
+    font-size: 1.4rem;
+  }
+}
