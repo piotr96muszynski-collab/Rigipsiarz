@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { wallLayout } from '../calc/layout';
+import { ceilingInsulation, wallInsulation } from '../calc/materials';
 import type { MaterialLine, ProjectCalc, Requirement } from '../calc/materials';
 import { PRODUCTS, boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { CeilingBoardsDrawing, CeilingGridDrawing } from '../drawings/CeilingDrawing';
@@ -88,19 +89,19 @@ export function DrawingsPanel({ project, calc }: Props) {
   // unikalne systemy i detale w projekcie
   const wallSystems = useMemo(() => {
     const m = new Map<string, (typeof walls)[number]>();
-    for (const w of walls) m.set(`${w.systemId}|${w.boardId}|${w.studSpacing}|${w.insulation}`, w);
+    for (const w of walls) m.set(`${w.systemId}|${w.boardId}|${w.studSpacing}|${JSON.stringify(wallInsulation(w))}`, w);
     return [...m.values()];
   }, [walls]);
   const ceilingSystems = useMemo(() => {
     const m = new Map<string, (typeof ceilings)[number]>();
-    for (const c of ceilings) m.set(`${c.systemId}|${c.boardId}`, c);
+    for (const c of ceilings) m.set(`${c.systemId}|${c.boardId}|${JSON.stringify(ceilingInsulation(c))}`, c);
     return [...m.values()];
   }, [ceilings]);
   const details = useMemo(() => {
     const out = new Map<DetailKind, (typeof walls)[number]>();
     for (const w of walls) {
       const frame = wallSystemById(w.systemId).frame;
-      if (frame === 'glued' || frame === 'cd-lining') continue; // okładziny: detale połączeń ścian nie dotyczą
+      if (frame === 'glued' || frame === 'cd-lining' || frame === 'point-fix') continue; // okładziny: detale połączeń ścian nie dotyczą
       const j = junctions.get(w.id);
       if (!j) continue;
       for (const k of [j.endA, j.endB]) {
@@ -114,7 +115,7 @@ export function DrawingsPanel({ project, calc }: Props) {
   const openingDetails = useMemo(() => {
     const m = new Map<string, { kind: 'door' | 'window'; reinforced: boolean; profile: number }>();
     for (const w of walls)
-      if (wallSystemById(w.systemId).frame !== 'glued')
+      if (wallSystemById(w.systemId).frame !== 'glued' && wallSystemById(w.systemId).frame !== 'point-fix')
       for (const o of w.openings) {
         const profile = wallSystemById(w.systemId).profile;
         m.set(`${o.kind}|${o.reinforced}|${profile}`, { kind: o.kind, reinforced: o.reinforced, profile });
@@ -169,8 +170,16 @@ export function DrawingsPanel({ project, calc }: Props) {
                 {fmtNum(r.areaM2, 1)} m² · obwód {fmtNum(r.perimeterM)} m · {sys.name}
               </span>
             </header>
-            <h4>Ruszt – rzut</h4>
-            <CeilingGridDrawing c={c} title={`Sufit ${i} – ruszt`} />
+            {sys.kind === 'point-fix' ? (
+              <p className="small">
+                Płyta przykręcana do łączników ATLAS M-System 3G w siatce {sys.mainSpacing}×{sys.secondarySpacing} cm – bez profili.
+              </p>
+            ) : (
+              <>
+                <h4>Ruszt – rzut</h4>
+                <CeilingGridDrawing c={c} title={`Sufit ${i} – ruszt`} />
+              </>
+            )}
             <h4>Rozkład płyt</h4>
             <CeilingBoardsDrawing c={c} title={`Sufit ${i} – płyty`} />
             <CutTable req={r.req} title="Lista cięć profili" />
@@ -188,7 +197,7 @@ export function DrawingsPanel({ project, calc }: Props) {
           return (
             <div key={w.id}>
               <h4>{sys.name}</h4>
-              <WallSection sys={sys} board={boardById(w.boardId)} spacing={w.studSpacing} insulation={w.insulation} />
+              <WallSection sys={sys} board={boardById(w.boardId)} spacing={w.studSpacing} wool={wallInsulation(w, sys)} />
             </div>
           );
         })}
@@ -197,7 +206,7 @@ export function DrawingsPanel({ project, calc }: Props) {
           return (
             <div key={c.id}>
               <h4>{sys.name}</h4>
-              <CeilingSection sys={sys} board={boardById(c.boardId)} />
+              <CeilingSection sys={sys} board={boardById(c.boardId)} wool={ceilingInsulation(c)} />
             </div>
           );
         })}
@@ -254,8 +263,12 @@ function WallSheet({ index, project, wallId, j, req }: { index: number; project:
           {fmtNum(l.L)} × {fmtNum(l.H)} m · {sys.name} · płyta {boardById(w.boardId).short}
         </span>
       </header>
-      {l.frame === 'glued' ? (
-        <p className="small">Płyty klejone do ściany na placki z kleju gipsowego – bez rusztu.</p>
+      {l.frame === 'glued' || l.frame === 'point-fix' ? (
+        <p className="small">
+          {l.frame === 'glued'
+            ? 'Płyty klejone do ściany na placki z kleju gipsowego – bez rusztu.'
+            : `Płyty przykręcane do łączników ATLAS M-System 3G w siatce ${w.studSpacing}×${sys.pointSpacing ?? 50} cm – bez profili.`}
+        </p>
       ) : (
         <>
           <h4>Konstrukcja</h4>

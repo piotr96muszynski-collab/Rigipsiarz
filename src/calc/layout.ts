@@ -206,7 +206,8 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions): WallLayout {
   const openings = wallOpenings(w, L, H);
 
   const frame = sys.frame;
-  const glued = frame === 'glued';
+  // bez profili: klejenie na placki albo łączniki punktowe ATLAS
+  const glued = frame === 'glued' || frame === 'point-fix';
   const isCD = frame === 'cd-lining';
   const rows = glued ? 0 : frame === 'double' || frame === 'separate' ? 2 : 1;
 
