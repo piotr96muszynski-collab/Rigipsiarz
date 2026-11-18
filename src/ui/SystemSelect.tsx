@@ -3,6 +3,7 @@ import {
   WALL_CATEGORY_LABEL,
   allCeilingSystems,
   allWallSystems,
+  isLiningSystem,
   type CeilingKind,
   type WallCategory,
 } from '../catalog/rigips';
@@ -50,14 +51,14 @@ export function WallSystemSelect({ id, value, onChange }: Props) {
 }
 
 /**
- * Systemy okładzin istniejących ścian: wszystkie systemy kategorii „okładzina” z katalogu
- * (Rigips, inne marki dodane do katalogu, systemy własne).
+ * Systemy okładzin istniejących ścian: jednostronne systemy mocowane do muru z katalogu
+ * (Rigips: klej, CD na ES; ATLAS M-System 3G; systemy własne).
  */
 export function LiningSystemSelect({ id, value, onChange }: Props) {
-  const all = allWallSystems().filter((s) => s.category === 'okładzina');
+  const all = allWallSystems().filter(isLiningSystem);
   const groups = new Map<string, typeof all>();
   for (const s of all) {
-    const g = s.custom ? 'Systemy własne' : (s as { brand?: string }).brand ?? 'Rigips';
+    const g = s.custom ? 'Systemy własne' : WALL_CATEGORY_LABEL[s.category];
     groups.set(g, [...(groups.get(g) ?? []), s]);
   }
   return (

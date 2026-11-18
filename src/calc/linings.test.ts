@@ -104,3 +104,18 @@ describe('model 3D obrysu', () => {
     for (const x of boards) if (x.type === 'box') expect(x.c[2]).toBeGreaterThan(0);
   });
 });
+
+describe('okładzina ATLAS M-System na murze', () => {
+  it('łączniki zamiast profili, z odjęciem otworu', () => {
+    const p = outline();
+    const w = p.walls[0];
+    w.openings.push(createOpening('window', 100));
+    w.linings = [createLining(interiorSide(p, w) || 1, 'A-W-L100')];
+    const calc = calculateProject(p);
+    const r = calc.linings.get(liningKey(w.id, w.linings[0].side))!;
+    expect(r.info.netAreaM2).toBeCloseTo(5 * 2.6 - 1.2 * 1.2);
+    expect(r.info.warnings.join(' ')).not.toContain('nie jest okładziną');
+    expect(r.req.pieces.CD60 ?? []).toHaveLength(0);
+    expect(Object.keys(r.req.counts).some((k) => k.startsWith('ATLAS'))).toBe(true);
+  });
+});

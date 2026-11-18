@@ -149,7 +149,9 @@ function buildWall(p: Project, w: Wall, calc: ProjectCalc | undefined, nodes: Re
   const rotY = -Math.atan2(dz, dx);
   const sys = wallSystemById(w.systemId);
   const board = boardById(w.boardId);
-  const depth = sys.profile / 1000;
+  const pointFix = sys.frame === 'point-fix';
+  // okładzina ATLAS: zamiast profili odstęp płyty od muru (łączniki punktowe)
+  const depth = pointFix ? wallFrameDepth(sys) / 1000 : sys.profile / 1000;
   const bt = board.thickness / 1000;
 
   /** Dodaje prostopadłościan w układzie ściany: u wzdłuż, v wysokość, n odsunięcie od osi */
@@ -181,7 +183,7 @@ function buildWall(p: Project, w: Wall, calc: ProjectCalc | undefined, nodes: Re
     }
   }
   // --- Ościeża, nadproża, podokienniki ---
-  for (const o of openings) {
+  for (const o of pointFix ? [] : openings) {
     const mat: FrameMat = o.reinforced ? 'ua' : 'cw';
     const jl = Math.max(STUD_W / 2, o.x0 - STUD_W / 2);
     const jr = Math.min(L - STUD_W / 2, o.x1 + STUD_W / 2);
@@ -191,9 +193,9 @@ function buildWall(p: Project, w: Wall, calc: ProjectCalc | undefined, nodes: Re
     if (o.sill > 0.05) box('wallFrame', 'uw', o.x0, o.x1, o.sill - TRACK_H, o.sill, 0, depth);
   }
   // --- UW: strop i posadzka (posadzkowy przerwany w drzwiach) ---
-  box('wallFrame', 'uw', 0, L, H - TRACK_H, H, 0, depth);
-  let cursor = 0;
-  for (const o of openings.filter((o) => o.sill <= 0.01).sort((m, n) => m.x0 - n.x0)) {
+  if (!pointFix) box('wallFrame', 'uw', 0, L, H - TRACK_H, H, 0, depth);
+  let cursor = pointFix ? L : 0;
+  for (const o of (pointFix ? [] : openings).filter((o) => o.sill <= 0.01).sort((m, n) => m.x0 - n.x0)) {
     if (o.x0 - cursor > 0.05) box('wallFrame', 'uw', cursor, o.x0, 0, TRACK_H, 0, depth);
     cursor = Math.max(cursor, o.x1);
   }
@@ -351,7 +353,8 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
     }
   }
 
-  // UD przyścienny po obwodzie
+  // UD przyścienny po obwodzie (system ATLAS M-System 3G nie ma profili)
+  if (sys.kind === 'point-fix') return;
   const edges = polygonPerimeterEdges(pts);
   pts.forEach((p0, i) => {
     const p1 = pts[(i + 1) % pts.length];

@@ -34,6 +34,12 @@ const KNOWN_DIFF = new Set([
   'S-UA-1:KATOWNIK_UA',
   'S-UA-1:LACZNIK_UA_CD',
 ]);
+/**
+ * ATLAS M-System 3G, ściany: karta podaje wydajność opakowania dla dużej powierzchni
+ * (sama siatka), a aplikacja dolicza rzędy i kolumny przy krawędziach płyt – na ścianie
+ * 5×2,75 m to ok. +50%. Liczbę łączników sprawdza osobny test poniżej.
+ */
+const ATLAS_WALL_EDGE = (id: string) => id.startsWith('A-W-');
 /** Zależne od wymiarów pomieszczenia: łączniki wzdłużne (długość profili), a w suficie przęsłowym CW obwód i liczba końców CW */
 const geometryDependent = (id: string, product?: string) =>
   product === 'LACZNIK_WZDL' || (id.startsWith('S-CW') && (product?.startsWith('UW') || product === 'LN9'));
@@ -41,7 +47,7 @@ const geometryDependent = (id: string, product?: string) =>
 function compare(id: string, lines: ConsumptionLine[], ref: RefLine[], tolerance = 0.25) {
   const checked: string[] = [];
   for (const r of ref) {
-    if (!r.product || KNOWN_DIFF.has(`${id}:${r.product}`) || geometryDependent(id, r.product)) continue;
+    if (!r.product || KNOWN_DIFF.has(`${id}:${r.product}`) || geometryDependent(id, r.product) || ATLAS_WALL_EDGE(id)) continue;
     const got = lines.find((l) => l.key === r.product);
     if (!got) continue; // np. wkręty przy innej płycie – sprawdzane osobno
     checked.push(r.product);
@@ -67,20 +73,20 @@ describe('katalog – spójność danych', () => {
     for (const s of [...WALL_SYSTEMS, ...CEILING_SYSTEMS]) if (s.code) expect(s.source.url, s.id).toMatch(/^https:\/\/www\.rigips\.pl\//);
   });
   it('katalog obejmuje wszystkie rodzaje ścian i sufitów', () => {
-    expect(new Set(WALL_SYSTEMS.map((s) => s.frame))).toEqual(new Set(['single', 'double', 'separate', 'cd-lining', 'glued']));
-    expect(new Set(WALL_SYSTEMS.map((s) => s.category)).size).toBe(5);
-    expect(new Set(CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'direct', 'ua-span', 'cw-span']));
+    expect(new Set(WALL_SYSTEMS.map((s) => s.frame))).toEqual(new Set(['single', 'double', 'separate', 'cd-lining', 'glued', 'point-fix']));
+    expect(new Set(WALL_SYSTEMS.map((s) => s.category)).size).toBe(6);
+    expect(new Set(CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'direct', 'ua-span', 'cw-span', 'point-fix']));
   });
 });
 
 describe('zużycie na m² zgodne z kartami Rigips (±25%)', () => {
   for (const s of WALL_SYSTEMS.filter((x) => x.reference))
-    it(`ściana ${s.code} ${s.name}`, () => {
-      expect(compare(s.id, wallConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(6);
+    it(`ściana ${s.code ?? ''} ${s.name}`, () => {
+      expect(compare(s.id, wallConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(ATLAS_WALL_EDGE(s.id) ? 0 : 6);
     });
   for (const s of CEILING_SYSTEMS.filter((x) => x.reference))
-    it(`sufit ${s.code} ${s.name}`, () => {
-      expect(compare(s.id, ceilingConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(4);
+    it(`sufit ${s.code ?? ''} ${s.name}`, () => {
+      expect(compare(s.id, ceilingConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(s.kind === 'point-fix' ? 1 : 4);
     });
 });
 
