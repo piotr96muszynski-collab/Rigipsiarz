@@ -18,6 +18,7 @@ import { ShoppingList } from './ShoppingList';
 import { WoolSettings } from './WoolField';
 import { UpdatePrompt } from './UpdatePrompt';
 import { useBack, useExitHint } from './back';
+import { useImmersive } from './fullscreen';
 import { useHistory } from './useHistory';
 import { fmtNum } from './wallStyle';
 
@@ -318,8 +319,18 @@ function ProjectView({
   // przycisk Wstecz: z innej zakładki wraca do startowej, a stamtąd do listy projektów
   useBack(true, () => (activeTab !== homeTab ? setTab(startTab) : onClose()));
 
+  // pełny ekran tylko dla planera i widoku 3D; rejestrowany po Wstecz projektu, więc zamyka się pierwszy
+  const imm = useImmersive();
+  const canImmerse = activeTab === 'plan' || activeTab === '3d';
+  const immersive = imm.on && canImmerse;
+  const { on: immOn, exit: immExit } = imm;
+  useEffect(() => {
+    if (immOn && !canImmerse) immExit();
+  }, [immOn, canImmerse, immExit]);
+  const fullscreen = { on: immersive, toggle: imm.toggle, undo, redo, canUndo, canRedo };
+
   return (
-    <div className={`project ${activeTab === 'plan' ? 'on-plan' : ''}`}>
+    <div className={`project ${activeTab === 'plan' ? 'on-plan' : ''} ${immersive ? 'immersive' : ''}`}>
       <header className="topbar">
         <button className="icon-btn" onClick={onClose} aria-label="Wróć do projektów">
           <svg viewBox="0 0 24 24" aria-hidden>
@@ -391,11 +402,11 @@ function ProjectView({
 
       <div className="tab-body">
         {activeTab === 'plan' && (
-          <PlanTab project={project} calc={calc} update={update} commit={commit} wide={wide} onShowList={() => setTab(wide ? 'elements' : 'list')} />
+          <PlanTab project={project} calc={calc} update={update} commit={commit} wide={wide} onShowList={() => setTab(wide ? 'elements' : 'list')} fullscreen={fullscreen} />
         )}
         {tab === '3d' && (
           <Suspense fallback={<p className="muted">Wczytywanie widoku 3D…</p>}>
-            <View3D project={project} calc={calc} />
+            <View3D project={project} calc={calc} fullscreen={fullscreen} />
           </Suspense>
         )}
         {(tab === 'list' || tab === 'elements') && (

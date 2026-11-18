@@ -547,6 +547,208 @@ hr {
     border-radius: var(--radius);
   }
 }
+/* ---------- wybór z listy (zamiast <select>) ---------- */
+.picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.picker-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.picker-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.picker-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker-btn svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.seg.picker-seg {
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.seg.picker-seg button {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.seg.picker-seg button.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow);
+}
+.picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(0 0 0 / 40%);
+  animation: picker-fade 0.15s ease-out;
+}
+.picker-sheet {
+  width: min(560px, 100%);
+  max-height: min(78dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 18px 18px 0 0;
+  padding: 6px 0 env(safe-area-inset-bottom);
+  box-shadow: 0 -8px 30px rgb(16 24 40 / 20%);
+  animation: picker-up 0.18s ease-out;
+}
+.picker-grab {
+  align-self: center;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.picker-head strong {
+  flex: 1;
+  font-size: 1.05rem;
+}
+.picker-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 8px 10px;
+}
+.picker-group {
+  position: sticky;
+  top: -6px;
+  z-index: 1;
+  padding: 10px 10px 4px;
+  background: var(--surface);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.picker-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.picker-opt > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.picker-opt small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.picker-opt:hover {
+  background: var(--surface-2);
+}
+.picker-opt.on {
+  background: var(--accent-soft);
+}
+.picker-opt.on .picker-label {
+  font-weight: 700;
+}
+.picker-opt svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+@media (min-width: 720px) {
+  .picker-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+  .picker-sheet {
+    border-radius: 18px;
+    padding-bottom: 6px;
+  }
+  .picker-grab {
+    display: none;
+  }
+}
+@keyframes picker-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0.6;
+  }
+}
+@keyframes picker-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .picker-backdrop,
+  .picker-sheet {
+    animation: none;
+  }
+}
+@media print {
+  .picker-btn svg {
+    display: none;
+  }
+}
+
 .empty {
   text-align: center;
   padding: 28px 16px;
@@ -1829,6 +2031,109 @@ kbd {
   font-size: 0.92rem;
 }
 
+/* ---------- pełny ekran: planer i widok 3D ---------- */
+.project.immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  height: auto;
+  min-height: 0;
+  gap: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: var(--bg);
+}
+.project.immersive > .topbar,
+.project.immersive > .stats,
+.project.immersive > .tabs {
+  display: none;
+}
+.project.immersive .tab-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.project.immersive .plan-layout {
+  flex: 1;
+  min-height: 0;
+}
+.project.immersive .plan-stage {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+.project.immersive .plan-layout.wide {
+  gap: 0;
+}
+.project.immersive .plan-side {
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+}
+.project.immersive .view3d {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.project.immersive .view3d-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 64px;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+}
+.project.immersive .view3d-toolbar .chip {
+  box-shadow: var(--shadow);
+}
+.project.immersive .view3d-canvas {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+.project.immersive .view3d-collisions,
+.project.immersive .view3d-help {
+  display: none;
+}
+.view3d-exit {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 3;
+}
+.view3d-exit svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fab.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.fab:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.fab-gap {
+  height: 4px;
+}
+.chip-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* ---------- widok 3D ---------- */
 .view3d {
   display: flex;
@@ -1928,7 +2233,7 @@ kbd {
   gap: 12px;
   flex-wrap: wrap;
 }
-.wool-row select {
+.wool-row .wool-pick {
   width: auto;
   min-width: 96px;
 }
@@ -1945,9 +2250,6 @@ kbd {
 }
 .wool-settings small.hint {
   color: var(--muted);
-}
-.wool-choice select {
-  max-width: 100%;
 }
 
 /* obrys istniejącej przestrzeni i okładziny */
@@ -2063,17 +2365,109 @@ kbd {
   gap: 8px;
 }
 .paper {
+  position: relative;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
 }
-.paper svg {
+.paper > svg {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 78vh;
+  max-height: 70vh;
+}
+.paper.zoomable {
+  cursor: zoom-in;
+}
+.paper.zoomable:active {
+  border-color: var(--accent);
+}
+/* znaczek lupy: rysunek da się powiększyć */
+.paper-zoom {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid #d5dae1;
+  color: #1f2933;
+  box-shadow: 0 1px 3px rgb(16 24 40 / 12%);
+  pointer-events: none;
+}
+.paper-zoom svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* podgląd rysunku na pełnym ekranie */
+.zoom-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  color: #1f2933;
+}
+.zoom-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: calc(4px + env(safe-area-inset-top)) 6px 4px 14px;
+  background: var(--surface);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.zoom-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zoom-bar svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.zoom-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  touch-action: none;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.zoom-stage:active {
+  cursor: grabbing;
+}
+.zoom-stage > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.zoom-help {
+  margin: 0;
+  padding: 6px 14px calc(8px + env(safe-area-inset-bottom));
+  font-size: 0.8rem;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
 }
 .dw-legend {
   list-style: none;
@@ -2218,8 +2612,7 @@ kbd {
     overflow: visible;
     border-color: #ccc;
   }
-  .paper svg {
-    min-width: 0 !important;
+  .paper > svg {
     max-height: 165mm;
   }
   .detail .paper svg {

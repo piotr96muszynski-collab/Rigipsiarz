@@ -1,4 +1,5 @@
 import { DEFAULT_WOOL, WOOL_THICKNESSES, resolveWool, woolProductById, woolProductsFor, type WoolChoice } from '../catalog/insulation';
+import { Picker } from './Picker';
 import { fmtNum } from './wallStyle';
 
 /** m² bez zbędnych zer: 7,2 · 8,64 · 12 */
@@ -34,18 +35,14 @@ export function WoolField({ id, enabled, thickness, options, layers, areaM2, woo
         </label>
         {enabled &&
           (options.length > 1 ? (
-            <select
+            <Picker
               id={id}
-              aria-label="Grubość wełny"
+              label="Grubość wełny"
               value={thickness}
-              onChange={(e) => onThickness(Number(e.target.value))}
-            >
-              {options.map((t) => (
-                <option key={t} value={t}>
-                  {t} mm
-                </option>
-              ))}
-            </select>
+              options={options.map((t) => ({ value: t, label: `${t} mm` }))}
+              onChange={onThickness}
+              className="wool-pick"
+            />
           ) : (
             <span className="muted">{thickness} mm</span>
           ))}
@@ -84,21 +81,22 @@ export function WoolSettings({
         return (
           <div key={t} className="field wool-choice">
             <label htmlFor={`woolp-${t}`}>{t} mm</label>
-            <select
+            <Picker
               id={`woolp-${t}`}
+              label={`Wełna ${t} mm – opakowanie`}
               value={current}
-              onChange={(e) =>
-                onChange(t, e.target.value === 'custom' ? { customM2: choice?.customM2 || 5 } : { productId: e.target.value })
-              }
-            >
-              {woolProductsFor(t).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.thickness !== t ? ` ${p.thickness} mm` : ''} · {fmtM2(p.packM2)} m²
-                </option>
-              ))}
-              <option value="custom">Własne opakowanie…</option>
-            </select>
+              mode="sheet"
+              options={[
+                ...woolProductsFor(t).map((p) => ({
+                  value: p.id,
+                  label: `${p.name}${p.thickness !== t ? ` ${p.thickness} mm` : ''}`,
+                  short: `${p.name}${p.thickness !== t ? ` ${p.thickness} mm` : ''} · ${fmtM2(p.packM2)} m²`,
+                  hint: `${fmtM2(p.packM2)} m² w ${p.form === 'mata' ? 'rolce' : 'paczce'}`,
+                })),
+                { value: 'custom', label: 'Własne opakowanie…', hint: 'Wpiszesz, ile m² jest w paczce' },
+              ]}
+              onChange={(v) => onChange(t, v === 'custom' ? { customM2: choice?.customM2 || 5 } : { productId: v })}
+            />
             {!custom && selected && (
               <small className="hint">
                 {selected.form === 'mata'

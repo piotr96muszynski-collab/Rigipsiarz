@@ -18,6 +18,7 @@ import { JOINT_KIND_LABEL, defaultTypeId, edgesTotal, type Joint, type JointEdge
 import type { ProjectCalc } from '../calc/materials';
 import type { Project } from '../model/types';
 import { Warnings } from './SystemSelect';
+import { Picker } from './Picker';
 import { fmtNum } from './wallStyle';
 
 interface Props {
@@ -100,15 +101,20 @@ export function FinishingPanel({ project, calc, update }: Props) {
           {label} · {e.lengths.length} × {fmtNum(e.lengths[0], 2)} m{e.lengths.length > 1 && new Set(e.lengths).size > 1 ? ' i in.' : ''} ={' '}
           {fmtNum(edgesTotal(e), 2)} mb
         </label>
-        <select value={e.isDefault ? '' : chosen} onChange={(ev) => setOverride(j.id, which, ev.target.value)}>
-          <option value="">Domyślnie: {def?.name}</option>
-          {cornerTypesFor(e.use).map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-              {e.odd && !t.anyAngle ? ' (tylko 90°)' : ''}
-            </option>
-          ))}
-        </select>
+        <Picker
+          label={label}
+          value={e.isDefault ? '' : chosen}
+          mode="sheet"
+          options={[
+            { value: '', label: `Domyślnie: ${def?.name ?? ''}`, hint: 'Jak w wykończeniu domyślnym projektu' },
+            ...cornerTypesFor(e.use).map((t) => ({
+              value: t.id,
+              label: `${t.name}${e.odd && !t.anyAngle ? ' (tylko 90°)' : ''}`,
+              hint: t.info,
+            })),
+          ]}
+          onChange={(v) => setOverride(j.id, which, v)}
+        />
       </div>
     );
   };
@@ -122,24 +128,26 @@ export function FinishingPanel({ project, calc, update }: Props) {
         </div>
         <div className="field">
           <label htmlFor="fin-compound">Masa szpachlowa</label>
-          <select id="fin-compound" value={f.compound} onChange={(e) => setF({ compound: e.target.value })}>
-            {COMPOUNDS.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} – {fmtNum(c.kgPerM2, 2)} kg/m² ({c.kind})
-              </option>
-            ))}
-          </select>
+          <Picker
+            id="fin-compound"
+            label="Masa szpachlowa"
+            value={f.compound}
+            mode="sheet"
+            options={COMPOUNDS.map((c) => ({ value: c.id, label: c.name, hint: `${fmtNum(c.kgPerM2, 2)} kg/m² · ${c.kind}` }))}
+            onChange={(v) => setF({ compound: v })}
+          />
           <small className="hint">{compoundById(f.compound).info}</small>
         </div>
         <div className="field">
           <label htmlFor="fin-tape">Taśma spoinowa</label>
-          <select id="fin-tape" value={f.tape} onChange={(e) => setF({ tape: e.target.value as FinishingSettings['tape'] })}>
-            {TAPES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          <Picker
+            id="fin-tape"
+            label="Taśma spoinowa"
+            value={f.tape}
+            mode="sheet"
+            options={TAPES.map((t) => ({ value: t.id, label: t.name, hint: t.info }))}
+            onChange={(v) => setF({ tape: v })}
+          />
           <small className="hint">{tapeById(f.tape).info}</small>
         </div>
         {boards.length > 0 && (
@@ -173,13 +181,14 @@ export function FinishingPanel({ project, calc, update }: Props) {
         {DEFAULT_ROWS.map((r) => (
           <div className="field" key={r.key}>
             <label htmlFor={`fin-${r.key}`}>{r.label}</label>
-            <select id={`fin-${r.key}`} value={f[r.key]} onChange={(e) => setF({ [r.key]: e.target.value })}>
-              {cornerTypesFor(r.use).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <Picker
+              id={`fin-${r.key}`}
+              label={r.label}
+              value={f[r.key]}
+              mode="sheet"
+              options={cornerTypesFor(r.use).map((t) => ({ value: t.id, label: t.name, hint: t.info }))}
+              onChange={(v) => setF({ [r.key]: v })}
+            />
             <small className="hint">{cornerTypeById(f[r.key])?.info}</small>
           </div>
         ))}

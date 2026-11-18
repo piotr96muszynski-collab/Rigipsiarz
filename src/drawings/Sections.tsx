@@ -79,7 +79,7 @@ export function WallSection({ sys, board, spacing, wool }: { sys: WallSystem; bo
     });
   return (
     <figure className="drawing">
-      <Paper viewBox={[x0 - 140, -f * 4, x1 - x0 + 330, T + (onWall ? 90 : 0) + f * 9]} title={`Przekrój ściany ${sys.name}`} minWidth={560}>
+      <Paper viewBox={[x0 - 140, -f * 4, x1 - x0 + 330, T + (onWall ? 90 : 0) + f * 9]} title={`Przekrój ściany ${sys.name}`}>
         {onWall && (
           <>
             <rect x={x0} y={yCore1} width={x1 - x0} height={80} fill={C.concrete} />
@@ -224,7 +224,7 @@ export function CeilingSection({ sys, board, wool }: { sys: CeilingSystem; board
 
   return (
     <figure className="drawing">
-      <Paper viewBox={[-180, -210, x1 + 180 + 200, bottom + 210 + f * 6]} title={`Przekrój sufitu ${sys.name}`} minWidth={560}>
+      <Paper viewBox={[-180, -210, x1 + 180 + 200, bottom + 210 + f * 6]} title={`Przekrój sufitu ${sys.name}`}>
         {/* strop */}
         <rect x={-100} y={-80} width={x1 + 100} height={80} fill={C.concrete} />
         <rect x={-100} y={-80} width={x1 + 100} height={80} fill="url(#hatch)" />
