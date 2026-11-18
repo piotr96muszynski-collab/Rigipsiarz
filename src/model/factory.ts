@@ -1,5 +1,5 @@
 import { boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
-import type { Ceiling, Opening, OpeningKind, Point, Project, Wall } from './types';
+import type { Ceiling, Lining, Opening, OpeningKind, Point, Project, Wall } from './types';
 
 export const uid = () =>
   (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).slice(0, 12);
@@ -42,6 +42,17 @@ export function createWall(p: Project, a: string, b: string, overrides: Partial<
     openings: [],
     ...overrides,
   };
+}
+
+/** Istniejąca ściana (obrys): mur o podanej grubości, bez zabudowy */
+export function createExistingWall(p: Project, a: string, b: string, overrides: Partial<Wall> = {}): Wall {
+  return createWall(p, a, b, { kind: 'existing', thickness: 25, linings: [], insulation: false, ...overrides });
+}
+
+/** Domyślna okładzina: suchy tynk (płyta na kleju gipsowym) */
+export function createLining(side: 1 | -1, systemId = 'O-KLEJ'): Lining {
+  const sys = wallSystemById(systemId);
+  return { side, systemId: sys.id, boardId: sys.defaultBoard, studSpacing: sys.studSpacing, insulation: false };
 }
 
 export function createOpening(kind: OpeningKind, offset: number, overrides: Partial<Opening> = {}): Opening {

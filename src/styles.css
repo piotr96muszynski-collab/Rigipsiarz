@@ -18,6 +18,7 @@
   --grid-minor: #eef0f3;
   --grid-major: #dde1e7;
   --wall-edge: #3b4350;
+  --masonry: #c9b9a6;
   color-scheme: light;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 16px;
@@ -44,6 +45,7 @@
     --grid-minor: #1a2129;
     --grid-major: #26303a;
     --wall-edge: #aab3bf;
+    --masonry: #6b5d4f;
     color-scheme: dark;
   }
 }
@@ -1258,7 +1260,7 @@ svg.plan.tool-window {
 
 .plan-hint {
   position: absolute;
-  top: 76px;
+  top: 122px;
   left: 10px;
   right: 64px;
   max-width: 460px;
@@ -1574,6 +1576,9 @@ kbd {
   }
   .plan-summary {
     font-size: 0.8rem;
+  }
+}
+
 /* ---------- katalog systemów ---------- */
 :root {
   --warn-bg: #fff6e0;
@@ -1782,4 +1787,92 @@ kbd {
   .view3d-canvas {
     height: 62dvh;
   }
+}
+
+/* obrys istniejącej przestrzeni i okładziny */
+.plan .wall.masonry {
+  stroke: var(--masonry);
+  stroke-linecap: square;
+}
+.plan .faded {
+  opacity: 0.4;
+}
+.plan .lining {
+  stroke-linecap: butt;
+}
+.plan .lining-edge {
+  stroke: var(--accent);
+  stroke-linecap: butt;
+}
+.plan-layer {
+  position: absolute;
+  top: 74px;
+  left: 10px;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  max-width: calc(100% - 76px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.plan-layer button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 0.8rem/1.1 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plan-layer button i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+.plan-layer .layer-existing i {
+  background: var(--masonry);
+}
+.plan-layer .layer-new i {
+  background: #e8e4da;
+  border: 1.5px solid var(--wall-edge);
+}
+.plan-layer button.on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+@media (max-width: 380px) {
+  .plan-layer button {
+    padding: 0 7px;
+    font-size: 0.75rem;
+  }
+}
+.card.element.existing {
+  border-left: 4px solid var(--masonry);
+}
+.lining {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.lining.on {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.lining-toggle {
+  flex-wrap: wrap;
+}
+.lining-toggle .small {
+  flex-basis: 100%;
+  padding-left: 32px;
 }

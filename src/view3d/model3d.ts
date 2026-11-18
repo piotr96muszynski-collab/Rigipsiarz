@@ -2,16 +2,16 @@
 // dzięki czemu da się ją testować w Node. Wszystko w metrach.
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
-import { boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
-import { ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
-import { nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
+import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
+import { ceilingGrid, liningKey, pickBoardLength, type ProjectCalc } from '../calc/materials';
+import { existingRooms, interiorSide, isNewWall, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Ceiling, Point, Project, Wall } from '../model/types';
 
 /** Warstwy, które można przełączać w widoku */
-export type Layer3D = 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
+export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
 
 /** Materiały elementów rusztu; płyty mają klucz `board:<id>` */
-export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger';
+export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'masonry';
 export type MatKey = FrameMat | `board:${string}`;
 
 export interface BoxPart {
@@ -215,6 +215,83 @@ function buildWall(p: Project, w: Wall, calc: ProjectCalc | undefined, nodes: Re
   }
 }
 
+/**
+ * Istniejąca ściana (mur) z otworami oraz jej okładziny. Linia ściany w rzucie to lico od strony
+ * pomieszczenia, więc mur leży po stronie zewnętrznej, a okładzina – na licu.
+ */
+function buildExistingWall(
+  p: Project,
+  w: Wall,
+  inner: 1 | -1 | 0,
+  calc: ProjectCalc | undefined,
+  nodes: ReturnType<typeof nodeMap>,
+  parts: Part3D[],
+) {
+  const [a, b] = wallEnds(p, w, nodes);
+  const ax = a.x / 100;
+  const az = a.y / 100;
+  const dx = (b.x - a.x) / 100;
+  const dz = (b.y - a.y) / 100;
+  const L = Math.hypot(dx, dz);
+  if (L < 0.05) return;
+  const H = w.height / 100;
+  const ux = dx / L;
+  const uz = dz / L;
+  const nx = -uz;
+  const nz = ux;
+  const rotY = -Math.atan2(dz, dx);
+  const T = (w.thickness ?? 25) / 100;
+  const box = (layer: Layer3D, mat: MatKey, u0: number, u1: number, v0: number, v1: number, n: number, thick: number) => {
+    const uc = (u0 + u1) / 2;
+    parts.push({
+      type: 'box',
+      layer,
+      mat,
+      c: [ax + ux * uc + nx * n, (v0 + v1) / 2, az + uz * uc + nz * n],
+      s: [Math.max(0.001, u1 - u0), Math.max(0.001, v1 - v0), thick],
+      rotY,
+      owner: w.id,
+    });
+  };
+  const openings = wallOpenings(w, L, H);
+  const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
+  const center = inner ? -inner * (T / 2) : 0;
+  // narożnik obrysu: mur przedłużony o grubość, żeby domknąć zewnętrzny róg
+  const shared = (nid: string) => p.walls.some((o) => o.id !== w.id && !isNewWall(o) && (o.a === nid || o.b === nid));
+  const e0 = inner && shared(w.a) ? T : 0;
+  const e1 = inner && shared(w.b) ? T : 0;
+  for (const r of subtractRects({ x0: -e0, x1: L + e1, y0: 0, y1: H }, holes)) box('existing', 'masonry', r.x0, r.x1, r.y0, r.y1, center, T);
+
+  for (const l of w.linings ?? []) {
+    const sys = wallSystemById(l.systemId);
+    const board = boardById(l.boardId);
+    const bt = board.thickness / 1000;
+    const depth = wallFrameDepth(sys) / 1000;
+    const face = center + l.side * (T / 2);
+    // ruszt CD okładziny: pionowe profile w miejscach z wyliczeń
+    if (sys.frame === 'cd-lining') {
+      const studs = calc?.linings.get(liningKey(w.id, l.side))?.info.studPositions ?? [];
+      for (const x of studs) {
+        const u = Math.min(L - CD_W / 2, Math.max(CD_W / 2, x));
+        const op = openings.find((o) => x > o.x0 && x < o.x1);
+        const n = face + l.side * (depth - CD_H / 2);
+        if (!op) box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, TRACK_H, H - TRACK_H, n, CD_H);
+        else {
+          if (op.sill > TRACK_H) box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, TRACK_H, op.sill, n, CD_H);
+          if (op.top < H - TRACK_H) box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, op.top, H - TRACK_H, n, CD_H);
+        }
+      }
+    }
+    const sheetLen = pickBoardLength(l.boardId, w.height) / 100;
+    const widthM = board.width / 100;
+    for (let layer = 0; layer < sys.layers; layer++) {
+      const n = face + l.side * (depth + bt * layer + bt / 2);
+      const shift = (layer % 2) * (widthM / 2);
+      for (const r of boardSheets(L, H, widthM, sheetLen, shift, holes)) box('wallBoards', `board:${board.id}`, r.x0, r.x1, r.y0, r.y1, n, bt);
+    }
+  }
+}
+
 function buildCeiling(c: Ceiling, parts: Part3D[]) {
   if (c.points.length < 3) return;
   const sys = ceilingSystemById(c.systemId);
@@ -295,9 +372,11 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
 export function buildModel3D(p: Project, calc?: ProjectCalc): Model3D {
   const parts: Part3D[] = [];
   const nodes = nodeMap(p);
+  const rooms = existingRooms(p);
   for (const w of p.walls) {
     if (!nodes.has(w.a) || !nodes.has(w.b)) continue;
-    buildWall(p, w, calc, nodes, parts);
+    if (isNewWall(w)) buildWall(p, w, calc, nodes, parts);
+    else buildExistingWall(p, w, interiorSide(p, w, rooms), calc, nodes, parts);
   }
   for (const c of p.ceilings) buildCeiling(c, parts);
 

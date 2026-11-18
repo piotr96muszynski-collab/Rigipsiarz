@@ -49,6 +49,32 @@ export function WallSystemSelect({ id, value, onChange }: Props) {
   );
 }
 
+/**
+ * Systemy okładzin istniejących ścian: wszystkie systemy kategorii „okładzina” z katalogu
+ * (Rigips, inne marki dodane do katalogu, systemy własne).
+ */
+export function LiningSystemSelect({ id, value, onChange }: Props) {
+  const all = allWallSystems().filter((s) => s.category === 'okładzina');
+  const groups = new Map<string, typeof all>();
+  for (const s of all) {
+    const g = s.custom ? 'Systemy własne' : (s as { brand?: string }).brand ?? 'Rigips';
+    groups.set(g, [...(groups.get(g) ?? []), s]);
+  }
+  return (
+    <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+      {[...groups].map(([g, list]) => (
+        <optgroup key={g} label={g}>
+          {list.map((s) => (
+            <option key={s.id} value={s.id}>
+              {label(s)}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
 export function CeilingSystemSelect({ id, value, onChange }: Props) {
   const all = allCeilingSystems();
   const kinds = Object.keys(CEILING_KIND_LABEL) as CeilingKind[];

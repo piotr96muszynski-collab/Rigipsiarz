@@ -66,8 +66,11 @@ function angleBetween(center: Point, p1: Point, p2: Point): number {
  */
 export function analyzeJunctions(p: Project): Map<Id, WallJunctions> {
   const nodes = nodeMap(p);
+  // istniejące ściany (obrys) nie są zabudową – dla nowych ścian są tylko „murem”, do którego się kotwi
+  const fresh = p.walls.filter(isNewWall);
+  const existing = p.walls.filter((w) => !isNewWall(w));
   const byNode = new Map<Id, Wall[]>();
-  for (const w of p.walls) {
+  for (const w of fresh) {
     for (const nid of [w.a, w.b]) {
       const list = byNode.get(nid) ?? [];
       list.push(w);
@@ -75,11 +78,18 @@ export function analyzeJunctions(p: Project): Map<Id, WallJunctions> {
     }
   }
   const result = new Map<Id, WallJunctions>();
-  for (const w of p.walls) result.set(w.id, { endA: 'free', endB: 'free', extraStuds: 0, externalEdges: 0 });
+  for (const w of fresh) result.set(w.id, { endA: 'free', endB: 'free', extraStuds: 0, externalEdges: 0 });
+  const touchesExisting = (nid: Id, node: Point) =>
+    existing.some((o) => {
+      if (o.a === nid || o.b === nid) return true;
+      const oa = nodes.get(o.a);
+      const ob = nodes.get(o.b);
+      return !!oa && !!ob && projectOnSegment(node, oa, ob).d < 2;
+    });
 
   const other = (w: Wall, nid: Id) => nodes.get(w.a === nid ? w.b : w.a)!;
 
-  for (const w of p.walls) {
+  for (const w of fresh) {
     const info = result.get(w.id)!;
     const sides = wallSystemById(w.systemId).sides;
     for (const end of ['a', 'b'] as const) {
@@ -87,9 +97,11 @@ export function analyzeJunctions(p: Project): Map<Id, WallJunctions> {
       const node = nodes.get(nid)!;
       const connected = (byNode.get(nid) ?? []).filter((x) => x.id !== w.id);
       let kind: JunctionKind;
-      if (connected.length === 0) {
+      if (connected.length === 0 && touchesExisting(nid, node)) {
+        kind = 'existing-wall';
+      } else if (connected.length === 0) {
         // Czy koniec opiera się o środek innej ściany (trójnik)?
-        const host = p.walls.find((o) => {
+        const host = fresh.find((o) => {
           if (o.id === w.id || o.a === nid || o.b === nid) return false;
           const [oa, ob] = wallEnds(p, o, nodes);
           const pr = projectOnSegment(node, oa, ob);
@@ -180,4 +192,80 @@ export function bbox(pts: Point[]) {
 
 export function ceilingArea(c: Ceiling) {
   return polygonArea(c.points);
+}
+
+export const isNewWall = (w: Wall) => w.kind !== 'existing';
+
+/**
+ * Strona istniejącej ściany zwrócona do wnętrza obrysu: 1 = lewa (normalna (-dy, dx)), -1 = prawa,
+ * 0 = wnętrze po obu stronach lub obrys niezamknięty. Liczona z zamkniętych obrysów samych
+ * istniejących ścian, więc linia ściany to lico od strony pomieszczenia.
+ */
+export function interiorSide(p: Project, w: Wall, rooms: Point[][] = existingRooms(p)): 1 | -1 | 0 {
+  const nodes = nodeMap(p);
+  const a = nodes.get(w.a);
+  const b = nodes.get(w.b);
+  if (!a || !b) return 0;
+  const L = dist(a, b) || 1;
+  const nx = -(b.y - a.y) / L;
+  const ny = (b.x - a.x) / L;
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const probe = (k: number) => rooms.some((r) => pointInPolygon({ x: mid.x + nx * k * 3, y: mid.y + ny * k * 3 }, r));
+  const left = probe(1);
+  const right = probe(-1);
+  if (left && !right) return 1;
+  if (right && !left) return -1;
+  return 0;
+}
+
+/** Zamknięte obrysy utworzone przez istniejące ściany (ściany zewnętrzne mieszkania) */
+export function existingRooms(p: Project): Point[][] {
+  const nodes = nodeMap(p);
+  const walls = p.walls.filter((w) => !isNewWall(w) && nodes.has(w.a) && nodes.has(w.b));
+  if (walls.length < 3) return [];
+  // ściany obrysu jako krawędzie grafu; ściany ścian stykają się w węzłach
+  const adj = new Map<Id, Id[]>();
+  for (const w of walls) {
+    adj.set(w.a, [...(adj.get(w.a) ?? []), w.b]);
+    adj.set(w.b, [...(adj.get(w.b) ?? []), w.a]);
+  }
+  const ang = (f: Id, t: Id) => Math.atan2(nodes.get(t)!.y - nodes.get(f)!.y, nodes.get(t)!.x - nodes.get(f)!.x);
+  const seen = new Set<string>();
+  const faces: Point[][] = [];
+  for (const [u, vs] of adj)
+    for (const v of vs) {
+      if (seen.has(`${u}>${v}`)) continue;
+      const face: Id[] = [];
+      let a = u;
+      let b = v;
+      for (let g = 0; g < 500; g++) {
+        const k = `${a}>${b}`;
+        if (seen.has(k)) break;
+        seen.add(k);
+        face.push(a);
+        const back = ang(b, a);
+        let next: Id | null = null;
+        let best = Infinity;
+        for (const c of adj.get(b) ?? []) {
+          if (c === a && (adj.get(b) ?? []).length > 1) continue;
+          let t = ang(b, c) - back;
+          while (t <= 0) t += Math.PI * 2;
+          if (t < best) {
+            best = t;
+            next = c;
+          }
+        }
+        if (!next) break;
+        a = b;
+        b = next;
+        if (a === u && b === v) break;
+      }
+      if (face.length >= 3 && a === u && b === v) {
+        const poly = face.map((id) => ({ x: nodes.get(id)!.x, y: nodes.get(id)!.y }));
+        // obie orientacje (także obrys zewnętrzny całego grafu) są przydatne: punkt po stronie
+        // pomieszczenia leży w którymś z obrysów, punkt na zewnątrz – w żadnym
+        faces.push(poly);
+      }
+    }
+  return faces;
 }
