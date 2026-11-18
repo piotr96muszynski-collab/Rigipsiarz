@@ -448,7 +448,7 @@ function Inspector({
         <div className="insp-body">
           {wall && existing && <ExistingWallEditor wall={wall} project={project} calc={calc} update={update} activeOpeningId={openingId} />}
           {wall && !existing && <WallEditor wall={wall} project={project} calc={calc} update={update} activeOpeningId={openingId} />}
-          {ceiling && <CeilingEditor ceiling={ceiling} calc={calc} update={update} />}
+          {ceiling && <CeilingEditor ceiling={ceiling} wool={project.settings.wool} calc={calc} update={update} />}
           {lines.length > 0 && (
             <details className="insp-materials" open={wide}>
               <summary>Materiały na ten element ({lines.length})</summary>

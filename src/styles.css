@@ -428,8 +428,10 @@ hr {
   flex-direction: column;
   gap: 8px;
 }
-.project-list button {
-  width: 100%;
+.project-list .row-main {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
   text-align: left;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -441,6 +443,109 @@ hr {
   cursor: pointer;
   font: inherit;
   color: var(--text);
+}
+/* przesuwanie wiersza projektu w bok = usuwanie */
+.swipe-row {
+  position: relative;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.swipe-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: color-mix(in srgb, var(--danger) 55%, var(--surface));
+  color: #fff;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+.swipe-row.to-left .swipe-bg {
+  justify-content: flex-end;
+}
+.swipe-row.armed .swipe-bg {
+  background: var(--danger);
+}
+.swipe-fg {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.swipe-fg.settle {
+  transition: transform 0.18s ease-out;
+}
+.swipe-fg .row-main {
+  border: 0;
+  background: transparent;
+}
+.swipe-fg .row-menu {
+  align-self: center;
+  margin-right: 4px;
+  color: var(--muted);
+}
+.swipe-hint {
+  margin: 8px 2px 0;
+}
+.rename-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+}
+.rename-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
+  font: inherit;
+  font-size: 16px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 35%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 40;
+}
+.sheet {
+  width: min(480px, 100%);
+  background: var(--surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sheet-title {
+  margin: 4px 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 720px) {
+  .sheet-backdrop {
+    align-items: center;
+  }
+  .sheet {
+    border-radius: var(--radius);
+  }
 }
 .empty {
   text-align: center;
@@ -1810,6 +1915,39 @@ kbd {
   .view3d-canvas {
     height: 62dvh;
   }
+}
+
+/* Wełna mineralna – inspektor i ustawienia */
+.wool-field {
+  display: grid;
+  gap: 4px;
+}
+.wool-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.wool-row select {
+  width: auto;
+  min-width: 96px;
+}
+.wool-field small.hint {
+  color: var(--muted);
+}
+.wool-settings {
+  display: grid;
+  gap: 10px;
+}
+.wool-settings h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.wool-settings small.hint {
+  color: var(--muted);
+}
+.wool-choice select {
+  max-width: 100%;
 }
 
 /* obrys istniejącej przestrzeni i okładziny */

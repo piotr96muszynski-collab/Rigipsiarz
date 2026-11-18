@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { BOARDS, ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { CeilingSystemSelect, LiningSystemSelect, Warnings, WallSystemSelect } from './SystemSelect';
-import { liningKey, type LiningResult, type ProjectCalc } from '../calc/materials';
+import {
+  CEILING_WOOL_OPTIONS,
+  ceilingInsulation,
+  liningKey,
+  wallInsulation,
+  wallWoolOptions,
+  type LiningResult,
+  type ProjectCalc,
+} from '../calc/materials';
 import { bbox, dist, interiorSide, isNewWall, wallEnds } from '../geometry/geometry';
 import { createCeiling, createLining, createOpening } from '../model/factory';
 import { addWall, deleteWall, setWallLength } from '../model/ops';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { DimInput } from './DimInput';
+import { WoolField } from './WoolField';
 import { fmtNum } from './wallStyle';
 
 interface Props {
@@ -44,7 +53,7 @@ export function ElementsPanel({ project, calc, update }: Props) {
         <WallCard key={w.id} index={i + 1} wall={w} project={project} calc={calc} update={update} startOpen={count <= 2} />
       ))}
       {project.ceilings.map((c, i) => (
-        <CeilingCard key={c.id} index={i + 1} ceiling={c} calc={calc} update={update} startOpen={count <= 2} />
+        <CeilingCard key={c.id} index={i + 1} ceiling={c} wool={project.settings.wool} calc={calc} update={update} startOpen={count <= 2} />
       ))}
       <div className="actions wrap">
         <button
@@ -184,10 +193,17 @@ export function WallEditor({
 
       <Warnings items={info?.warnings} />
 
-      <label className="check">
-        <input type="checkbox" checked={wall.insulation} onChange={(e) => edit((w) => void (w.insulation = e.target.checked))} />
-        Wełna mineralna {sys.frame === 'cd-lining' ? 50 : sys.profile} mm{sys.frame === 'double' ? ' (w obu rusztach)' : ''}
-      </label>
+      <WoolField
+        id={`wool-${wall.id}`}
+        enabled={wall.insulation}
+        thickness={wallInsulation({ ...wall, insulation: true }, sys)?.thickness ?? 0}
+        options={wallWoolOptions(sys)}
+        layers={sys.frame === 'double' ? 2 : 1}
+        areaM2={info?.netAreaM2}
+        wool={project.settings.wool}
+        onToggle={(on) => edit((w) => void (w.insulation = on))}
+        onThickness={(mm) => edit((w) => void (w.insulationThickness = mm))}
+      />
 
       {info && (
         <div className="ends">
@@ -293,12 +309,14 @@ function isAxisRect(c: Ceiling) {
 function CeilingCard({
   ceiling,
   index,
+  wool,
   calc,
   update,
   startOpen,
 }: {
   ceiling: Ceiling;
   index: number;
+  wool: Project['settings']['wool'];
   calc: ProjectCalc;
   update: Props['update'];
   startOpen: boolean;
@@ -324,13 +342,23 @@ function CeilingCard({
           Usuń
         </button>
       </header>
-      {open && <CeilingEditor ceiling={ceiling} calc={calc} update={update} />}
+      {open && <CeilingEditor ceiling={ceiling} wool={wool} calc={calc} update={update} />}
     </article>
   );
 }
 
 /** Edytor sufitu – używany w karcie elementu i w inspektorze planu */
-export function CeilingEditor({ ceiling, calc, update }: { ceiling: Ceiling; calc: ProjectCalc; update: Props['update'] }) {
+export function CeilingEditor({
+  ceiling,
+  wool,
+  calc,
+  update,
+}: {
+  ceiling: Ceiling;
+  wool?: Project['settings']['wool'];
+  calc: ProjectCalc;
+  update: Props['update'];
+}) {
   const sys = ceilingSystemById(ceiling.systemId);
   const r = calc.ceilings.get(ceiling.id);
   const rect = isAxisRect(ceiling);
@@ -395,11 +423,18 @@ export function CeilingEditor({ ceiling, calc, update }: { ceiling: Ceiling; cal
             <option value={90}>wzdłuż szerokości</option>
           </select>
         </div>
-        <label className="check">
-          <input type="checkbox" checked={ceiling.insulation} onChange={(e) => edit((c) => void (c.insulation = e.target.checked))} />
-          Wełna mineralna 100 mm
-        </label>
       </div>
+      <WoolField
+        id={`wool-${ceiling.id}`}
+        enabled={ceiling.insulation}
+        thickness={ceilingInsulation({ ...ceiling, insulation: true })?.thickness ?? 100}
+        options={CEILING_WOOL_OPTIONS}
+        layers={1}
+        areaM2={r?.areaM2}
+        wool={wool}
+        onToggle={(on) => edit((c) => void (c.insulation = on))}
+        onThickness={(mm) => edit((c) => void (c.insulationThickness = mm))}
+      />
       {!rect && <small className="hint">Kształt sufitu zmienisz na planie, przeciągając jego narożniki.</small>}
     </div>
   );
@@ -596,10 +631,12 @@ function LiningEditor({
                   <option value={30}>30 cm</option>
                 </select>
               </div>
-              <label className="check">
-                <input type="checkbox" checked={lining.insulation} onChange={(e) => onEdit((l) => void (l.insulation = e.target.checked))} />
-                Wełna mineralna 50 mm
-              </label>
+              {wallWoolOptions(sys).length > 0 && (
+                <label className="check">
+                  <input type="checkbox" checked={lining.insulation} onChange={(e) => onEdit((l) => void (l.insulation = e.target.checked))} />
+                  Wełna mineralna {wallWoolOptions(sys).at(-1)} mm
+                </label>
+              )}
             </div>
           )}
           <Warnings items={result?.info.warnings} />
