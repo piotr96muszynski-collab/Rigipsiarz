@@ -15,9 +15,11 @@ const FRAME_COLORS: Record<string, number> = {
   cdSec: 0xb3bec9,
   ud: 0x5f6b77,
   hanger: 0xd08a2e,
+  masonry: 0xc9b9a6,
 };
 
 const LAYERS: { id: Layer3D; label: string }[] = [
+  { id: 'existing', label: 'Istniejące ściany' },
   { id: 'wallBoards', label: 'Płyty ścian' },
   { id: 'wallFrame', label: 'Ruszt CW/UW' },
   { id: 'ceilingBoards', label: 'Płyty sufitu' },
@@ -25,7 +27,7 @@ const LAYERS: { id: Layer3D; label: string }[] = [
 ];
 
 type Visibility = Record<Layer3D, boolean>;
-const ALL_ON: Visibility = { wallBoards: true, wallFrame: true, ceilingBoards: true, ceilingFrame: true };
+const ALL_ON: Visibility = { existing: true, wallBoards: true, wallFrame: true, ceilingBoards: true, ceilingFrame: true };
 
 function materialFor(key: MatKey): THREE.Material {
   if (key.startsWith('board:')) {
@@ -232,6 +234,7 @@ export default function View3D({ project, calc }: { project: Project; calc: Proj
 
   const hasCeilings = project.ceilings.length > 0;
   const hasWalls = project.walls.length > 0;
+  const hasExisting = project.walls.some((w) => w.kind === 'existing');
 
   if (!supported) {
     return (
@@ -244,7 +247,7 @@ export default function View3D({ project, calc }: { project: Project; calc: Proj
   return (
     <div className="view3d">
       <div className="view3d-toolbar" role="group" aria-label="Widoczne warstwy">
-        {LAYERS.filter((l) => (l.id.startsWith('wall') ? hasWalls : hasCeilings)).map((l) => (
+        {LAYERS.filter((l) => (l.id === 'existing' ? hasExisting : l.id.startsWith('wall') ? hasWalls : hasCeilings)).map((l) => (
           <label key={l.id} className={`chip ${vis[l.id] ? 'on' : ''}`}>
             <input
               type="checkbox"

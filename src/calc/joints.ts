@@ -17,7 +17,7 @@ import {
   type EdgeUse,
   type FinishingSettings,
 } from '../catalog/finishing';
-import { dist, nodeMap, polygonPerimeterEdges, projectOnSegment, wallEnds } from '../geometry/geometry';
+import { analyzeJunctions, dist, isNewWall, nodeMap, polygonPerimeterEdges, projectOnSegment, wallEnds } from '../geometry/geometry';
 import type { Id, Project, Wall } from '../model/types';
 import { pickBoardLength, screwFor, type Requirement } from './materials';
 
@@ -139,7 +139,10 @@ export function addEdgeFinish(req: Requirement, type: CornerType, lengths: numbe
 export function analyzeJoints(p: Project): Joint[] {
   const f = resolveFinishing(p.settings.finishing);
   const nodes = nodeMap(p);
-  const walls = p.walls.filter((w) => nodes.has(w.a) && nodes.has(w.b));
+  const placed = p.walls.filter((w) => nodes.has(w.a) && nodes.has(w.b));
+  // istniejące ściany (obrys) to mur: nowe ściany dochodzące do nich mają styk z murem
+  const walls = placed.filter(isNewWall);
+  const junctions = analyzeJunctions(p);
   const out: Joint[] = [];
 
   const byNode = new Map<Id, Wall[]>();
@@ -198,7 +201,8 @@ export function analyzeJoints(p: Project): Joint[] {
       const w = list[0];
       const end = w.a === nid ? 'a' : 'b';
       const sys = sysOf(w);
-      const free = (end === 'a' ? w.endA : w.endB) === 'free';
+      const jn = junctions.get(w.id);
+      const free = (end === 'a' ? jn?.endA : jn?.endB) === 'free';
       const j = newJoint(`e:${w.id}:${end}`, free ? 'free' : 'masonry', [w.id]);
       const Hw = w.height / 100;
       if (free) {
@@ -271,11 +275,10 @@ export function analyzeJoints(p: Project): Joint[] {
   }
 
   // styk ze stropem i krawędzie otworów
-  for (const w of walls) {
-    const sys = sysOf(w);
+  const topAndOpenings = (w: Wall, sides: number, keyPrefix: string, ids: Id[]) => {
     const L = dist(nodes.get(w.a)!, nodes.get(w.b)!) / 100;
-    const top = newJoint(`top:${w.id}`, 'slab', [w.id]);
-    top.inner = edges(top, 'inner', 'contact', Array(sys.sides).fill(L), false);
+    const top = newJoint(`top:${keyPrefix}`, 'slab', ids);
+    top.inner = edges(top, 'inner', 'contact', Array(sides).fill(L), false);
     finish(top);
 
     const H = w.height / 100;
@@ -288,14 +291,26 @@ export function analyzeJoints(p: Project): Joint[] {
       const oh = topY - sill;
       if (ow <= 0.05 || oh <= 0.05) continue;
       const lens: number[] = [];
-      for (let side = 0; side < sys.sides; side++) {
+      for (let side = 0; side < sides; side++) {
         lens.push(oh, oh);
         if (topY < H - 0.01) lens.push(ow);
         if (sill > 0.01) lens.push(ow);
       }
-      const j = newJoint(`op:${o.id}`, 'opening', [w.id]);
+      const j = newJoint(`op:${keyPrefix === w.id ? '' : keyPrefix + ':'}${o.id}`, 'opening', ids);
       j.outer = edges(j, 'outer', 'external', lens, false);
       finish(j);
+    }
+  };
+  for (const w of walls) topAndOpenings(w, sysOf(w).sides, w.id, [w.id]);
+
+  // okładziny istniejących ścian: styk z murem na końcach, strop i ościeża po stronie okładziny
+  for (const w of placed.filter((x) => !isNewWall(x))) {
+    for (const l of w.linings ?? []) {
+      const key = `${w.id}:${l.side}`;
+      const ends = newJoint(`lin:${key}`, 'masonry', [w.id]);
+      ends.inner = edges(ends, 'inner', 'contact', [w.height / 100, w.height / 100], false);
+      finish(ends);
+      topAndOpenings(w, 1, key, [w.id]);
     }
   }
 

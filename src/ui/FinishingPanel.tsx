@@ -64,12 +64,16 @@ export function FinishingPanel({ project, calc, update }: Props) {
   const title = (j: Joint) => {
     const walls = j.wallIds.map((id) => wallNo.get(id)).filter(Boolean);
     if (j.kind === 'opening') {
-      const o = openingOf.get(j.id.slice(3));
+      const o = openingOf.get(j.id.split(':').pop()!);
       return `${o?.label ?? 'Otwór'} · ściana ${o?.wall ?? '?'}`;
     }
     if (j.kind === 'ceiling') return `Sufit ${ceilNo.get(j.ceilingId!) ?? ''} · obwód`;
     const base = JOINT_KIND_LABEL[j.kind];
-    const end = j.id.startsWith('e:') ? ` (koniec ${j.id.endsWith(':a') ? 'A' : 'B'})` : '';
+    const end = j.id.startsWith('e:')
+      ? ` (koniec ${j.id.endsWith(':a') ? 'A' : 'B'})`
+      : j.id.startsWith('lin:') || /^top:.+:-?1$/.test(j.id)
+        ? ' (okładzina)'
+        : '';
     const ang = j.kind === 'L' && j.angleDeg ? ` ${Math.round(j.angleDeg)}°` : '';
     return `${base}${ang} · ściana ${walls.join(' + ')}${end}`;
   };
