@@ -7,7 +7,7 @@ import { addWalls, clipToMasonry, hitWall, mergeNodeIfOverlaps, offsetAlongWall,
 import { findOverlaps, uncoveredParts } from '../geometry/contacts';
 import { anchorsOf, angleMarks, snapGuided, snapMove, type AngleMark, type Guide, type GuideSnap } from '../geometry/snap';
 import type { Point, Project } from '../model/types';
-import { awayFromFinger, BUBBLE_H, BUBBLE_W } from './labelPlace';
+import { awayFromFinger, BUBBLE_H, BUBBLE_W, type DimLabel, hitDimLabel } from './labelPlace';
 import { fmtCm, liningThickness, wallColor, wallThickness } from './wallStyle';
 
 export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'ceiling';
@@ -50,6 +50,8 @@ interface Props {
   /** Tryb zaznaczania kilku ścian: dotknięcie dodaje/odejmuje ścianę */
   multi?: boolean;
   onMessage: (m: string) => void;
+  /** Dotknięcie opisu długości ściany – otwiera okno zmiany wymiaru */
+  onEditLength?: (wallId: string) => void;
 }
 
 interface View {
@@ -59,7 +61,7 @@ interface View {
 }
 
 type Gesture =
-  | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number; moved: boolean; tapTarget: Selection; additive: boolean }
+  | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number; moved: boolean; tapTarget: Selection; additive: boolean; dimWall?: string }
   | { kind: 'pinch'; d0: number; mid: Point; view: View }
   | { kind: 'draw'; start: Point; end: Point; startScreen: Point; moved: boolean; snap: Snap; down: Point }
   | { kind: 'rect'; start: Point; end: Point; startScreen: Point; moved: boolean; mode: 'room' | 'ceiling'; guides: Guide[] }
@@ -82,7 +84,7 @@ const HANDLE_PX = 16;
 const DRAG_PX = 7;
 
 export function PlanCanvas(props: Props) {
-  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new', multi = false } = props;
+  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new', multi = false, onEditLength } = props;
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View>({ ox: -100, oy: -100, z: 1.2 });
@@ -215,6 +217,31 @@ export function PlanCanvas(props: Props) {
 
   const toWorld = (sx: number, sy: number): Point => ({ x: view.ox + sx / view.z, y: view.oy + sy / view.z });
   const toScreen = (p: Point): Point => ({ x: (p.x - view.ox) * view.z, y: (p.y - view.oy) * view.z });
+
+  /** Opisy długości ścian w pikselach ekranu (te same pozycje służą do rysowania i do trafiania palcem) */
+  const dimLabels = (): DimLabel[] => {
+    const out: DimLabel[] = [];
+    for (const w of project.walls) {
+      const a = nodes.get(w.a);
+      const b = nodes.get(w.b);
+      if (!a || !b) continue;
+      const L = dist(a, b);
+      if (L * view.z < 40) continue;
+      const sa = toScreen(a);
+      const sb = toScreen(b);
+      let ang = (Math.atan2(sb.y - sa.y, sb.x - sa.x) * 180) / Math.PI;
+      if (ang > 90) ang -= 180;
+      if (ang < -90) ang += 180;
+      const nx = -(sb.y - sa.y) / (L * view.z);
+      const ny = (sb.x - sa.x) / (L * view.z);
+      // ściana obrysu: wymiar lica po stronie pomieszczenia
+      const inner = isNewWall(w) ? 0 : (interiors.get(w.id) ?? 0);
+      const k = inner ? inner : -1;
+      const off = inner ? 14 : (wallThickness(w) * view.z) / 2 + 12;
+      out.push({ id: w.id, x: (sa.x + sb.x) / 2 + k * nx * off, y: (sa.y + sb.y) / 2 + k * ny * off, ang, L });
+    }
+    return out;
+  };
   const local = (e: React.PointerEvent | React.WheelEvent): Point => {
     const r = svgRef.current!.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -280,6 +307,12 @@ export function PlanCanvas(props: Props) {
           gesture.current = { kind: 'vertex', ceilingId: c.id, index: idx, moved: false };
           return;
         }
+      }
+      // dotknięcie opisu długości ściany → okno zmiany wymiaru (po puszczeniu bez przesunięcia)
+      const dim = !additive && onEditLength ? hitDimLabel(s, dimLabels()) : null;
+      if (dim) {
+        gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget: { type: 'wall', id: dim }, additive: false, dimWall: dim };
+        return;
       }
       const n = hitNode(w);
       if (n && !additive) {
@@ -467,6 +500,7 @@ export function PlanCanvas(props: Props) {
         if (g.additive) {
           if (g.tapTarget?.type === 'wall') setSelection(toggleWall(selection, g.tapTarget.id));
         } else setSelection(g.tapTarget);
+        if (g.dimWall) onEditLength?.(g.dimWall);
       }
     } else if (g.kind === 'move') {
       if (g.moved) {
@@ -870,31 +904,11 @@ export function PlanCanvas(props: Props) {
 
         {/* opisy wymiarów – w pikselach ekranu, żeby były czytelne przy każdym powiększeniu */}
         <g className="labels">
-          {project.walls.map((w) => {
-            const a = nodes.get(w.a);
-            const b = nodes.get(w.b);
-            if (!a || !b) return null;
-            const L = dist(a, b);
-            if (L * view.z < 40) return null;
-            const sa = toScreen(a);
-            const sb = toScreen(b);
-            let ang = (Math.atan2(sb.y - sa.y, sb.x - sa.x) * 180) / Math.PI;
-            if (ang > 90) ang -= 180;
-            if (ang < -90) ang += 180;
-            const nx = -(sb.y - sa.y) / (L * view.z);
-            const ny = (sb.x - sa.x) / (L * view.z);
-            // ściana obrysu: wymiar lica po stronie pomieszczenia
-            const inner = isNewWall(w) ? 0 : (interiors.get(w.id) ?? 0);
-            const k = inner ? inner : -1;
-            const off = inner ? 14 : (wallThickness(w) * view.z) / 2 + 12;
-            const mx = (sa.x + sb.x) / 2 + k * nx * off;
-            const my = (sa.y + sb.y) / 2 + k * ny * off;
-            return (
-              <text key={w.id} x={mx} y={my} transform={`rotate(${ang} ${mx} ${my})`} className="dim">
-                {fmtCm(L)}
-              </text>
-            );
-          })}
+          {dimLabels().map((d) => (
+            <text key={d.id} x={d.x} y={d.y} transform={`rotate(${d.ang} ${d.x} ${d.y})`} className="dim">
+              {fmtCm(d.L)}
+            </text>
+          ))}
           {project.ceilings.map((c) => {
             const b = bbox(c.points);
             const center = toScreen({ x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 });
