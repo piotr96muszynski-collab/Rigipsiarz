@@ -1,5 +1,6 @@
 import { FIXER_EDGE, OPENING_JOINT_MIN, bracketPositions, hatFixPositions, HAT_FLANGE, pieceOutline, type BoardFace, type BoardPiece, type CutRect, type StudKind, type WallLayout } from '../calc/layout';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, dedupe, nss } from './svg';
+import { boardById } from '../catalog/rigips';
 
 const STUD_COLOR: Record<StudKind, string> = {
   stud: C.stud,
@@ -153,8 +154,8 @@ function endNote(face: BoardFace, L: number) {
   return part(-face.x0, 'Lewy koniec') + part(face.x1 - L, 'Prawy koniec');
 }
 
-const faceName = (face: BoardFace, sides: number, layers: number) =>
-  `${sides > 1 ? `Strona ${face.side === 0 ? 'A' : 'B'}` : 'Okładzina'}${layers > 1 ? `, warstwa ${face.layer + 1}` : ''}`;
+const faceName = (face: BoardFace, sides: number, layers: number, boards?: number) =>
+  `${sides > 1 ? `Strona ${face.side === 0 ? 'A' : 'B'}` : 'Okładzina'}${layers > 1 ? `, warstwa ${face.layer + 1}` : ''}${boards && boards > 1 ? ` – ${boardById(face.board).short}` : ''}`;
 
 export { faceName };
 
@@ -256,15 +257,18 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
       </Paper>
       <Legend
         items={[
-          { color: C.board, label: `arkusz pełny ${cm(l.sheet.width * 100)}×${cm(l.sheet.length * 100)} cm (${full} szt.)` },
+          { color: C.board, label: `arkusz pełny ${cm(face.sheet.width * 100)}×${cm(face.sheet.length * 100)} cm (${full} szt.)` },
           { pattern: 'cut', label: `element docinany (${face.pieces.length - full} szt.${shaped ? `, w tym ${shaped} wycinane w kształt L lub U przy otworach` : ''})` },
-          { color: C.stud, dashed: true, label: 'oś słupka – linia wkręcania' },
+          ...(l.frame === 'panel' ? [] : [{ color: C.stud, dashed: true, label: 'oś słupka – linia wkręcania' }]),
           ...(face.jambJoints.length ? [{ color: C.warn, label: 'styk w linii ościeża – nie było gdzie dostawić słupka' }] : []),
           ...(face.layerJoints.length ? [{ color: C.warn, label: 'styk na styku niższej warstwy – nie było gdzie dostawić słupka' }] : []),
         ]}
       />
       <figcaption className="muted small">
-        Styki pionowe zawsze na słupku. {face.offset > 0 ? `Pierwszy pas docięty na ${cm(face.offset * 100)} cm, żeby styki mijały się z sąsiednią okładziną.` : 'Zaczynasz od pełnego arkusza przy lewej krawędzi.'}{' '}
+        {l.frame === 'panel'
+          ? `Płyty poziomo, każda w jednym kawałku od ściany do ściany, przykręcone do profilu obwodowego i do warstwy pod spodem. ${face.layer % 2 ? 'Ta warstwa zaczyna się od pasa szerokości pół płyty, żeby styki poziome mijały się ze stykami warstwy niższej.' : 'Zaczynasz od pełnego arkusza przy posadzce.'}`
+          : 'Styki pionowe zawsze na słupku. '}
+        {l.frame === 'panel' ? '' : face.offset > 0 ? `Pierwszy pas docięty na ${cm(face.offset * 100)} cm, żeby styki mijały się z sąsiednią okładziną.` : 'Zaczynasz od pełnego arkusza przy lewej krawędzi.'}{' '}
         Wymiary elementów w cm (prostokąt arkusza przed wycięciem).
         {l.openings.length > 0 &&
           ` Przy otworach płyta zachodzi na ościeże i jest wycinana w kształt litery L (U przy wąskim otworze), a styk wypada nad lub pod otworem, co najmniej ${cm(OPENING_JOINT_MIN * 100)} cm od ościeża – dzięki temu narożniki otworu nie pękają.`}

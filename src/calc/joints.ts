@@ -6,7 +6,7 @@
 // Dodatkowe słupki CW w narożnikach i trójnikach dolicza ściana (wallRequirement),
 // tutaj są tylko opisane, żeby było widać, skąd się biorą.
 
-import { HAT_MM, boardById, wallSystemById, type WallSystem } from '../catalog/rigips';
+import { HAT_MM, panelEdgeLabel, midBoardMm, sideLayers, sideStackMm, wallBoardsMm, wallSystemById, type WallSystem } from '../catalog/rigips';
 import {
   ACRYLIC_M_PER_TUBE,
   compoundById,
@@ -82,21 +82,22 @@ const STRIP_SCREW_SPACING = 0.25;
 const hasCavityFrame = (sys: WallSystem) => sys.frame === 'single' || sys.frame === 'double' || sys.frame === 'separate';
 
 /** Grubość ściany, mm (ruszt + płyty) */
-export function wallThicknessMm(sys: WallSystem, boardId: string): number {
-  const t = boardById(boardId).thickness;
+export function wallThicknessMm(sys: WallSystem, boardId: string, innerBoardId?: string, sideBBoards?: string[]): number {
   const core =
     sys.frame === 'single'
       ? sys.profile
       : sys.frame === 'double'
-        ? 2 * sys.profile + 5
+        ? 2 * sys.profile + 5 + midBoardMm(sys)
         : sys.frame === 'separate'
           ? 2 * sys.profile + (sys.gap ?? 10) * 10
           : sys.frame === 'cd-lining'
             ? 27
             : sys.frame === 'hat-lining'
               ? HAT_MM
-              : 10;
-  return core + sys.sides * sys.layers * t;
+              : sys.frame === 'panel'
+                ? 0
+                : 10;
+  return core + wallBoardsMm(sys, { boardId, innerBoardId, sideBBoards });
 }
 
 const fmt = (m: number) => m.toFixed(2).replace('.', ',');
@@ -176,7 +177,8 @@ export function analyzeJoints(p: Project): Joint[] {
     const ts = sysOf(through);
     const as = sysOf(abut);
     if (!hasCavityFrame(as)) return;
-    const stack = boardById(through.boardId).thickness * ts.layers;
+    // przy różnym poszyciu stron – wkręt na grubszą stronę
+    const stack = Math.max(sideStackMm(ts, through, 0), sideStackMm(ts, through, 1));
     const screw = screwFor(stack);
     const n = Math.ceil(H / THROUGH_SCREW_SPACING - 1e-9) + 1;
     add(j.req.counts, screw, n);
@@ -210,17 +212,23 @@ export function analyzeJoints(p: Project): Joint[] {
       const Hw = w.height / 100;
       if (free) {
         j.outer = edges(j, 'outer', 'external', Array(sys.sides).fill(Hw), false);
-        if (sys.frame !== 'glued') {
-          const thick = wallThicknessMm(sys, w.boardId) / 1000;
+        if (sys.frame !== 'glued' && sys.frame !== 'panel') {
+          const thick = wallThicknessMm(sys, w.boardId, w.innerBoardId, w.sideBBoards) / 1000;
           const key = `${w.boardId}|${pickBoardLength(w.boardId, w.height)}`;
-          add(j.req.boardArea, key, thick * Hw * sys.layers);
+          // pasek na czole: tyle warstw, ile ma grubsza strona
+          const nl = Math.max(...sideLayers(sys));
+          add(j.req.boardArea, key, thick * Hw * nl);
           const n = (Math.ceil(Hw / STRIP_SCREW_SPACING - 1e-9) + 1) * 2;
-          add(j.req.counts, screwFor(boardById(w.boardId).thickness * sys.layers), n);
-          j.frame.push(`zamknięcie czoła paskiem płyty ${Math.round(thick * 100)} cm × ${fmt(Hw)} m (${sys.layers} warstw${sys.layers > 1 ? 'y' : 'a'}), ${n} wkrętów`);
+          add(j.req.counts, screwFor(Math.max(sideStackMm(sys, w, 0), sideStackMm(sys, w, 1))), n);
+          j.frame.push(`zamknięcie czoła paskiem płyty ${Math.round(thick * 100)} cm × ${fmt(Hw)} m (${nl} warstw${nl > 1 ? 'y' : 'a'}), ${n} wkrętów`);
         }
       } else {
         j.inner = edges(j, 'inner', 'contact', Array(sys.sides).fill(Hw), false);
-        if (sys.frame !== 'glued')
+        if (sys.frame === 'panel')
+          j.frame.push(
+            `${panelEdgeLabel(sys)} przy ścianie kołkowany co ${sys.panel?.anchorSpacing ?? 100} cm, taśma uszczelniająca ${fmt(Hw)} mb, płyty dochodzą do muru i są przykręcone do profilu (w wyliczeniu ściany)`,
+          );
+        else if (sys.frame !== 'glued')
           j.frame.push(`słupek przyścienny kotwiony do muru kołkami co 100 cm, taśma uszczelniająca ${fmt(Hw)} mb (w wyliczeniu ściany)`);
       }
       finish(j);

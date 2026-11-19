@@ -8,6 +8,7 @@ import {
   allCeilingSystems,
   allWallSystems,
   boardById,
+  layerBoards,
   ceilingMaxSpan,
   PRODUCTS,
   customSystems,
@@ -20,6 +21,7 @@ import {
   type StudSpacing,
   type SystemVariant,
   MAKER_LABEL,
+  isHungCeiling,
   type WallCategory,
   type WallFrame,
   type WallSystem,
@@ -152,9 +154,21 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 maker={makerOf(s)}
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
-                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : s.frame === 'hat-lining' ? 'kapeluszowy 15/48, bez UD' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
-                  ['Płyty', `${boardGroups(s).map((g) => `${g.n}× ${boardById(g.id).name}`).join(' + ')}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
-                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix'
+                    ? []
+                    : s.frame === 'panel'
+                      ? ([
+                          ['Profil', `${wallStudLabel(s)} ${s.panel?.edgeSides === 'all' ? 'po obwodzie (ściany, posadzka, strop)' : 'przy ścianach po obu stronach'}, kołki co ${s.panel?.anchorSpacing} cm`],
+                          ['Maks. szerokość', `${fmtNum((s.panel?.maxWidth ?? 0) / 100)} m (płyta w jednym kawałku od ściany do ściany)`],
+                        ] as [string, string][])
+                      : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : s.frame === 'hat-lining' ? 'kapeluszowy 15/48, bez UD' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
+                  ...(s.sideB?.length && s.sides === 2
+                    ? ([
+                        ['Płyty strony A', layerBoards(s, s.defaultBoard).map((id) => boardById(id).name).join(' + ') + ' (od rusztu)'],
+                        ['Płyty strony B', s.sideB.map((id) => boardById(id).name).join(' + ') + ' (od rusztu)'],
+                      ] as [string, string][])
+                    : ([['Płyty', `${boardGroups(s).map((g) => `${g.n}× ${boardById(g.id).name}`).join(' + ')}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix' || s.frame === 'panel' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
                   ...(s.frame === 'point-fix'
                     ? ([
                         ['Łącznik', fixerLabel(s.fixer)],
@@ -213,7 +227,12 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
   const out: [string, string][] = [
     ['Płyty', innerN ? `${innerN}× ${boardById(s.innerBoard!).name} (od rusztu) + ${s.layers - innerN}× ${boardById(s.defaultBoard).name}` : `${s.layers}× ${boardById(s.defaultBoard).name}`],
   ];
-  if (s.kind === 'two-level' || s.kind === 'one-level') {
+  if (s.profiles) {
+    out.push(['Ruszt', s.profiles.label]);
+    out.push(['Profile główne (górne)', `co ${s.mainSpacing} cm`]);
+    out.push(['Profile nośne (dolne)', `co ${s.secondarySpacing} cm`]);
+    out.push(['Zawiesia', `kątownik cięty na długość zwieszenia, co ${s.hangerSpacing} cm`]);
+  } else if (s.kind === 'two-level' || s.kind === 'one-level') {
     out.push(['Profile nośne CD 60', `co ${s.mainSpacing} cm`]);
     out.push(['Profile montażowe CD 60', `co ${s.secondarySpacing} cm`]);
     out.push(['Wieszaki', `${HANGER_LABEL[s.hangerType ?? 'noniusz']} co ${s.hangerSpacing} cm`]);
@@ -233,7 +252,7 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
   } else if (s.kind === 'direct' && s.hangerType === 'hat') {
     out.push(['Profile kapeluszowe 15/48', `co ${s.secondarySpacing} cm, wprost na stropie, bez UD`]);
     out.push(['Mocowanie', `dyble w dwóch rzędach (na obu półkach), w rzędzie max co ${s.hangerSpacing} cm`]);
-  } else if (s.kind === 'direct') {
+  } else if (s.kind === 'direct' || s.kind === 'parallel') {
     out.push(['Profile CD 60', `co ${s.secondarySpacing} cm`]);
     out.push(['Mocowanie', `${HANGER_LABEL[s.hangerType ?? 'es']} co ${s.hangerSpacing} cm`]);
   } else if (s.kind === 'ua-span') {
@@ -625,7 +644,7 @@ function WallEditor({ initial, onSave, onCancel }: { initial: WallSystem; onSave
             label="Ruszt"
             value={s.frame}
             mode="sheet"
-            options={(Object.keys(WALL_FRAME_LABEL) as WallFrame[]).map((f) => ({ value: f, label: WALL_FRAME_LABEL[f] }))}
+            options={(Object.keys(WALL_FRAME_LABEL) as WallFrame[]).filter((f) => f !== 'panel').map((f) => ({ value: f, label: WALL_FRAME_LABEL[f] }))}
             onChange={(v) => set({ frame: v })}
           />
         </div>
@@ -712,7 +731,7 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
   const [s, setS] = useState(initial);
   const set = (p: Partial<CeilingSystem>) => setS((x) => ({ ...x, ...p }));
   const preview = useMemo(() => ceilingConsumption(s), [s]);
-  const hung = s.kind === 'two-level' || s.kind === 'one-level' || s.kind === 'direct';
+  const hung = isHungCeiling(s.kind);
   return (
     <form
       className="card editor"
@@ -747,7 +766,7 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
         )}
         <NumField
           id="ec-sec"
-          label={s.kind === 'cw-span' ? 'Rozstaw CW' : s.kind === 'direct' ? 'Rozstaw CD' : s.kind === 'point-fix' ? 'Siatka łączników – kierunek 2' : 'Rozstaw montażowych'}
+          label={s.kind === 'cw-span' ? 'Rozstaw CW' : s.kind === 'direct' || s.kind === 'parallel' ? 'Rozstaw CD' : s.kind === 'point-fix' ? 'Siatka łączników – kierunek 2' : 'Rozstaw montażowych'}
           unit="cm"
           value={s.secondarySpacing}
           min={20}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Attic } from '../model/types';
-import { createProject } from '../model/factory';
+import { createAttic, createProject } from '../model/factory';
 import { atticGrid, atticSection, cdLinePositions, hangerRafters, pitchForRidge, rafterPositions, ridgeHeightFor } from './attic';
 import { atticRequirement } from './atticMaterials';
 import { calculateProject } from './materials';
@@ -371,5 +371,42 @@ describe('ruszt krzyżowy poddasza (Siniat ES/DK, EL/DK, DK/MFC)', () => {
   it('wełna pod krokwiami ponad zasięg ES60 + drugi poziom – ostrzeżenie', () => {
     expect(atticGrid(es({ woolUnder: 100 })).warnings.some((w) => w.includes('nie zmieści się na tym wieszaku'))).toBe(false);
     expect(atticGrid(es({ woolUnder: 150 })).warnings.some((w) => w.includes('nie zmieści się na tym wieszaku'))).toBe(true);
+  });
+});
+
+describe('dobór długości wieszaka do zabudowy pod krokwią', () => {
+  const base = { roof: 'gable' as const, width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 40, rafterSpacing: 90, firstRafter: 10, rafterWidth: 8, rafterHeight: 18 };
+  const mk = (systemId: string, woolUnder: number) => {
+    const sys = CEILING_SYSTEMS.find((s) => s.id === systemId)!;
+    return atticRequirement(createAttic({ ...base, systemId, boardId: sys.defaultBoard, woolBetween: 150, woolUnder, vaporBarrier: false }));
+  };
+  const esId = CEILING_SYSTEMS.find((s) => s.attic && !s.atticFrame && (!s.maker || s.maker === 'rigips') && s.hangerType === 'es' && s.layers === 1)!.id;
+
+  it('uchwyt ES Rigips: 75 mm do 70 mm zabudowy, potem 125 mm, powyżej ostrzeżenie', () => {
+    expect(mk(esId, 0).grid.hangerSize?.name).toBe('ES 75 mm');
+    expect(mk(esId, 50).grid.hangerSize?.name).toBe('ES 75 mm');
+    expect(mk(esId, 75).grid.hangerSize?.name).toBe('ES 125 mm');
+    expect(mk(esId, 100).grid.hangerSize?.name).toBe('ES 125 mm');
+    const over = mk(esId, 150);
+    expect(over.grid.hangerSize).toBeUndefined();
+    expect(over.warnings.some((w) => w.includes('nie sięgnie') && w.includes('ES 125 mm'))).toBe(true);
+  });
+
+  it('dobrana długość trafia do uwagi przy wieszaku na liście materiałów i do założeń', () => {
+    const r = mk(esId, 100);
+    expect(JSON.stringify(r.req)).toContain('dobrano ES 125 mm');
+    expect(r.assumptions.some((t) => t.includes('ES'))).toBe(true);
+  });
+
+  it('RIGISTIL GL 2 / GL 9 i wieszak płaski Norgips L-180 / L-270 / L-350', () => {
+    expect(mk('S-4.70.08-1', 50).grid.hangerSize?.name).toBe('GL 2 (75 mm)');
+    expect(mk('S-4.70.08-1', 100).grid.hangerSize?.name).toBe('GL 9 (125 mm)');
+    expect(mk('NG-ZP-L-1', 100).grid.hangerSize?.name).toBe('L-180');
+    expect(mk('NG-ZP-L-1', 150).grid.hangerSize?.name).toBe('L-270');
+    expect(mk('NG-ZP-L-1', 200).grid.hangerSize?.name).toBe('L-270');
+  });
+
+  it('system z jedną długością wieszaka niczego nie dobiera', () => {
+    expect(mk('S-4.70.03-1', 50).grid.hangerSize).toBeUndefined();
   });
 });

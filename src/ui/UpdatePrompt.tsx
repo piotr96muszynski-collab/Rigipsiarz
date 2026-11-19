@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { versionLabel, type BuildInfo } from '../app/version';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 /** Komunikat o nowej wersji aplikacji. Service worker sprawdza aktualizacje co godzinę i przy starcie. */
@@ -13,6 +14,16 @@ export function UpdatePrompt() {
     },
   });
 
+  // Numer nowej wersji (version.json nie jest w pamięci offline, więc idzie z sieci).
+  const [next, setNext] = useState('');
+  useEffect(() => {
+    if (!needRefresh) return;
+    fetch(`${import.meta.env.BASE_URL}version.json?t=${Date.now()}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? (r.json() as Promise<BuildInfo>) : null))
+      .then((info) => info?.build && setNext(versionLabel(info)))
+      .catch(() => {});
+  }, [needRefresh]);
+
   useEffect(() => {
     if (!offlineReady) return;
     const t = setTimeout(() => setOfflineReady(false), 4000);
@@ -22,7 +33,7 @@ export function UpdatePrompt() {
   if (needRefresh)
     return (
       <div className="toast" role="status">
-        <span>Jest nowa wersja aplikacji.</span>
+        <span>Jest nowa wersja aplikacji{next ? ` (${next})` : ''}.</span>
         <button className="btn primary small" onClick={() => updateServiceWorker(true)}>
           Odśwież
         </button>

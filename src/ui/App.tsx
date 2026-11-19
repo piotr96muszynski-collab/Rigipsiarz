@@ -23,6 +23,7 @@ import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
 import { WoolSettings } from './WoolField';
 import { UpdatePrompt } from './UpdatePrompt';
+import { AppVersion } from './AppVersion';
 import { useBack, useExitHint } from './back';
 import { useImmersive } from './fullscreen';
 import { useHistory } from './useHistory';
@@ -305,6 +306,7 @@ function Home({
       <p className="home-foot small">
         <a href="#dalmierz">Dalmierz Bluetooth – diagnostyka</a>
       </p>
+      <AppVersion />
     </main>
   );
 }
@@ -573,6 +575,8 @@ function ProjectView({
             <button className="btn danger" onClick={onDelete}>
               Usuń projekt
             </button>
+            <hr />
+            <AppVersion />
           </div>
         )}
       </div>

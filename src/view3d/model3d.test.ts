@@ -180,7 +180,7 @@ describe('narożniki w 3D z modelu styków', () => {
       for (const a of w1) for (const b of w2) expect(overlapArea(plan(a), plan(b))).toBeLessThan(1e-6);
       // punkt tuż przy zewnętrznym rogu (x > 3, y < 0) leży w płycie
       const sec = wallSection(p.walls[0]);
-      const t = sec.core + sec.bt * sec.layers[0];
+      const t = sec.core + sec.bt[0] * sec.layers[0];
       const outer = { x: 3 + t - 0.002, y: -t + 0.002 };
       const inside = (poly: { x: number; y: number }[], q: { x: number; y: number }) =>
         poly.every((A, i) => {

@@ -2,13 +2,13 @@
 // dzięki czemu da się ją testować w Node. Wszystko w metrach.
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
-import { HAT_MM, HAT_W, boardById, ceilingSystemById, isHatCeiling, wallFrameDepth, wallSystemById } from '../catalog/rigips';
+import { HAT_MM, HAT_W, boardById, ceilingSystemById, isHatCeiling, isHungCeiling, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
 import { ceilingLevels } from '../calc/ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
 import { HAT_FLANGE, hangerPositions, hatFixPositions, liningLayout, pieceArea, pieceOutline, splicePositions, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
-import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
+import { analyzeJunctions, existingRooms, isNewWall, masonryEndExtension, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Attic, Ceiling, Point, Project, Wall } from '../model/types';
 import { atticGrid } from '../calc/attic';
 import { atticPlacements } from '../calc/atticPlan';
@@ -218,7 +218,6 @@ function buildWall(
   const sec = contacts.sections.get(w.id) ?? wallSection(w);
   const pointFix = sys.frame === 'point-fix';
   const glued = sys.frame === 'glued';
-  const bt = sec.bt;
 
   /** Dodaje prostopadłościan w układzie ściany: u wzdłuż, v wysokość, n odsunięcie od osi */
   const box = (
@@ -286,6 +285,16 @@ function buildWall(
     }
   }
 
+  // --- Obudowa z samych płyt: profil obwodowy (kątownik 40 mm) przy ścianach, w Rigips też przy posadzce i stropie ---
+  if (lay && sys.frame === 'panel') {
+    const a = 0.04;
+    // za płytami (strona szachtu), półka przy murze
+    const n = -sec.core - a / 2;
+    box('wallFrame', 'uw', f0, f0 + 0.002, 0, H, n, a);
+    box('wallFrame', 'uw', f1 - 0.002, f1, 0, H, n, a);
+    if (sys.panel?.edgeSides === 'all') for (const y of [0, H - 0.002]) box('wallFrame', 'uw', f0, f1, y, y + 0.002, n, a);
+  }
+
   // --- ATLAS M-System 3G: łączniki talerzykowe za płytą (strona 0), podłoże po stronie przeciwnej ---
   if (lay?.fixers) {
     const depth = sec.core * 2;
@@ -299,6 +308,9 @@ function buildWall(
   const openings = wallOpenings(w, L, H);
   const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
   for (const face of lay?.faces ?? []) {
+    // grubość warstwy po swojej stronie (ściany z innym poszyciem stron), płyta tej warstwy
+    const bt = sec.bt[face.side];
+    const fb = face.board ?? board.id;
     const n = (face.side === 0 ? 1 : -1) * (sec.core + bt * face.layer + bt / 2);
     for (const pc of face.pieces) {
       if (pc.notches?.length) {
@@ -306,7 +318,7 @@ function buildWall(
         parts.push({
           type: 'panel',
           layer: 'wallBoards',
-          mat: `board:${board.id}`,
+          mat: `board:${fb}`,
           origin: [ax, 0, az],
           rotY,
           n,
@@ -318,7 +330,7 @@ function buildWall(
         continue;
       }
       for (const r of subtractRects({ x0: pc.x0, x1: pc.x1, y0: pc.y0, y1: pc.y1 }, holes))
-        box('wallBoards', `board:${board.id}`, r.x0, r.x1, r.y0, r.y1, n, bt);
+        box('wallBoards', `board:${fb}`, r.x0, r.x1, r.y0, r.y1, n, bt);
     }
   }
 
@@ -383,10 +395,9 @@ function buildExistingWall(
   const openings = wallOpenings(w, L, H);
   const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
   const center = inner ? -inner * (T / 2) : 0;
-  // narożnik obrysu: mur przedłużony o grubość, żeby domknąć zewnętrzny róg
-  const shared = (nid: string) => p.walls.some((o) => o.id !== w.id && !isNewWall(o) && (o.a === nid || o.b === nid));
-  const e0 = inner && shared(w.a) ? T : 0;
-  const e1 = inner && shared(w.b) ? T : 0;
+  // narożnik obrysu: w wypukłym mur przedłużony do zewnętrznego lica drugiej ściany, w wklęsłym kończy się w węźle
+  const e0 = (masonryEndExtension(p, w, 'a', inner, nodes) ?? 0) / 100;
+  const e1 = (masonryEndExtension(p, w, 'b', inner, nodes) ?? 0) / 100;
   for (const r of subtractRects({ x0: -e0, x1: L + e1, y0: 0, y1: H }, holes)) box('existing', 'masonry', r.x0, r.x1, r.y0, r.y1, center, T);
 
   for (const l of w.linings ?? []) {
@@ -402,7 +413,8 @@ function buildExistingWall(
       const n = face + l.side * (depth - CD_H / 2);
       // środnik CD od strony płyt, półki w stronę muru
       const prof = profileFor('cdMain', 'up', l.side > 0 ? 'b+' : 'b-');
-      const at = (x: number) => Math.min(l1 - CD_W / 2, Math.max(l0 + CD_W / 2, x));
+      // ruszt tylko na murze (w narożniku wklęsłym okładzina wychodzi za węzeł samymi płytami)
+      const at = (x: number) => Math.min(Math.min(l1, L) - CD_W / 2, Math.max(Math.max(l0, 0) + CD_W / 2, x));
       for (const st of lay.studs)
         for (const [y0, y1] of st.segments) {
           const v0 = Math.max(y0, TRACK_H);
@@ -436,7 +448,7 @@ function buildExistingWall(
       const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
       const hatH = HAT_MM / 1000;
       const n = face + l.side * (hatH / 2);
-      const at = (x: number) => Math.min(l1 - HAT_W / 2, Math.max(l0 + HAT_W / 2, x));
+      const at = (x: number) => Math.min(Math.min(l1, L) - HAT_W / 2, Math.max(Math.max(l0, 0) + HAT_W / 2, x));
       for (const st of lay.studs)
         for (const [y0, y1] of st.segments) if (y1 - y0 > 0.005) box('wallFrame', 'cdMain', at(st.x) - HAT_W / 2, at(st.x) + HAT_W / 2, y0, y1, n, hatH);
       for (const t of lay.tracks) {
@@ -444,7 +456,7 @@ function buildExistingWall(
         box('wallFrame', 'cdMain', t.x0, t.x1, y0, y0 + HAT_W, n, hatH);
       }
       for (const q of lay.brackets?.points ?? []) {
-        const u = Math.min(l1 - 0.01, Math.max(l0 + 0.01, q.x));
+        const u = Math.min(Math.min(l1, L) - 0.01, Math.max(Math.max(l0, 0) + 0.01, q.x));
         parts.push({
           type: 'cyl',
           layer: 'wallFrame',
@@ -479,8 +491,9 @@ function buildExistingWall(
       const n = face + l.side * (depth + bt * layer + bt / 2);
       const shift = (layer % 2) * (widthM / 2);
       for (const r of boardSheets(L, H, widthM, sheetLen, shift, holes)) {
-        const x0 = Math.max(r.x0, l0);
-        const x1 = Math.min(r.x1, l1);
+        // płyta skrajna wychodzi za węzeł, gdy okładzina zakrywa czoło okładziny sąsiedniej
+        const x0 = r.x0 <= 1e-6 ? l0 : Math.max(r.x0, l0);
+        const x1 = r.x1 >= L - 1e-6 ? l1 : Math.min(r.x1, l1);
         if (x1 - x0 > 0.001) box('wallBoards', `board:${board.id}`, x0, x1, r.y0, r.y1, n, bt);
       }
     }
@@ -564,8 +577,8 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
 
   // profile CD: dolne (montażowe) przy płycie, nośne nad nimi w suficie dwupoziomowym
   const grid = ceilingGrid(c, sys);
-  const onCD = (g: (typeof grid)[number]) => g.level === 'secondary' || twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
-  const hung = twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
+  const onCD = (g: (typeof grid)[number]) => !sys.profiles && (g.level === 'secondary' || isHungCeiling(sys.kind));
+  const hung = isHungCeiling(sys.kind);
   for (const g of grid) {
     const isMain = g.level === 'main';
     const y0 = twoLevel && isMain ? yFrame + CD_H : yFrame;

@@ -43,7 +43,7 @@ export function ceilingVaporSpec(sys: CeilingSystem): VaporBarrierSpec {
 }
 
 export function wallVaporSpec(sys: WallSystem): VaporBarrierSpec {
-  if (sys.frame === 'glued' || sys.frame === 'point-fix') return NONE;
+  if (sys.frame === 'glued' || sys.frame === 'point-fix' || sys.frame === 'panel') return NONE;
   return spec('optional', 'w razie potrzeby wg analizy cieplno-wilgotnościowej; zużycie wg kart Rigips 4.70.0x', true);
 }
 
