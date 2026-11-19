@@ -2,7 +2,7 @@
 // przez kanał z src/ui/measure.ts. Stan i dziennik surowych ramek są dostępne dla UI (useSyncExternalStore).
 
 import { pushMeasurement } from '../ui/measure';
-import { BOSCH_CHANNELS, BOSCH_NAME_PREFIXES, distanceCm, ENABLE_SYNC, isBoschCharacteristic } from './bosch';
+import { BOSCH_CHANNELS, BOSCH_NAME_PREFIXES, DIAG_CANDIDATE_SERVICES, distanceCm, ENABLE_SYNC, isBoschCharacteristic } from './bosch';
 import { type BtCharacteristic, type BtDevice, getBluetooth, writeChar } from './webBluetooth';
 
 export type LaserStatus = 'unsupported' | 'idle' | 'connecting' | 'connected' | 'reconnecting';
@@ -89,7 +89,11 @@ async function setup(dev: BtDevice, diagnostic: boolean) {
   commandChar = null;
 
   if (diagnostic) {
-    const services = await server.getPrimaryServices();
+    const services = await server.getPrimaryServices().catch((e) => {
+      addLog({ kind: 'error', text: `Lista usług: ${(e as Error)?.name ?? ''} ${(e as Error)?.message ?? e}` });
+      return [];
+    });
+    if (!services.length) addLog({ kind: 'error', text: 'Dalmierz nie pokazał żadnej z usług z listy kandydatów.' });
     for (const s of services) {
       addLog({ kind: 'info', text: `Usługa ${s.uuid}` });
       for (const c of await s.getCharacteristics().catch(() => [] as BtCharacteristic[])) {
@@ -167,7 +171,7 @@ export async function connectLaser(opts: { diagnostic?: boolean; extraServices?:
   const diagnostic = !!opts.diagnostic;
   set({ status: 'connecting', error: undefined });
   try {
-    const optionalServices = [...BOSCH_CHANNELS.map((c) => c.service), 'battery_service', 'device_information', ...(opts.extraServices ?? [])];
+    const optionalServices = [...(diagnostic ? DIAG_CANDIDATE_SERVICES : [...BOSCH_CHANNELS.map((c) => c.service), 'battery_service', 'device_information']), ...(opts.extraServices ?? [])];
     const dev = await bt.requestDevice(
       diagnostic
         ? { acceptAllDevices: true, optionalServices }
@@ -181,11 +185,13 @@ export async function connectLaser(opts: { diagnostic?: boolean; extraServices?:
     await setup(dev, diagnostic);
   } catch (e) {
     const msg = errText(e);
-    if ((e as { name?: string })?.name !== 'NotFoundError') addLog({ kind: 'error', text: msg });
+    const chosen = !!device;
+    if (chosen) addLog({ kind: 'error', text: `${(e as Error)?.name ?? 'Błąd'}: ${(e as Error)?.message ?? msg}` });
+    else if ((e as { name?: string })?.name !== 'NotFoundError') addLog({ kind: 'error', text: msg });
     // nieudane połączenie nie powinno uruchamiać automatycznych ponownych prób
     manualDisconnect = true;
     device?.gatt?.connected && device.gatt.disconnect();
-    set({ status: 'idle', error: (e as { name?: string })?.name === 'NotFoundError' ? undefined : msg });
+    set({ status: 'idle', error: !chosen && (e as { name?: string })?.name === 'NotFoundError' ? undefined : msg });
   }
 }
 
