@@ -1,6 +1,8 @@
 import { AtticBoardsDrawing, AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
 import { AtticWindowSection } from '../drawings/AtticWindowDrawing';
 import { windowLabel } from '../calc/atticWindows';
+import { AtticRoofFaceDrawing, AtticRoofPlanDrawing } from '../drawings/AtticRoofDrawing';
+import { AtticWallBoardsDrawing, AtticWallFrameDrawing } from '../drawings/AtticWallDrawing';
 import { useMemo, useState } from 'react';
 import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc/layout';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
@@ -239,7 +241,21 @@ export function DrawingsPanel({ project, calc }: Props) {
             </header>
             <h4>Przekrój poprzeczny</h4>
             <AtticSectionDrawing attic={a} grid={r.grid} title={`Poddasze ${i + 1} – przekrój`} />
-            {r.grid.surfaces.map((g) => (
+            {r.grid.roof && (
+              <>
+                <h4>Rzut – narożniki dachu i kosze</h4>
+                <AtticRoofPlanDrawing attic={a} roof={r.grid.roof} title={`Poddasze ${i + 1} – rzut`} />
+                {r.grid.roof.faces.map((g, k) => (
+                  <div key={g.face.key}>
+                    <h4>
+                      {k + 1}. {g.face.label} – ruszt i punkty mocowania
+                    </h4>
+                    <AtticRoofFaceDrawing attic={a} grid={{ ...r.grid, roof: r.grid.roof! }} index={k} title={`Poddasze ${i + 1} – ${g.face.label.toLowerCase()}`} />
+                  </div>
+                ))}
+              </>
+            )}
+            {!r.grid.roof && r.grid.surfaces.map((g) => (
               <div key={g.surface.id}>
                 <h4>{g.surface.label} – ruszt i punkty mocowania</h4>
                 <AtticSurfaceDrawing
@@ -280,6 +296,22 @@ export function DrawingsPanel({ project, calc }: Props) {
                   vapor={vaporBarrierOn(a.vaporBarrier, ceilingVaporSpec(sys))}
                   title={`Poddasze ${i + 1} – ${windowLabel(x.w, k).toLowerCase()}, przekrój`}
                 />
+              </div>
+            ))}
+            {r.walls.map((w, wi) => (
+              <div key={`${w.face.id}-${wi}`}>
+                <h4>
+                  {w.face.label} – okładzina, ruszt i punkty mocowania
+                </h4>
+                <AtticWallFrameDrawing lay={w} title={`Poddasze ${i + 1} – ${w.face.label.toLowerCase()} – ruszt`} />
+                {[...w.layers].reverse().map((l) => (
+                  <div key={l.layer}>
+                    <h4>
+                      {w.face.label} – rozkład płyt{w.layers.length > 1 ? `, warstwa ${l.layer + 1}` : ''}
+                    </h4>
+                    <AtticWallBoardsDrawing lay={w} layer={l.layer} title={`Poddasze ${i + 1} – ${w.face.label.toLowerCase()} – płyty`} />
+                  </div>
+                ))}
               </div>
             ))}
             <p className="small">

@@ -10,9 +10,11 @@ import type { Attic } from '../model/types';
 import { atticFrameOf, atticGrid, type AtticGrid } from './attic';
 import { addAtticWindows, atticWindowCutouts, atticWindowGeometry, cdLineSegments, cutoutM2, type AtticWindowsResult } from './atticWindows';
 import { atticBoardLayout, type AtticBoards } from './atticBoards';
+import { addAtticWalls, atticWallFaces, atticWallLayout, type AtticWallLayout } from './atticWalls';
 import { layerBoards } from './ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
 import { joinsFor, profileMaxStock } from './profileLength';
+import { atticRoofRequirement } from './atticRoofMaterials';
 import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, type Requirement } from './materials';
 
 export interface AtticResult {
@@ -22,6 +24,10 @@ export interface AtticResult {
   boards: AtticBoards;
   /** Powierzchnia zabudowy (skosy + sufit), m² */
   areaM2: number;
+  /** Okładziny ścianek kolankowych i ścian szczytowych (rysunki, 3D) */
+  walls: AtticWallLayout[];
+  /** Powierzchnia okładzin ścian (obie ściany szczytowe razem), m² */
+  wallAreaM2: number;
   /** Długość profilu przyściennego na ścianach, m */
   perimeterM: number;
   /** Liczba mocowań rusztu do krokwi (wieszaki albo punkty przykręcenia profilu / łaty) */
@@ -43,6 +49,8 @@ export function atticRequirement(
 ): AtticResult {
   const req = emptyReq();
   const grid = atticGrid(a, sys);
+  // dach z narożnikami lub koszami: płaszczyzny o dowolnym obrysie
+  if (grid.roof) return atticRoofRequirement(a, sys, fin, { ...grid, roof: grid.roof });
   const warnings = [...grid.warnings];
   const assumptions = [...grid.assumptions];
   const L = a.length / 100;
@@ -114,7 +122,7 @@ export function atticRequirement(
     if (grid.profile.startsWith('LATA')) add(req.counts, 'TD35', A * sys.screwsOuter);
     else addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
     // więźba widoczna: płyty cięte na pasy między krokwiami – karty 4.71.11 i 4.71.12 podają 3 mb taśmy na m²
-    addJointing(req, A, sys.layers, a.boardId, between ? 3 : 1.4, fin);
+    addJointing(req, A, sys.layers, a.boardId, between ? 3 : 1.4, fin, sys.maker);
   }
 
   // płyty z rozkładu (ten sam co na rysunku i w 3D): elementy + resztki, z których nic się już nie wytnie
@@ -164,5 +172,15 @@ export function atticRequirement(
   warnings.push(...windows.warnings);
   assumptions.push(...windows.assumptions);
 
-  return { req, grid, boards: layout, areaM2, perimeterM, hangers, warnings, assumptions, windows };
+
+  // okładziny ścianek kolankowych i ścian szczytowych (systemy okładzin muru, profile docięte do skosu)
+  const walls = atticWallFaces(a, grid).map(atticWallLayout);
+  const wallAreaM2 = addAtticWalls(req, walls, fin);
+  for (const w of walls) warnings.push(...w.warnings);
+  if (walls.length)
+    assumptions.push(
+      'Okładziny ścian poddasza: profile pionowe co rozstaw, docięte do lica skosu; profil przyścienny UD po obwodzie każdej ściany; płyty pionowo, docinane pod kątem skosu. Okładzina dochodzi do lica zabudowy skosów i sufitu.',
+    );
+
+  return { req, grid, boards: layout, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions, windows };
 }

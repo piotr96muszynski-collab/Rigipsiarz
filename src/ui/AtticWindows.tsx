@@ -37,6 +37,7 @@ export function AtticWindowsField({ attic, grid, edit }: { attic: Attic; grid: A
   return (
     <section className="openings attic-windows">
       <h4 className="attic-sub">Okna dachowe</h4>
+      {grid.roof && <p className="muted small">Przy dachu z narożnikami lub koszami okna nie są jeszcze liczone w zestawieniu, na rysunkach ani w 3D.</p>}
       {list.map((w, i) => {
         const name = windowLabel(w, i);
         const g = geom.find((x) => x.w.id === w.id);

@@ -5,6 +5,7 @@
 import { atticWindowCutouts, atticWindowGeometry, cdLineSegments } from '../calc/atticWindows';
 import { HAT_MM, HAT_W, boardById, ceilingSystemById, isHatCeiling, isHungCeiling, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { atticBoardLayout } from '../calc/atticBoards';
+import { atticWallFaces, atticWallLayout } from '../calc/atticWalls';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
 import { ceilingLevels } from '../calc/ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
@@ -14,6 +15,7 @@ import { analyzeJunctions, existingRooms, isNewWall, masonryEndExtension, masonr
 import type { Attic, Ceiling, Point, Project, Wall } from '../model/types';
 import { atticGrid } from '../calc/attic';
 import { atticPlacements } from '../calc/atticPlan';
+import { buildAtticRoof } from './atticRoof3d';
 import { layerBoards } from '../calc/ceilingLevels';
 import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 import { rowSegments } from '../calc/boardLength';
@@ -87,7 +89,35 @@ export interface CylPart {
   owner: string;
 }
 
-export type Part3D = BoxPart | SlabPart | PanelPart | CylPart;
+/** Płaski wielokąt wypukły w dowolnej płaszczyźnie (płyty i folia na połaciach z narożnikami / koszami) */
+export interface FacePart {
+  type: 'face';
+  layer: Layer3D;
+  mat: MatKey;
+  /** Wierzchołki, m */
+  pts: [number, number, number][];
+  /** Kierunek grubości (od `pts`), dowolna długość */
+  normal: [number, number, number];
+  thickness: number;
+  owner: string;
+}
+
+/** Belka o przekroju prostokątnym między dwoma punktami (krokwie narożne, odcinki profili pod kątem) */
+export interface BeamPart {
+  type: 'beam';
+  layer: Layer3D;
+  mat: MatKey;
+  a: [number, number, number];
+  b: [number, number, number];
+  /** Kierunek wysokości przekroju (prostopadły do osi) */
+  up: [number, number, number];
+  /** Szerokość i wysokość przekroju, m */
+  w: number;
+  h: number;
+  owner: string;
+}
+
+export type Part3D = BoxPart | SlabPart | PanelPart | CylPart | FacePart | BeamPart;
 
 export interface Model3D {
   parts: Part3D[];
@@ -665,6 +695,8 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   const z0 = 0;
   const sys = ceilingSystemById(a.systemId);
   const grid = atticGrid(a, sys);
+  // dach z narożnikami / koszami: płaszczyzny o dowolnym obrysie
+  if (grid.roof) return buildAtticRoof(a, { ...grid, roof: grid.roof }, parts, origin);
   const layout = atticBoardLayout(a, sys, grid, atticWindowCutouts(a, grid));
   const L = a.length / 100;
   const rw = a.rafterWidth / 100;
@@ -817,22 +849,68 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   };
   masonry(-wallT / 2, a.kneeLeft / 100);
   masonry(a.width / 100 + wallT / 2, (a.roof === 'mono' ? st.ridgeHeight : a.kneeRight) / 100);
-  // położenie na planie: obrót kalenicy o 90° (x' = szerokość − z, z' = x) i przesunięcie do narożnika
+  // okładziny ścianek kolankowych i ścian szczytowych: płyty docięte do skosu, profile pionowe
   const W = a.width / 100;
-  for (let i = first; i < parts.length; i++) {
-    const pt = parts[i];
-    if (pt.type === 'panel') {
-      // glify boczne okien: ten sam obrót i przesunięcie co bryły
-      if (a.planRot === 90) {
-        const [ox, oy, oz] = pt.origin;
-        pt.origin = [W - oz, oy, ox];
-        pt.rotY -= Math.PI / 2;
+  for (const lay of atticWallFaces(a, grid).map(atticWallLayout)) {
+    const d = wallFrameDepth(lay.sys) / 1000;
+    const pH = lay.sys.frame === 'hat-lining' ? 0.015 : 0.027;
+    const lt = lay.layers.map((l) => boardById(l.boardId).thickness / 1000);
+    // ściana: początek układu, obrót, kierunek normalnej do wnętrza; ściany szczytowe po obu końcach
+    const walls: { o: [number, number, number]; rotY: number; inward: 1 | -1; stud: (x: number, len: number, off: number) => [number, number, number]; along: 'x' | 'z' }[] =
+      lay.face.id === 'gable'
+        ? [
+            { o: [0, 0, z0], rotY: -Math.PI / 2, inward: -1, stud: (x, len, off) => [off, len / 2, z0 + x], along: 'z' },
+            { o: [L, 0, z0], rotY: -Math.PI / 2, inward: 1, stud: (x, len, off) => [L - off, len / 2, z0 + x], along: 'z' },
+          ]
+        : lay.face.id === 'knee-left'
+          ? [{ o: [0, 0, z0], rotY: 0, inward: 1, stud: (x, len, off) => [x, len / 2, z0 + off], along: 'x' }]
+          : [{ o: [0, 0, z0 + W], rotY: 0, inward: -1, stud: (x, len, off) => [x, len / 2, z0 + W - off], along: 'x' }];
+    for (const wl of walls) {
+      for (const l of lay.layers) {
+        const t = lt[l.layer];
+        const n = wl.inward * (d + lt.slice(0, l.layer).reduce((v, x) => v + x, 0) + t / 2);
+        for (const pc of l.pieces)
+          parts.push({
+            type: 'panel',
+            layer: 'wallBoards',
+            mat: `board:${l.boardId}`,
+            origin: [...wl.o],
+            rotY: wl.rotY,
+            n,
+            thickness: t,
+            loops: [pc.outline.map((q) => ({ x: q.x / 100, y: q.z / 100 }))],
+            area: pc.area / 10000,
+            owner: a.id,
+          });
       }
-      pt.origin[0] += origin.x / 100;
-      pt.origin[2] += origin.y / 100;
+      for (const st of lay.studs) {
+        const len = st.len / 100;
+        parts.push({
+          type: 'box',
+          layer: 'wallFrame',
+          mat: 'cdMain',
+          c: wl.stud(st.x / 100, len, d - pH / 2),
+          s: wl.along === 'x' ? [CD_W, len, pH] : [pH, len, CD_W],
+          rotY: 0,
+          owner: a.id,
+        });
+      }
+    }
+  }
+
+  // położenie na planie: obrót kalenicy o 90° (x' = szerokość − z, z' = x) i przesunięcie do narożnika
+  for (let i = first; i < parts.length; i++) {
+    const b = parts[i];
+    if (b.type === 'panel') {
+      if (a.planRot === 90) {
+        b.origin = [W - b.origin[2], b.origin[1], b.origin[0]];
+        b.rotY -= Math.PI / 2;
+      }
+      b.origin[0] += origin.x / 100;
+      b.origin[2] += origin.y / 100;
       continue;
     }
-    const b = pt as BoxPart;
+    if (b.type !== 'box') continue;
     if (a.planRot === 90) {
       b.c = [W - b.c[2], b.c[1], b.c[0]];
       b.rotY -= Math.PI / 2;
@@ -887,7 +965,9 @@ export function buildModel3D(p: Project, _calc?: ProjectCalc): Model3D {
       const c = Math.cos(pt.rotY);
       const sn = Math.sin(pt.rotY);
       for (const q of pt.loops[0] ?? []) grow(pt.origin[0] + q.x * c, q.y, pt.origin[2] - q.x * sn);
-    } else for (const q of pt.points) grow(q.x, pt.y + pt.thickness, q.y);
+    } else if (pt.type === 'face') for (const q of pt.pts) grow(q[0], q[1], q[2]);
+    else if (pt.type === 'beam') for (const q of [pt.a, pt.b]) grow(q[0], q[1], q[2]);
+    else for (const q of pt.points) grow(q.x, pt.y + pt.thickness, q.y);
   }
   if (!parts.length) {
     min[0] = min[2] = -2;

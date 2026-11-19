@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { boardById, WALL_SYSTEMS, wallSystemById } from './rigips';
-import { wallSystemShort } from './systemLabel';
+import { boardById, ceilingSystemById, WALL_SYSTEMS, wallSystemById } from './rigips';
+import { atticSystemShort, wallSystemShort } from './systemLabel';
 
 describe('krótki opis systemu ściany', () => {
   it('Rigips 3.41.02 → 2×CW 75, 2×12,5', () => {
@@ -35,5 +35,19 @@ describe('krótki opis systemu ściany', () => {
     expect([...kinds].some((k) => k.startsWith('Szacht CW'))).toBe(true);
     expect(kinds.has('Okładzina CD 60')).toBe(true);
     expect([...kinds].some((k) => k.startsWith('2×CW'))).toBe(true);
+  });
+});
+
+describe('krótki opis systemu poddasza', () => {
+  it('producent, ruszt i płyty', () => {
+    expect(atticSystemShort(ceilingSystemById('S-PODD-1'))).toBe('Rigips: CD 60 + uchwyt elastyczny, 1×12,5');
+    expect(atticSystemShort(ceilingSystemById('S-4.70.02-2'), 'RFP15')).toBe('Rigips: Kapelusz do krokwi, 2×15');
+    expect(atticSystemShort(ceilingSystemById('S-4.71.11-1'))).toBe('Rigips: Łaty między krokwiami, 1×12,5');
+    expect(atticSystemShort(ceilingSystemById('S-4.71.12-1'))).toBe('Rigips: C RIGISTIL między krokwiami, 1×12,5');
+    expect(atticSystemShort(ceilingSystemById('S-4.70.07-1'))).toBe('Rigips: C RIGISTIL + wieszak RIGISTIL, 1×12,5');
+    expect(atticSystemShort(ceilingSystemById('NG-ZP-L-2'))).toBe('Norgips: CD 60 + wieszak płaski L, 2×12,5');
+    expect(atticSystemShort(ceilingSystemById('SN-P-ESDK-1'))).toBe('Siniat: Ruszt krzyżowy CD 60 + element ES60, 1×12,5');
+    expect(atticSystemShort(ceilingSystemById('SN-P-DKMFC-2'))).toBe('Siniat: Ruszt krzyżowy MF + kątownik MFC2330, 2×12,5');
+    expect(atticSystemShort(ceilingSystemById('SN-P-LD-3'))).toBe('Siniat: Łaty do krokwi, 3×12,5');
   });
 });

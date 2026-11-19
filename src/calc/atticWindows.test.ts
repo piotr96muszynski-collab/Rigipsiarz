@@ -117,3 +117,15 @@ describe('okna dachowe – materiały', () => {
     expect(atticRequirement({ ...a, windows: [] }).req).toEqual(atticRequirement(a).req);
   });
 });
+
+describe('okna dachowe – dach z narożnikami', () => {
+  it('okna pominięte z ostrzeżeniem, zestawienie bez kołnierza', () => {
+    const a = { ...attic(), ends: ['hip', 'hip'] as ['hip', 'hip'] };
+    const g = atticWindowGeometry(a);
+    expect(g.list).toEqual([]);
+    expect(g.warnings[0]).toMatch(/pominięto/);
+    const r = atticRequirement(a);
+    expect(r.warnings.some((t) => /Okna dachowe \(1\) pominięto/.test(t))).toBe(true);
+    expect(r.req.counts.KOLNIERZ_PARO).toBeUndefined();
+  });
+});

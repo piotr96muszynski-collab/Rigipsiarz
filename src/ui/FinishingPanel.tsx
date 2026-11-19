@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import {
+  AUTO,
   COMPOUNDS,
+  MAKER_FINISHING,
   EDGE_LABEL,
   Q1_STEPS,
   TAPES,
@@ -13,7 +15,7 @@ import {
   type EdgeUse,
   type FinishingSettings,
 } from '../catalog/finishing';
-import { boardById } from '../catalog/rigips';
+import { MAKER_LABEL, boardById, ceilingSystemById, wallSystemById, type Maker } from '../catalog/rigips';
 import { JOINT_KIND_LABEL, defaultTypeId, edgesTotal, type Joint, type JointEdges } from '../calc/joints';
 import type { ProjectCalc } from '../calc/materials';
 import type { Project } from '../model/types';
@@ -49,6 +51,18 @@ export function FinishingPanel({ project, calc, update }: Props) {
   const f = resolveFinishing(project.settings.finishing);
   const setF = (patch: Partial<FinishingSettings>) =>
     update((d) => void (d.settings.finishing = { ...d.settings.finishing, ...patch }));
+
+  // producenci systemów użytych w projekcie – do podpowiedzi „wg producenta systemu”
+  const makers = useMemo(() => {
+    const set = new Set<Maker>();
+    for (const w of project.walls) if (w.systemId) set.add(wallSystemById(w.systemId).maker ?? 'rigips');
+    for (const c of [...project.ceilings, ...(project.attics ?? [])]) set.add(ceilingSystemById(c.systemId).maker ?? 'rigips');
+    return [...set];
+  }, [project.walls, project.ceilings, project.attics]);
+  const autoHint = (pick: (m: Maker) => string) =>
+    (makers.length ? makers : (['rigips', 'knauf', 'norgips', 'siniat'] as Maker[])).map((m) => `${MAKER_LABEL[m]}: ${pick(m)}`).join(' · ');
+  const compoundAuto = autoHint((m) => compoundById(MAKER_FINISHING[m].compound).name);
+  const tapeAuto = autoHint((m) => tapeById(MAKER_FINISHING[m].tape).name);
 
   const wallNo = useMemo(() => new Map(project.walls.map((w, i) => [w.id, i + 1])), [project.walls]);
   const ceilNo = useMemo(() => new Map(project.ceilings.map((c, i) => [c.id, i + 1])), [project.ceilings]);
@@ -133,10 +147,19 @@ export function FinishingPanel({ project, calc, update }: Props) {
             label="Masa szpachlowa"
             value={f.compound}
             mode="sheet"
-            options={COMPOUNDS.map((c) => ({ value: c.id, label: c.name, hint: `${fmtNum(c.kgPerM2, 2)} kg/m² · ${c.kind}` }))}
+            options={[
+              { value: AUTO, label: 'Wg producenta systemu', hint: compoundAuto },
+              ...COMPOUNDS.map((c) => ({
+                value: c.id,
+                label: c.name,
+                hint: `${MAKER_LABEL[c.maker]} · ${fmtNum(c.kgPerM2 + (c.finish?.kgPerM2 ?? 0), 2)} kg/m² · ${c.kind}${c.noTape ? ' · bez taśmy' : ''}`,
+              })),
+            ]}
             onChange={(v) => setF({ compound: v })}
           />
-          <small className="hint">{compoundById(f.compound).info}</small>
+          <small className="hint">
+            {f.compound === AUTO ? `Masa producenta systemu ściany, sufitu lub poddasza – ${compoundAuto}.` : compoundById(f.compound).info}
+          </small>
         </div>
         <div className="field">
           <label htmlFor="fin-tape">Taśma spoinowa</label>
@@ -145,10 +168,15 @@ export function FinishingPanel({ project, calc, update }: Props) {
             label="Taśma spoinowa"
             value={f.tape}
             mode="sheet"
-            options={TAPES.map((t) => ({ value: t.id, label: t.name, hint: t.info }))}
+            options={[
+              { value: AUTO, label: 'Wg producenta systemu', hint: tapeAuto },
+              ...TAPES.map((t) => ({ value: t.id, label: t.name, hint: t.info })),
+            ]}
             onChange={(v) => setF({ tape: v })}
           />
-          <small className="hint">{tapeById(f.tape).info}</small>
+          <small className="hint">
+            {f.tape === AUTO ? `Taśma producenta systemu – ${tapeAuto}.` : tapeById(f.tape).info}
+          </small>
         </div>
         {boards.length > 0 && (
           <div className="field">

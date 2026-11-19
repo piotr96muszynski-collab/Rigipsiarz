@@ -1,13 +1,15 @@
 import { useId } from 'react';
-import { allCeilingSystems, ceilingSystemById } from '../catalog/rigips';
-import { isAtticSystem } from '../calc/recommend';
+import { ceilingSystemById } from '../catalog/rigips';
 import { ATTIC_REVEAL, atticFrameOf, atticGrid, pitchForRidge, ridgeHeightFor, type AtticGrid } from '../calc/attic';
 import { ATTIC_WOOL_BETWEEN, ATTIC_WOOL_UNDER, type AtticResult } from '../calc/atticMaterials';
-import type { Attic } from '../model/types';
+import type { Attic, AtticEnd, AtticWing } from '../model/types';
+import { uid } from '../model/factory';
+import { AtticRoofPlanDrawing } from '../drawings/AtticRoofDrawing';
 import { DimInput } from './DimInput';
 import { Picker, type PickOption } from './Picker';
-import { BOARD_OPTIONS } from './ElementsPanel';
-import { Warnings } from './SystemSelect';
+import { BOARD_OPTIONS, LiningEditor } from './ElementsPanel';
+import { createLining } from '../model/factory';
+import { AtticSystemSelect, Warnings } from './SystemSelect';
 import { VaporField } from './WoolField';
 import { ceilingVaporSpec, vaporBarrierOn } from '../calc/vaporBarrier';
 import { fmtNum } from './wallStyle';
@@ -25,13 +27,15 @@ const COLLAR_OPTIONS: PickOption<0 | 1>[] = [
   { value: 1, label: 'sufit pod jętkami' },
   { value: 0, label: 'skosy do kalenicy' },
 ];
+const END_OPTIONS: PickOption<AtticEnd>[] = [
+  { value: 'gable', label: 'ściana szczytowa' },
+  { value: 'hip', label: 'połać z narożnikami', hint: 'dach kopertowy' },
+];
+const SIDE_OPTIONS: PickOption<AtticWing['side']>[] = [
+  { value: 'left', label: 'lewa' },
+  { value: 'right', label: 'prawa' },
+];
 const mmOptions = (list: number[]): PickOption<number>[] => list.map((v) => ({ value: v, label: v ? `${v} mm` : 'bez wełny', short: v ? `${v} mm` : 'bez wełny' }));
-const MAKER_GROUP: Record<string, string> = { rigips: 'Rigips', norgips: 'Norgips', knauf: 'Knauf', siniat: 'Siniat' };
-const systemOptions = (): PickOption<string>[] =>
-  allCeilingSystems()
-    .filter(isAtticSystem)
-    .map((s) => ({ value: s.id, label: s.name, hint: s.info, group: s.custom ? 'Systemy własne' : (MAKER_GROUP[s.maker ?? 'rigips'] ?? 'Inne') }));
-
 /** Pole liczbowe bez jednostki długości (kąt dachu) */
 function AngleInput({ label, value, onChange, hint }: { label: string; value: number; onChange: (v: number) => void; hint?: string }) {
   const id = useId();
@@ -73,14 +77,38 @@ export function AtticEditor({ attic, edit, result }: Props) {
   const grid = result?.grid ?? atticGrid(attic, sys);
   const ridge = ridgeHeightFor(attic);
   const mono = attic.roof === 'mono';
-  const hangers = result?.hangers ?? grid.surfaces.reduce((n, g) => n + (g.fixS.length || g.cd.length) * g.hangerU.length, 0);
-  const area = grid.surfaces.reduce((s, g) => s + g.areaM2, 0);
+  const roof = grid.roof;
+  const hangers =
+    result?.hangers ??
+    (roof
+      ? roof.faces.reduce((n, g) => n + g.cd.reduce((k, l) => k + l.fix.length, 0), 0) + roof.lineProfiles.reduce((n, l) => n + l.fix.length, 0)
+      : grid.surfaces.reduce((n, g) => n + (g.fixS.length || g.cd.length) * g.hangerU.length, 0));
+  const area = roof ? roof.faces.reduce((s, g) => s + g.face.areaM2, 0) : grid.surfaces.reduce((s, g) => s + g.areaM2, 0);
+  const cdCount = roof ? roof.faces.reduce((n, g) => n + g.cd.length, 0) : grid.surfaces.reduce((n, g) => n + g.cd.length, 0);
+  const ends = attic.ends ?? ['gable', 'gable'];
+  const setEnd = (i: 0 | 1, v: AtticEnd) =>
+    edit((a) => {
+      const e: [AtticEnd, AtticEnd] = [...(a.ends ?? ['gable', 'gable'])] as [AtticEnd, AtticEnd];
+      e[i] = v;
+      a.ends = e[0] === 'gable' && e[1] === 'gable' ? undefined : e;
+    });
+  const editWing = (id: string, fn: (w: AtticWing) => void) => edit((a) => fn(a.wings!.find((w) => w.id === id)!));
+  const roofLines = roof ? { hips: roof.roof.lines.filter((l) => l.kind === 'hip').length, valleys: roof.roof.lines.filter((l) => l.kind === 'valley').length } : undefined;
+  const pickSystem = (id: string, boardId: string) =>
+    edit((a) => {
+      const s = ceilingSystemById(id);
+      a.systemId = s.id;
+      a.boardId = boardId;
+      // ruszt przykręcony do krokwi albo między krokwiami nie zostawia miejsca na wełnę pod krokwiami
+      const fr = atticFrameOf(s);
+      if (fr.mount === 'between' || (fr.mount === 'direct' && a.woolUnder > (fr.battens?.[fr.battens.length - 1].mm ?? fr.profileMm))) a.woolUnder = 0;
+    });
 
   return (
     <div className="editor attic-editor">
       <AtticSectionPreview attic={attic} grid={grid} />
       <p className="muted small attic-summary" role="status">
-        {fmtNum(area, 1)} m² zabudowy · {grid.rafters.length} krokwi · {grid.surfaces.reduce((n, g) => n + g.cd.length, 0)} linii rusztu (
+        {fmtNum(area, 1)} m² zabudowy · {grid.rafters.length} krokwi{roofLines ? ` · narożniki dachu: ${roofLines.hips}, kosze: ${roofLines.valleys}` : ''} · {cdCount} {roof ? 'odcinków' : 'linii'} rusztu (
         {grid.frame.profileLabel}) co {grid.cdSpacing} cm{grid.carrier ? ` na ${grid.carrier.label} pod każdą krokwią` : ''}{hangers ? ` · ${hangers} ${grid.frame.hanger ? 'wieszaków' : 'mocowań do krokwi'}` : ''} ·{' '}
         {grid.depthMm < 0 ? `płyty ${-grid.depthMm} mm nad spodem krokwi` : `zabudowa ${grid.depthMm} mm pod krokwią`}
       </p>
@@ -135,6 +163,56 @@ export function AtticEditor({ attic, edit, result }: Props) {
         </div>
       )}
 
+      {!mono && (
+        <>
+          <h4 className="attic-sub">Narożniki dachu i kosze</h4>
+          <div className="field">
+            <span className="label">Przy 1. ścianie szczytowej</span>
+            <Picker label="Zakończenie przy 1. ścianie szczytowej" value={ends[0]} mode="segments" options={END_OPTIONS} onChange={(v) => setEnd(0, v)} />
+          </div>
+          <div className="field">
+            <span className="label">Przy 2. ścianie szczytowej</span>
+            <Picker label="Zakończenie przy 2. ścianie szczytowej" value={ends[1]} mode="segments" options={END_OPTIONS} onChange={(v) => setEnd(1, v)} />
+          </div>
+          {(attic.wings ?? []).map((w, i) => (
+            <fieldset key={w.id} className="attic-wing">
+              <legend>
+                Dobudówka {i + 1} (kosze){' '}
+                <button type="button" className="btn small" onClick={() => edit((a) => void (a.wings = a.wings!.filter((x) => x.id !== w.id)))}>
+                  Usuń
+                </button>
+              </legend>
+              <div className="field">
+                <span className="label">Strona</span>
+                <Picker label="Strona dobudówki" value={w.side} mode="segments" options={SIDE_OPTIONS} onChange={(v) => editWing(w.id, (x) => void (x.side = v))} />
+              </div>
+              <div className="grid-2">
+                <DimInput label="Oś dobudówki od 1. ściany szczytowej" unit="m" value={w.at} min={0} max={attic.length} onChange={(v) => editWing(w.id, (x) => void (x.at = v))} />
+                <DimInput label="Szerokość dobudówki" unit="m" value={w.width} min={100} max={attic.length} hint="między jej ścianami okapowymi" onChange={(v) => editWing(w.id, (x) => void (x.width = v))} />
+                <DimInput label="Wysunięcie od ściany okapowej" unit="m" value={w.length} min={0} max={3000} onChange={(v) => editWing(w.id, (x) => void (x.length = v))} />
+              </div>
+              <div className="field">
+                <span className="label">Koniec dobudówki</span>
+                <Picker label="Koniec dobudówki" value={w.end} mode="segments" options={END_OPTIONS} onChange={(v) => editWing(w.id, (x) => void (x.end = v))} />
+              </div>
+            </fieldset>
+          ))}
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              edit((a) => {
+                const width = Math.min(a.length, Math.round(a.width * 0.6));
+                a.wings = [...(a.wings ?? []), { id: uid(), side: 'left', at: Math.round(a.length / 2), width, length: 300, end: 'gable' }];
+              })
+            }
+          >
+            + Dobudówka z koszami (dach L / T)
+          </button>
+          {roof && <AtticRoofPlanDrawing attic={attic} roof={roof} title="Rzut dachu" />}
+        </>
+      )}
+
       {attic.plan && (
         <div className="field">
           <span className="label">Kalenica na planie</span>
@@ -160,24 +238,13 @@ export function AtticEditor({ attic, edit, result }: Props) {
 
       <h4 className="attic-sub">Zabudowa</h4>
       <div className="grid-2">
-        <div className="field">
+        <div className="field attic-system">
           <label htmlFor={`as-${attic.id}`}>System</label>
-          <Picker
+          <AtticSystemSelect
             id={`as-${attic.id}`}
-            label="System zabudowy poddasza"
             value={sys.id}
-            mode="sheet"
-            options={systemOptions()}
-            onChange={(id) =>
-              edit((a) => {
-                const s = ceilingSystemById(id);
-                a.systemId = s.id;
-                a.boardId = s.defaultBoard;
-                // ruszt przykręcony do krokwi albo między krokwiami nie zostawia miejsca na wełnę pod krokwiami
-                const fr = atticFrameOf(s);
-                if (fr.mount === 'between' || (fr.mount === 'direct' && a.woolUnder > (fr.battens?.[fr.battens.length - 1].mm ?? fr.profileMm))) a.woolUnder = 0;
-              })
-            }
+            onChange={(id) => pickSystem(id, ceilingSystemById(id).defaultBoard)}
+            onPick={(p) => pickSystem(p.system.id, p.boardId)}
           />
           <small className="hint">{sys.info}</small>
         </div>
@@ -217,6 +284,42 @@ export function AtticEditor({ attic, edit, result }: Props) {
       <AtticWindowsField attic={attic} grid={grid} edit={edit} />
 
       <VaporField spec={ceilingVaporSpec(sys)} enabled={vaporBarrierOn(attic.vaporBarrier, ceilingVaporSpec(sys))} areaM2={area} onToggle={(on) => edit((a) => void (a.vaporBarrier = on))} />
+
+      <h4>Okładziny ścian</h4>
+      {(
+        [
+          ['kneeLining', attic.roof === 'mono' ? 'Ścianka kolankowa i ściana wysoka' : 'Ścianki kolankowe', ['knee-left', 'knee-right']],
+          ['gableLining', 'Ściany szczytowe (obie)', ['gable']],
+        ] as const
+      ).map(([key, label, ids]) => {
+        const faces = result?.walls.filter((w) => (ids as readonly string[]).includes(w.face.id)) ?? [];
+        return (
+          <LiningEditor
+            key={key}
+            label={label}
+            lining={attic[key]}
+            result={
+              attic[key] && result
+                ? { info: { netAreaM2: faces.reduce((t, w) => t + w.areaM2 * w.face.count, 0), warnings: faces.flatMap((w) => w.warnings) } }
+                : undefined
+            }
+            onToggle={(on) =>
+              edit((a) => {
+                if (on) a[key] = createLining(1, 'O-CD-1');
+                else delete a[key];
+              })
+            }
+            onEdit={(fn) =>
+              edit((a) => {
+                const l = a[key];
+                if (l) fn(l);
+              })
+            }
+            idBase={`${attic.id}-${key}`}
+            areaLabel="okładziny, płyty docięte do skosu"
+          />
+        );
+      })}
 
       <Warnings items={result?.warnings ?? grid.warnings} />
       <details className="attic-assumptions">

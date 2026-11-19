@@ -706,17 +706,20 @@ export function ExistingWallEditor({
   );
 }
 
-function LiningEditor({
+export function LiningEditor({
   label,
   lining,
   result,
   onToggle,
   onEdit,
   idBase,
+  areaLabel = 'po odjęciu otworów',
 }: {
   label: string;
+  /** Opis przy powierzchni okładziny */
+  areaLabel?: string;
   lining?: Lining;
-  result?: LiningResult;
+  result?: Pick<LiningResult, 'info'> | { info: { netAreaM2: number; warnings: string[] } };
   onToggle: (on: boolean) => void;
   onEdit: (fn: (l: Lining) => void) => void;
   idBase: string;
@@ -727,7 +730,7 @@ function LiningEditor({
       <label className="check lining-toggle">
         <input type="checkbox" checked={!!lining} onChange={(e) => onToggle(e.target.checked)} />
         <strong>{label}</strong>
-        {result && <span className="muted small">{fmtNum(result.info.netAreaM2, 1)} m² po odjęciu otworów</span>}
+        {result && <span className="muted small">{fmtNum(result.info.netAreaM2, 1)} m² {areaLabel}</span>}
       </label>
       {lining && sys && (
         <>

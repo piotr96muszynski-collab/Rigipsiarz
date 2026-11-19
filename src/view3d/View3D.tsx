@@ -13,7 +13,7 @@ import type { Project } from '../model/types';
 import { findCollisions } from '../geometry/contacts';
 import { EXIT_FULLSCREEN_ICON, FULLSCREEN_ICON } from '../ui/fullscreen';
 import type { FullscreenControl } from '../ui/PlanTab';
-import { buildModel3D, type BoxPart, type Layer3D, type MatKey, type Model3D } from './model3d';
+import { buildModel3D, type BoxPart, type FacePart, type Layer3D, type MatKey, type Model3D } from './model3d';
 import { profileOutline, type ProfileSpec } from './profiles';
 
 const FRAME_COLORS: Record<string, number> = {
@@ -105,6 +105,28 @@ function profileGeometry(spec: ProfileSpec, A: number, B: number): THREE.BufferG
   return g;
 }
 
+/** Graniastosłup z płaskiego wielokąta wypukłego wyciągniętego wzdłuż normalnej */
+function facePrism(part: FacePart): THREE.BufferGeometry {
+  const n = new THREE.Vector3(...part.normal).normalize().multiplyScalar(part.thickness);
+  const top = part.pts.map((p) => new THREE.Vector3(...p));
+  const bot = top.map((p) => p.clone().add(n));
+  const pos: number[] = [];
+  const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  for (let i = 1; i + 1 < top.length; i++) {
+    tri(top[0], top[i + 1], top[i]);
+    tri(bot[0], bot[i], bot[i + 1]);
+  }
+  for (let i = 0; i < top.length; i++) {
+    const j = (i + 1) % top.length;
+    tri(top[i], top[j], bot[j]);
+    tri(top[i], bot[j], bot[i]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
 /** Buduje grupy siatek (po jednej na warstwę i materiał – mało wywołań rysowania) */
 function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Group> {
   const byKey = new Map<string, THREE.BufferGeometry[]>();
@@ -150,6 +172,20 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
       tmp.rotation.set(0, part.rotY, 0);
       tmp.updateMatrix();
       g.applyMatrix4(tmp.matrix);
+    } else if (part.type === 'face') {
+      g = facePrism(part);
+    } else if (part.type === 'beam') {
+      const a = new THREE.Vector3(...part.a);
+      const b = new THREE.Vector3(...part.b);
+      const ax = b.clone().sub(a);
+      const len = ax.length();
+      ax.normalize();
+      const up = new THREE.Vector3(...part.up);
+      up.sub(ax.clone().multiplyScalar(up.dot(ax))).normalize();
+      const side = new THREE.Vector3().crossVectors(ax, up);
+      g = new THREE.BoxGeometry(len, part.h, part.w);
+      const mtx = new THREE.Matrix4().makeBasis(ax, up, side).setPosition(a.add(b).multiplyScalar(0.5));
+      g.applyMatrix4(mtx);
     } else {
       // obrys w płaszczyźnie XY (x, -z), potem obrót do poziomu
       const shape = new THREE.Shape(part.points.map((q) => new THREE.Vector2(q.x, -q.y)));

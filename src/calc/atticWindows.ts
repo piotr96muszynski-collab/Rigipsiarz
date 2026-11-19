@@ -132,6 +132,12 @@ function polyArea(pts: SecPt[]) {
 export function atticWindowGeometry(a: Attic, grid: AtticGrid = atticGrid(a)): { list: RoofWindowGeom[]; warnings: string[] } {
   const list: RoofWindowGeom[] = [];
   const warnings: string[] = [];
+  // dach z narożnikami / koszami: płaszczyzny o dowolnym obrysie – okien jeszcze nie obsługujemy
+  if (grid.roof && a.windows?.length)
+    return {
+      list,
+      warnings: [`Okna dachowe (${a.windows.length}) pominięto: w poddaszu z narożnikami lub koszami okien w połaciach jeszcze nie liczymy – uwzględnij otwory i glify ręcznie.`],
+    };
   const between = grid.frame.mount === 'between';
   const depthFace = grid.depthMm / 10;
   (a.windows ?? []).forEach((w, i) => {
