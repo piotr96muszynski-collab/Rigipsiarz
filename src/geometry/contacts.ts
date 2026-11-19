@@ -708,3 +708,43 @@ export function findOverlaps(p: Project): Overlap[] {
   });
   return out;
 }
+
+// ---------- Obrys ściany w rzucie (plan) ----------
+
+/**
+ * Obrys nowej ściany w rzucie z modelu styków, cm (układ planu): pasma rusztu i kolejnych warstw
+ * płyt, każde na swoją długość. W narożniku ścian różnej grubości ściana ciągła kończy się
+ * na zewnętrznym licu ściany dochodzącej, więc zewnętrzny róg jest w licu (bez schodka).
+ * Brak = ściana bez modelu (istniejąca albo zerowej długości).
+ */
+export function wallOutline(p: Project, m: ContactModel, w: Wall, nodes = nodeMap(p)): Point[] | null {
+  const sec = m.sections.get(w.id);
+  const ax = axisOf(w, nodes);
+  if (!sec || !ax) return null;
+  const ea = m.ends.get(`${w.id}:a`);
+  const eb = m.ends.get(`${w.id}:b`);
+  // ruszt razem z paskiem płyty zamykającym czoło
+  const frameS = (e?: WallEndContacts) => (!e ? 0 : e.strip ? Math.min(e.frame.s, 0) : e.frame.s);
+  const bands: { lo: number; hi: number; u0: number; u1: number }[] = [
+    { lo: -sec.core, hi: sec.core, u0: frameS(ea), u1: ax.L - frameS(eb) },
+  ];
+  for (const side of [0, 1] as const)
+    for (let k = 0; k < sec.layers[side]; k++) {
+      const n0 = faceOffset(sec, side, k);
+      const n1 = faceOffset(sec, side, k + 1);
+      const [u0, u1] = partRange(m, w, ax.L, { kind: 'board', side, layer: k });
+      bands.push({ lo: Math.min(n0, n1), hi: Math.max(n0, n1), u0, u1 });
+    }
+  bands.sort((x, y) => x.lo - y.lo);
+  const pts: [number, number][] = [];
+  for (const b of bands) pts.push([b.u1, b.lo], [b.u1, b.hi]);
+  for (const b of [...bands].reverse()) pts.push([b.u0, b.hi], [b.u0, b.lo]);
+  const out: Point[] = [];
+  for (const [u, n] of pts) {
+    const q = { x: (ax.a.x + ax.u.x * u + ax.n.x * n) * 100, y: (ax.a.y + ax.u.y * u + ax.n.y * n) * 100 };
+    const last = out[out.length - 1];
+    if (!last || Math.hypot(last.x - q.x, last.y - q.y) > 1e-6) out.push(q);
+  }
+  if (out.length > 1 && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) < 1e-6) out.pop();
+  return out;
+}

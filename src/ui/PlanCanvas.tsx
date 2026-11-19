@@ -4,7 +4,7 @@ import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
 import { createCeiling, createOpening } from '../model/factory';
 import { addWalls, clipToMasonry, hitWall, mergeNodeIfOverlaps, offsetAlongWall, removeOverlaps, type SnapResult } from '../model/ops';
-import { findOverlaps, uncoveredParts } from '../geometry/contacts';
+import { buildContacts, findOverlaps, uncoveredParts, wallOutline } from '../geometry/contacts';
 import { anchorsOf, angleMarks, snapGuided, snapMove, type AngleMark, type Guide, type GuideSnap } from '../geometry/snap';
 import type { Point, Project } from '../model/types';
 import { awayFromFinger, BUBBLE_H, BUBBLE_W, type DimLabel, hitDimLabel } from './labelPlace';
@@ -102,6 +102,17 @@ export function PlanCanvas(props: Props) {
     const rooms = existingRooms(project);
     return new Map(project.walls.filter((w) => !isNewWall(w)).map((w) => [w.id, masonrySide(project, w, rooms)]));
   }, [project]);
+  // obrys nowych ścian z modelu styków: w narożnikach (także ścian różnej grubości) lica schodzą się równo
+  const outlines = useMemo(() => {
+    const m = buildContacts(project);
+    const out = new Map<string, string>();
+    for (const w of project.walls) {
+      if (!isNewWall(w)) continue;
+      const pts = wallOutline(project, m, w, nodes);
+      if (pts && pts.length >= 3) out.set(w.id, pts.map((q) => `${q.x},${q.y}`).join(' '));
+    }
+    return out;
+  }, [project, nodes]);
   // węzły, w których spotykają się co najmniej dwie istniejące ściany
   const cornerNodes = useMemo(() => {
     const c = new Map<string, number>();
@@ -709,6 +720,19 @@ export function PlanCanvas(props: Props) {
             );
           })}
 
+          {/* nowe ściany: najpierw podświetlenie i krawędzie wszystkich, potem wypełnienia – w węzłach obrysy się łączą */}
+          {project.walls.map((w) => {
+            const poly = outlines.get(w.id);
+            if (!poly || wallThickness(w) * view.z < 3) return null;
+            const sel = selIds.includes(w.id);
+            return (
+              <g key={`edge-${w.id}`} className={(tool === 'wall' || tool === 'room') && layer === 'existing' ? 'faded' : ''}>
+                {sel && <polygon points={poly} className="wall-halo" strokeWidth={10 / view.z} />}
+                <polygon points={poly} className="wall-edge" strokeWidth={2.5 / view.z} />
+              </g>
+            );
+          })}
+
           {project.walls.map((w) => {
             const a0 = nodes.get(w.a);
             const b0 = nodes.get(w.b);
@@ -732,9 +756,11 @@ export function PlanCanvas(props: Props) {
             const b = { x: b0.x + nx * off + ux * eb, y: b0.y + ny * off + uy * eb };
             const faded = (tool === 'wall' || tool === 'room') && existing !== (layer === 'existing');
             const sorted = [...w.openings].sort((m, n) => m.offset - n.offset);
+            const poly = existing || t * view.z < 3 ? undefined : outlines.get(w.id);
             return (
               <g key={w.id} className={`${existing ? 'existing' : ''} ${faded ? 'faded' : ''}`}>
-                {sel && (
+                {poly && <polygon points={poly} fill={wallColor(w)} className="wall-fill" />}
+                {!poly && sel && (
                   <line
                     x1={a.x}
                     y1={a.y}
@@ -744,23 +770,27 @@ export function PlanCanvas(props: Props) {
                     strokeWidth={t + 10 / view.z}
                   />
                 )}
-                <line
-                  x1={a.x}
-                  y1={a.y}
-                  x2={b.x}
-                  y2={b.y}
-                  className="wall-edge"
-                  strokeWidth={Math.max(t, 3 / view.z) + 2.5 / view.z}
-                />
-                <line
-                  x1={a.x}
-                  y1={a.y}
-                  x2={b.x}
-                  y2={b.y}
-                  stroke={existing ? undefined : wallColor(w)}
-                  className={existing ? 'wall masonry' : 'wall'}
-                  strokeWidth={Math.max(t, 3 / view.z)}
-                />
+                {!poly && (
+                  <>
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      className="wall-edge"
+                      strokeWidth={Math.max(t, 3 / view.z) + 2.5 / view.z}
+                    />
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke={existing ? undefined : wallColor(w)}
+                      className={existing ? 'wall masonry' : 'wall'}
+                      strokeWidth={Math.max(t, 3 / view.z)}
+                    />
+                  </>
+                )}
                 {!existing && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="wall-axis" strokeWidth={1 / view.z} />}
                 {(w.linings ?? []).map((l) => {
                   const lt = liningThickness(l);

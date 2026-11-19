@@ -3,7 +3,7 @@ import { analyzeJunctions, dist, interiorSide, isNewWall, wallEnds } from './geo
 import { createExistingWall, createLining, createOpening, createProject, createWall, uid } from '../model/factory';
 import { addWall, addWalls, removeOverlaps } from '../model/ops';
 import type { Point, Project, Wall } from '../model/types';
-import { buildContacts, cornerStudPositions, findCollisions, findGaps, findOverlaps, partRange } from './contacts';
+import { buildContacts, cornerStudPositions, findCollisions, findGaps, findOverlaps, partRange, wallOutline } from './contacts';
 
 type Seg = [number, number, number, number];
 
@@ -300,5 +300,58 @@ describe('ściana narysowana na istniejącej', () => {
     w.openings.push(createOpening('door', 450));
     removeOverlaps(p);
     expect(p.walls).toHaveLength(2);
+  });
+});
+
+describe('narożnik L ścian różnej grubości – licowanie', () => {
+  /** Narożnik: ściana „H” wzdłuż +x, ściana „V” wzdłuż +y; id ustala, która jest ciągła */
+  function mixed(sysH: string, sysV: string, hFirst: boolean): Project {
+    const p = project([
+      [0, 0, 300, 0],
+      [0, 0, 0, 250],
+    ]);
+    p.walls[0] = { ...p.walls[0], id: hFirst ? 'a-h' : 'b-h', systemId: sysH };
+    p.walls[1] = { ...p.walls[1], id: hFirst ? 'b-v' : 'a-v', systemId: sysV };
+    return p;
+  }
+  const xs = (pts: Point[]) => pts.map((q) => q.x);
+  const ys = (pts: Point[]) => pts.map((q) => q.y);
+
+  for (const [sysH, sysV] of [
+    ['W-CW100-2', 'W-CW50-1'],
+    ['W-CW50-1', 'W-CW100-2'],
+    ['W-CW75-1', 'W-CW100-1'],
+  ])
+    for (const hFirst of [true, false])
+      it(`${sysH} + ${sysV} (ciągła ${hFirst ? 'grubsza/pierwsza' : 'druga'}): zewnętrzny róg w licu, bez kolizji i szczelin`, () => {
+        const p = mixed(sysH, sysV, hFirst);
+        const m = clean(p);
+        const [H, V] = p.walls;
+        const oH = wallOutline(p, m, H)!;
+        const oV = wallOutline(p, m, V)!;
+        // nic nie wystaje poza zewnętrzne lica narożnika: najdalej na zewnątrz sięga lico ściany V (x)
+        // i lico ściany H (y) – bez schodka na rogu
+        expect(Math.min(...xs(oH), ...xs(oV))).toBeCloseTo(Math.min(...xs(oV)), 6);
+        expect(Math.min(...ys(oH), ...ys(oV))).toBeCloseTo(Math.min(...ys(oH)), 6);
+        // obrys nie wychodzi poza długość ścian
+        expect(oH.every((q) => q.x <= 300 + 1e-6)).toBe(true);
+        expect(oV.every((q) => q.y <= 250 + 1e-6)).toBe(true);
+      });
+
+  it('ruszt ściany ciągłej sięga do zewnętrznego lica rusztu dochodzącej, dochodzącej – do wewnętrznego lica ciągłej', () => {
+    // H = CW 100 (ciągła), V = CW 50
+    const p = mixed('W-CW100-1', 'W-CW50-1', true);
+    const m = clean(p);
+    const [H, V] = p.walls;
+    expect(partRange(m, H, 3, { kind: 'frame' })[0]).toBeCloseTo(-0.025, 6);
+    expect(partRange(m, V, 2.5, { kind: 'frame' })[0]).toBeCloseTo(0.05, 6);
+    // słupek narożny ciągłej tuż za rusztem cieńszej ściany
+    expect(cornerStudPositions(m, H, 3)[0]).toBeCloseTo(0.025 + 0.025, 6);
+    // i odwrotnie: H = CW 50 ciągła, V = CW 100
+    const q = mixed('W-CW50-1', 'W-CW100-1', true);
+    const mq = clean(q);
+    expect(partRange(mq, q.walls[0], 3, { kind: 'frame' })[0]).toBeCloseTo(-0.05, 6);
+    expect(partRange(mq, q.walls[1], 2.5, { kind: 'frame' })[0]).toBeCloseTo(0.025, 6);
+    expect(cornerStudPositions(mq, q.walls[0], 3)[0]).toBeCloseTo(0.05 + 0.025, 6);
   });
 });

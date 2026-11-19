@@ -317,7 +317,12 @@ export function wallRequirement(
       cursor = o.x1;
     }
     floorRuns.push(L - cursor);
-    const runs = [...floorRuns.filter((r) => r > 0.05), L];
+    // UW na długość rusztu z modelu styków (ten sam rozkład co na rysunku): w narożniku ścian
+    // różnej grubości ruszt ściany ciągłej sięga do zewnętrznego lica rusztu dochodzącej,
+    // a dochodzącej kończy się na wewnętrznym licu rusztu ciągłej
+    const runs = layout
+      ? layout.tracks.filter((t) => t.kind === 'floor' || t.kind === 'ceiling').map((t) => t.x1 - t.x0)
+      : [...floorRuns.filter((r) => r > 0.05), L];
     for (const r of runs) {
       addPiece(req, track, r);
       add(req.counts, 'KOLEK', anchorsFor(r));

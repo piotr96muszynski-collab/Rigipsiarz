@@ -203,3 +203,24 @@ describe('wykrywanie pomieszczenia', () => {
     expect(findRoomAt(p, { x: 500, y: 100 })).toBeNull();
   });
 });
+
+describe('narożnik ścian różnej grubości', () => {
+  it('UW na długość rusztu z modelu styków (CW 100 ciągła + CW 50 dochodząca)', () => {
+    const p = createProject();
+    p.nodes = [
+      { id: 'n0', x: 0, y: 0 },
+      { id: 'n1', x: 300, y: 0 },
+      { id: 'n2', x: 0, y: 250 },
+    ];
+    p.walls = [
+      { ...createWall(p, 'n0', 'n1', { systemId: 'W-CW100-1', boardId: 'RB12.5' }), id: 'a' },
+      { ...createWall(p, 'n0', 'n2', { systemId: 'W-CW50-1', boardId: 'RB12.5' }), id: 'b' },
+    ];
+    const j = analyzeJunctions(p);
+    const uw100 = wallRequirement(p, p.walls[0], j.get('a')!).req.pieces['UW100'];
+    const uw50 = wallRequirement(p, p.walls[1], j.get('b')!).req.pieces['UW50'];
+    // ciągła do zewnętrznego lica rusztu CW 50 (+2,5 cm), dochodząca do lica rusztu CW 100 (−5 cm)
+    expect(uw100.reduce((a, b) => a + b, 0)).toBeCloseTo(2 * 3.025, 6);
+    expect(uw50.reduce((a, b) => a + b, 0)).toBeCloseTo(2 * 2.45, 6);
+  });
+});
