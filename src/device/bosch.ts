@@ -7,10 +7,21 @@
 // CRC-8: wielomian 0xA6, wartość początkowa 0xAA, liczone od bajtu 0xC0 do końca danych.
 // Pomiar w trybie synchronizacji: C0 55 10 06 … – odległość jako float32 little-endian w metrach od bajtu 7.
 
-/** Usługa BLE „Bosch MT” */
+/** Usługa BLE „Bosch MT” w starszych modelach (GLM 50 C, GLM 100 C) */
 export const BOSCH_SERVICE = '02a6c0d0-0451-4000-b000-fb3210111989';
 /** Charakterystyka do zapisu poleceń i odbioru wskazań (indicate) */
 export const BOSCH_CHARACTERISTIC = '02a6c0d1-0451-4000-b000-fb3210111989';
+/** Usługa BLE w nowszych modelach (PLR 30 C / 40 C, GLM 50-27 C) – ten sam protokół ramek MT */
+export const BOSCH_SERVICE_V2 = '00005301-0000-0041-5253-534f46540000';
+export const BOSCH_CHARACTERISTIC_V2 = '00004301-0000-0041-5253-534f46540000';
+
+/** Znane pary usługa/charakterystyka, sprawdzane po kolei przy łączeniu */
+export const BOSCH_CHANNELS = [
+  { service: BOSCH_SERVICE_V2, characteristic: BOSCH_CHARACTERISTIC_V2 },
+  { service: BOSCH_SERVICE, characteristic: BOSCH_CHARACTERISTIC },
+] as const;
+
+export const isBoschCharacteristic = (uuid: string) => BOSCH_CHANNELS.some((c) => c.characteristic === uuid.toLowerCase());
 
 /** Prefiksy nazw, pod którymi dalmierze Bosch się ogłaszają */
 export const BOSCH_NAME_PREFIXES = ['PLR', 'GLM', 'Bosch', 'BOSCH', 'PLM'];

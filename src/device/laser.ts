@@ -2,7 +2,7 @@
 // przez kanał z src/ui/measure.ts. Stan i dziennik surowych ramek są dostępne dla UI (useSyncExternalStore).
 
 import { pushMeasurement } from '../ui/measure';
-import { BOSCH_CHARACTERISTIC, BOSCH_NAME_PREFIXES, BOSCH_SERVICE, distanceCm, ENABLE_SYNC } from './bosch';
+import { BOSCH_CHANNELS, BOSCH_NAME_PREFIXES, distanceCm, ENABLE_SYNC, isBoschCharacteristic } from './bosch';
 import { type BtCharacteristic, type BtDevice, getBluetooth, writeChar } from './webBluetooth';
 
 export type LaserStatus = 'unsupported' | 'idle' | 'connecting' | 'connected' | 'reconnecting';
@@ -61,7 +61,7 @@ export const laser = {
   },
 };
 
-const short = (uuid: string) => (uuid.toLowerCase() === BOSCH_CHARACTERISTIC ? 'Bosch' : uuid.replace(/-0000-1000-8000-00805f9b34fb$/i, '').replace(/^0000/, '0x'));
+const short = (uuid: string) => (isBoschCharacteristic(uuid) ? 'Bosch' : uuid.replace(/-0000-1000-8000-00805f9b34fb$/i, '').replace(/^0000/, '0x'));
 
 function onValue(this: BtCharacteristic) {
   const v = this.value;
@@ -104,13 +104,23 @@ async function setup(dev: BtDevice, diagnostic: boolean) {
           const v = await c.readValue().catch(() => null);
           if (v) addLog({ kind: 'in', char: `${short(c.uuid)} (odczyt)`, bytes: new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)) });
         }
-        if (c.uuid.toLowerCase() === BOSCH_CHARACTERISTIC) commandChar = c;
+        if (isBoschCharacteristic(c.uuid)) commandChar = c;
       }
     }
-    if (!commandChar) addLog({ kind: 'error', text: 'Brak usługi Bosch MT (02a6c0d0-…). Ten egzemplarz może używać innego protokołu.' });
+    if (!commandChar) addLog({ kind: 'error', text: 'Brak znanej usługi Bosch (00005301-… ani 02a6c0d0-…). Wpisz UUID usługi w „Dodatkowe usługi”.' });
   } else {
-    const svc = await server.getPrimaryService(BOSCH_SERVICE);
-    commandChar = await svc.getCharacteristic(BOSCH_CHARACTERISTIC);
+    // Różne modele mają różne usługi BLE – próbujemy znanych po kolei
+    for (const ch of BOSCH_CHANNELS) {
+      try {
+        const svc = await server.getPrimaryService(ch.service);
+        commandChar = await svc.getCharacteristic(ch.characteristic);
+        break;
+      } catch {
+        /* następna usługa */
+      }
+    }
+    if (!commandChar) throw new Error('Dalmierz nie udostępnia znanej usługi pomiarów Bosch. Otwórz diagnostykę dalmierza i wyślij dziennik.');
+    addLog({ kind: 'info', text: `Usługa pomiarów ${short(commandChar.uuid)} (${commandChar.uuid})` });
     commandChar.addEventListener('characteristicvaluechanged', onValue);
     await commandChar.startNotifications();
   }
@@ -137,8 +147,8 @@ async function reconnect(dev: BtDevice, diagnostic: boolean) {
     try {
       await setup(dev, diagnostic);
       return;
-    } catch {
-      /* kolejna próba */
+    } catch (e) {
+      addLog({ kind: 'error', text: `Ponowne łączenie: ${errText(e)}` });
     }
   }
   set({ status: 'idle', error: 'Dalmierz się rozłączył (mógł się wyłączyć). Połącz ponownie.' });
@@ -157,11 +167,11 @@ export async function connectLaser(opts: { diagnostic?: boolean; extraServices?:
   const diagnostic = !!opts.diagnostic;
   set({ status: 'connecting', error: undefined });
   try {
-    const optionalServices = [BOSCH_SERVICE, 'battery_service', 'device_information', ...(opts.extraServices ?? [])];
+    const optionalServices = [...BOSCH_CHANNELS.map((c) => c.service), 'battery_service', 'device_information', ...(opts.extraServices ?? [])];
     const dev = await bt.requestDevice(
       diagnostic
         ? { acceptAllDevices: true, optionalServices }
-        : { filters: [...BOSCH_NAME_PREFIXES.map((namePrefix) => ({ namePrefix })), { services: [BOSCH_SERVICE] }], optionalServices },
+        : { filters: [...BOSCH_NAME_PREFIXES.map((namePrefix) => ({ namePrefix })), ...BOSCH_CHANNELS.map((c) => ({ services: [c.service] }))], optionalServices },
     );
     if (device && device !== dev) disconnectLaser();
     manualDisconnect = false;
@@ -172,6 +182,8 @@ export async function connectLaser(opts: { diagnostic?: boolean; extraServices?:
   } catch (e) {
     const msg = errText(e);
     if ((e as { name?: string })?.name !== 'NotFoundError') addLog({ kind: 'error', text: msg });
+    // nieudane połączenie nie powinno uruchamiać automatycznych ponownych prób
+    manualDisconnect = true;
     device?.gatt?.connected && device.gatt.disconnect();
     set({ status: 'idle', error: (e as { name?: string })?.name === 'NotFoundError' ? undefined : msg });
   }
