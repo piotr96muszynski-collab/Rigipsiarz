@@ -597,6 +597,8 @@ export interface SystemVariant {
   doubleStuds?: boolean;
   /** Maksymalna wysokość ściany, cm */
   maxHeight?: number;
+  /** Płyta pośrednia tej odmiany, gdy zależy od poszycia (Knauf W635: F15 → F13, HF15 → HF13) */
+  midBoard?: string;
   /** Klasa odporności ogniowej EI w minutach (brak = nieokreślona) */
   fire?: number;
   /** Izolacyjność akustyczna, dB */
@@ -673,7 +675,7 @@ export interface WallSystem {
    * - UU: para profili U (UW) skręconych w skrzynkę z parą UD 30 trzymającą płytę rdzeniową
    *   (obudowy szybów typu ShaftWall – Siniat UU, Rigips 3.50.10).
    */
-  studKind?: 'UA' | 'UU';
+  studKind?: 'UA' | 'UU' | 'UW2';
   /** Kotwienie słupków do ściany w pionie: kątowniki (Siniat C100/L) albo przewiązki PWA; rozstaw, cm */
   wallTie?: WallTie;
   /** Mocowanie punktowe (ATLAS M-SYSTEM 3G): łącznik; rozstaw poziomy = studSpacing */
@@ -1202,6 +1204,13 @@ export function layerBoards(sys: { layers: number; innerBoard?: string; innerLay
 export const boardStackMm = (sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): number =>
   layerBoards(sys, boardId, innerBoardId).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
 
+/** Płyta pośrednia / dosztywniająca dla wybranego poszycia: jak poszycie, z odmiany albo z systemu */
+export function wallMidBoard(sys: WallSystem, boardId: string): string | undefined {
+  if (!sys.midBoard) return undefined;
+  if (sys.midBoardFromFace) return boardId;
+  return sys.variants?.find((v) => v.board === boardId && v.midBoard)?.midBoard ?? sys.midBoard;
+}
+
 /** Grubość płyty dosztywniającej między rzędami rusztu, mm */
 export const midBoardMm = (sys: WallSystem): number => (sys.midBoard ? (sys.midLayers ?? 1) * boardById(sys.midBoard).thickness : 0);
 
@@ -1211,6 +1220,7 @@ export function wallStudLabel(sys: WallSystem): string {
   if (sys.frame === 'hat-lining') return 'kapeluszowy 15/48';
   if (sys.studKind === 'UA') return `UA ${sys.profile}`;
   if (sys.studKind === 'UU') return `2×U ${sys.profile} (UU)`;
+  if (sys.studKind === 'UW2') return `2×UW ${sys.profile}`;
   return `CW ${sys.profile}`;
 }
 

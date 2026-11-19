@@ -7,6 +7,7 @@ import {
   ceilingMaxSpan,
   ceilingSystemById,
   wallMaxHeight,
+  wallMidBoard,
   wallSystemById,
   wallTieCount,
   type Board,
@@ -244,7 +245,7 @@ export function wallRequirement(
       ? 'CD60'
       : sys.studKind === 'UA'
         ? `UA${sys.profile}`
-        : sys.studKind === 'UU'
+        : sys.studKind === 'UU' || sys.studKind === 'UW2'
           ? `UW${sys.profile}`
           : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`]
             ? `CW${sys.profile}AKU`
@@ -305,6 +306,12 @@ export function wallRequirement(
       addPiece(req, 'UD30', len);
       addPiece(req, 'UD30', len);
       add(req.counts, 'LN9', Math.ceil(len * 10));
+    } else if (sys.studKind === 'UW2') {
+      // Knauf W635: słupek z dwóch profili UW, płyta pośrednia między nimi; zespolenie wkrętami
+      // przyjęte jak przy słupkach podwójnych CW (Systemfinder nie podaje) – 4,4 pchełki na mb
+      addStud(stud, len);
+      addStud(stud, len);
+      add(req.counts, 'LN9', Math.ceil(len * 4.4));
     } else {
       addStud(stud, len);
       if (doubled) {
@@ -439,8 +446,8 @@ export function wallRequirement(
   // płyta dosztywniająca między rzędami rusztu (Siniat 168B50…): pełna powierzchnia netto, przykręcona do jednego rzędu
   if (sys.midBoard) {
     const n = sys.midLayers ?? 1;
-    // Knauf W115W: płyta pośrednia jak poszycie (np. Akustik Plus przy poszyciu Akustik Plus)
-    const mid = sys.midBoardFromFace ? w.boardId : sys.midBoard;
+    // Knauf W115W: płyta pośrednia jak poszycie; W635: wg odmiany (F15 → F13, HF15 → HF13)
+    const mid = wallMidBoard(sys, w.boardId)!;
     add(req.boardArea, `${mid}|${pickBoardLength(mid, w.height)}`, net * n);
     addBoardScrews(req, net, Array(n).fill(mid), WALL_SCREWS_OUTER * (0.6 / Math.max(0.2, w.studSpacing / 100)), WALL_SCREWS_INNER);
   }
