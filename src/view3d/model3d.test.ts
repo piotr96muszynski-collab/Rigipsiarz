@@ -278,4 +278,18 @@ describe('poddasze z narożnikami i koszami w 3D', () => {
     const r = buildModel3D(quickAtticProject({ ...a, planRot: 90 }));
     expect(r.parts.length).toBe(m.parts.length);
   });
+
+  it('płyty z rozkładu na połaciach i okna dachowe w połaci narożnej', () => {
+    const a = createAttic({ width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 45, collarHeight: undefined, ends: ['hip', 'hip'] });
+    const base = buildModel3D(quickAtticProject(a)).parts;
+    const r0 = atticRequirement(a);
+    const pieces = r0.boards.roof!.faces.flatMap((f) => f.layers.flatMap((l) => l.pieces.flatMap((p) => p.polys)));
+    const boardFaces = (list: typeof base) => list.filter((x) => x.type === 'face' && x.layer === 'ceilingBoards' && x.mat.startsWith('board:'));
+    expect(boardFaces(base)).toHaveLength(pieces.length);
+    const w = { ...a, windows: [{ id: 'w', side: 'left' as const, face: 'hip0', width: 78, height: 118, u: 355, sill: 160 }] };
+    const parts = buildModel3D(quickAtticProject(w)).parts;
+    expect(parts.filter((x) => x.mat === 'glass')).toHaveLength(1);
+    // 4 glify i elementy płyt z wycięciem (kilka wypukłych części)
+    expect(boardFaces(parts).length).toBeGreaterThan(boardFaces(base).length + 4);
+  });
 });

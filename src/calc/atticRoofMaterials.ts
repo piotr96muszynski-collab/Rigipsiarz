@@ -9,13 +9,14 @@ import type { AtticGrid, AtticRoofGrid } from './attic';
 import type { AtticResult } from './atticMaterials';
 import { layerBoards } from './ceilingLevels';
 import { addEdgeFinish } from './joints';
-import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, pickBoardLength } from './materials';
+import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq } from './materials';
 import { joinsFor, profileMaxStock } from './profileLength';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
 import { boardById } from '../catalog/rigips';
 import { addAtticWalls, atticWallLayout } from './atticWalls';
 import { atticRoofWallFaces } from './atticRoofWalls';
-import { atticWindowGeometry } from './atticWindows';
+import { addAtticWindows, atticWindowGeometry, cutoutM2, roofCdSegments, roofWindowHoles } from './atticWindows';
+import { roofBoardLayout } from './atticRoofBoards';
 
 export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: FinishingSettings, grid: AtticGrid & { roof: AtticRoofGrid }): AtticResult {
   const req = emptyReq();
@@ -44,10 +45,17 @@ export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: Finishin
   /** Koniec przyciętego profilu przykręcony do profilu wzdłuż krokwi narożnej / koszowej */
   const joint = (n: number) => add(req.counts, timber ? 'WKRET_DREWNO' : 'LN9', 2 * n);
 
-  for (const { face, cd } of roof.faces) {
-    areaM2 += face.areaM2;
+  // okna dachowe w połaciach: otwory w płytach, przerwane linie rusztu (obramowanie liczy addAtticWindows)
+  const wins = atticWindowGeometry(a, grid).list;
+  const between = frame.mount === 'between';
+
+  for (const [fi, fg] of roof.faces.entries()) {
+    const { face, cd } = fg;
+    const cutM2 = cutoutM2(wins, undefined, fi);
+    areaM2 += Math.max(0, face.areaM2 - cutM2);
     for (const l of cd) {
-      profile((l.t1 - l.t0) / 100);
+      // linie przerwane oknem kończą się na bocznym obramowaniu otworu
+      for (const [t0, t1] of roofCdSegments(l, fi, wins)) profile((t1 - t0) / 100);
       fixes(l.fix.length);
       joint([l.end0, l.end1].filter((k) => k === 'hip' || k === 'valley').length);
     }
@@ -61,12 +69,28 @@ export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: Finishin
         add(req.counts, 'KOLEK', anchorsFor(m, 0.8));
         perimeterM += m;
       }
-    const sheetLen = pickBoardLength(a.boardId, Math.min(Math.max(face.run, 200), 300));
-    for (const id of boards) add(req.boardArea, `${id}|${id === a.boardId ? sheetLen : pickBoardLength(id, 300)}`, face.areaM2);
-    if (timber) add(req.counts, 'TD35', face.areaM2 * sys.screwsOuter);
-    else addBoardScrews(req, face.areaM2, boards, sys.screwsOuter, sys.screwsInner);
-    addJointing(req, face.areaM2, sys.layers, a.boardId, 1.4, fin);
+    // wkręty i spoinowanie po polu płyt (przy widocznej więźbie: tylko pola między krokwiami)
+    const boardA = Math.max(0, ((fg as typeof fg & { boardAreaM2?: number }).boardAreaM2 ?? face.areaM2) - cutM2);
+    if (timber) add(req.counts, 'TD35', boardA * sys.screwsOuter);
+    else addBoardScrews(req, boardA, boards, sys.screwsOuter, sys.screwsInner);
+    // więźba widoczna: płyty cięte na pasy między krokwiami – karty 4.71.11 i 4.71.12 podają 3 mb taśmy na m²
+    addJointing(req, boardA, sys.layers, a.boardId, between ? 3 : 1.4, fin);
   }
+
+  // płyty z rozkładu na połaciach (ten sam co na rysunkach i w 3D): elementy + resztki < 30 cm
+  const layout = roofBoardLayout(a, sys, grid, roofWindowHoles(wins, roof));
+  for (const u of layout.sheets) {
+    const key = `${u.boardId}|${u.sheetLen}`;
+    add(req.boardArea, key, u.netM2 + u.wasteM2);
+    if (u.wasteM2 > 0) add((req.boardCutWaste ??= {}), key, u.wasteM2);
+  }
+  warnings.push(...layout.warnings);
+  const ai = assumptions.findIndex((x) => x.startsWith('Płyty i wełna liczone'));
+  const boardsNote =
+    'Płyty i wełna liczone po licu zabudowy, bez otworów okien dachowych i ścian szczytowych. Płyty dłuższą krawędzią wzdłuż krokwi, w pasach szerokości arkusza wzdłuż profili; styki krótkich krawędzi na profilu, w sąsiednich pasach i warstwach przesunięte o min. 40 cm; przy narożnikach dachu i koszach docięte pod kątem.';
+  if (ai >= 0) assumptions[ai] = boardsNote;
+  else assumptions.push(boardsNote);
+  assumptions.push('Rozkrój: z odciętego pod kątem kawałka arkusza wycina się sąsiedni element tej samej krawędzi (obrócony) – element cięty pod kątem liczony średnią długością; resztki krótsze niż 30 cm to odpad.');
   if (frame.edge && perimeterM > 0) add(req.meters, 'TASMA_USZ30', perimeterM);
 
   // profile wzdłuż krokwi narożnych i koszowych (po obu stronach linii)
@@ -97,7 +121,6 @@ export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: Finishin
   const vapor = ceilingVaporSpec(sys);
   if (vaporBarrierOn(a.vaporBarrier, vapor)) vaporBarrierLines(req, areaM2, vapor);
 
-  // rozkład płyt na płaszczyznach o dowolnym obrysie jeszcze nie jest liczony – płyty po polu z naddatkiem
   // okładziny ścianek kolankowych i ścian szczytowych (także dobudówek) – jak w zwykłym poddaszu
   const walls = atticRoofWallFaces(a, roof).map(atticWallLayout);
   const wallAreaM2 = addAtticWalls(req, walls, fin);
@@ -106,9 +129,9 @@ export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: Finishin
     assumptions.push(
       'Okładziny ścian poddasza: profile pionowe co rozstaw, docięte do lica skosu; profil przyścienny UD po obwodzie każdej ściany; płyty pionowo, docinane pod kątem skosu. Przy dachu z narożnikami i koszami okładziny są w zestawieniu i na rysunkach, w widoku 3D jeszcze ich nie ma.',
     );
-  // okna dachowe w połaciach z narożnikami i koszami jeszcze nie są liczone – tylko ostrzeżenie
-  const win = atticWindowGeometry(a, grid);
-  warnings.push(...win.warnings);
-  const windows = { list: win.list, cutM2: 0, revealM2: 0, warnings: win.warnings, assumptions: [] };
-  return { req, grid, boards: { surfaces: [], sheets: [], warnings: [] }, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions, windows };
+  // okna dachowe: obramowanie otworu, glify, narożniki, kołnierz paroizolacyjny
+  const windows = addAtticWindows(req, a, grid, { vapor: vaporBarrierOn(a.vaporBarrier, vapor), fin, sys });
+  warnings.push(...windows.warnings);
+  assumptions.push(...windows.assumptions);
+  return { req, grid, boards: { surfaces: [], sheets: layout.sheets, warnings: layout.warnings, roof: layout }, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions, windows };
 }

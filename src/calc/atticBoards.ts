@@ -10,6 +10,7 @@ import { boardById, ceilingSystemById, layerBoards, type CeilingSystem } from '.
 import type { Attic } from '../model/types';
 import { atticGrid, type AtticGrid, type AtticSurfaceId } from './attic';
 import { MIN_STRIP_M, pickBoardLengthCm } from './boardLength';
+import type { RoofBoards } from './atticRoofBoards';
 
 /** Najwęższy / najkrótszy element płyty, cm (jak dostawki na ścianach) */
 export const ATTIC_MIN_PIECE = MIN_STRIP_M * 100;
@@ -73,6 +74,8 @@ export interface AtticSheetUse {
 
 export interface AtticBoards {
   surfaces: AtticSurfaceBoards[];
+  /** Dach z narożnikami / koszami: rozkład na połaciach o dowolnym obrysie (`surfaces` puste) */
+  roof?: RoofBoards;
   sheets: AtticSheetUse[];
   warnings: string[];
 }
