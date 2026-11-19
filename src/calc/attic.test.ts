@@ -153,7 +153,9 @@ describe('materiały poddasza', () => {
     // płyty po licu zabudowy
     const area = r.grid.surfaces.reduce((s, g) => s + g.areaM2, 0);
     expect(r.areaM2).toBeCloseTo(area, 6);
-    expect(Object.values(r.req.boardArea).reduce((s, v) => s + v, 0)).toBeCloseTo(area, 6);
+    // płyty z rozkładu: elementy netto = powierzchnia, do tego resztki < 30 cm jako odpad
+    const sum = (o: Record<string, number> = {}) => Object.values(o).reduce((s, v) => s + v, 0);
+    expect(sum(r.req.boardArea) - sum(r.req.boardCutWaste)).toBeCloseTo(area, 6);
     expect(r.req.counts.TN25).toBeCloseTo(area * 25, 6);
     // UD 30: obie ściany szczytowe po skosach i suficie + dwie ścianki kolankowe
     const runs = r.grid.surfaces.reduce((s, g) => s + g.surface.run, 0) / 100;
@@ -196,7 +198,9 @@ describe('materiały poddasza', () => {
 
   it('dwie warstwy płyt i system Knauf D612', () => {
     const r = atticRequirement(attic({ systemId: 'KN-D612-2', boardId: 'KN-A13' }));
-    expect(Object.values(r.req.boardArea).reduce((s, v) => s + v, 0)).toBeCloseTo(r.areaM2 * 2, 6);
+    const sum = (o: Record<string, number> = {}) => Object.values(o).reduce((s, v) => s + v, 0);
+    expect(sum(r.req.boardArea) - sum(r.req.boardCutWaste)).toBeCloseTo(r.areaM2 * 2, 6);
+    expect(r.boards.surfaces.every((s) => s.layers.length === 2)).toBe(true);
     expect(r.req.counts.WIESZAK_ES).toBe(r.hangers);
   });
 
