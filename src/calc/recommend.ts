@@ -76,7 +76,7 @@ export function featureNeeds(features: Iterable<WallFeature>): Pick<WallNeeds, '
 }
 
 /** Czy system ma ruszt z profili CW (szerokość profilu ma znaczenie) */
-export const hasStudProfile = (s: WallSystem): boolean => s.frame !== 'glued' && s.frame !== 'cd-lining' && s.frame !== 'point-fix';
+export const hasStudProfile = (s: WallSystem): boolean => s.frame !== 'glued' && s.frame !== 'cd-lining' && s.frame !== 'point-fix' && s.frame !== 'hat-lining';
 
 /** Szerokości profili CW dostępne w systemach o danym przeznaczeniu, rosnąco */
 export function profileWidths(purpose: WallPurpose, systems: WallSystem[] = allWallSystems()): number[] {
@@ -227,14 +227,15 @@ const MAKERS: Maker[] = ['rigips', 'norgips', 'knauf', 'siniat', 'atlas'];
 function costKey(p: WallPick): number[] {
   const s = p.system;
   // słupki z UA (blacha 2 mm, kątowniki, śruby M8) i UU (para U + para UD) są droższe od CW przy tej samej wysokości
+  // profile kapeluszowe są tańsze od CD na ES, ale wymagają równej ściany (bez regulacji) – za CD
   const frameCost =
-    s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'cd-lining' ? 2 : s.frame === 'single' ? (s.studKind ? 3.5 : 3) : 4;
+    s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'cd-lining' ? 2 : s.frame === 'hat-lining' ? 2.5 : s.frame === 'single' ? (s.studKind ? 3.5 : 3) : 4;
   return [
     s.layers * s.sides,
     boardCost(p.boardId),
     frameCost,
     (p.doubleStuds ? 2 : 1) / p.studSpacing,
-    s.frame === 'glued' || s.frame === 'cd-lining' || s.frame === 'point-fix' ? 0 : s.profile,
+    hasStudProfile(s) ? s.profile : 0,
     s.basic ? 0 : 1,
     MAKERS.indexOf(makerOf(s)),
     p.thickness,

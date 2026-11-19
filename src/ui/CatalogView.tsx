@@ -151,7 +151,7 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 maker={makerOf(s)}
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
-                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : s.frame === 'hat-lining' ? 'kapeluszowy 15/48, bez UD' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
                   ['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
                   ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
                   ...(s.frame === 'point-fix'
@@ -160,7 +160,13 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                         ['Siatka łączników', `${s.studSpacing}×${s.pointSpacing ?? 50} cm`],
                       ] as [string, string][])
                     : []),
-                  ...(s.bracketSpacing ? ([['Uchwyty ES', `co ${s.bracketSpacing} cm`]] as [string, string][]) : []),
+                  ...(s.bracketSpacing
+                    ? ([
+                        s.frame === 'hat-lining'
+                          ? ['Mocowanie', `${PRODUCTS[s.anchor ?? 'KOLEK']?.name ?? 'kołki'} w dwóch rzędach, w rzędzie max co ${s.bracketSpacing} cm`]
+                          : ['Uchwyty ES', `co ${s.bracketSpacing} cm`],
+                      ] as [string, string][])
+                    : []),
                   ...(s.maxHeight
                     ? ([
                         [
@@ -198,6 +204,7 @@ const HANGER_LABEL: Record<HangerType, string> = {
   es: 'uchwyty bezpośrednie ES',
   elastic: 'uchwyty elastyczne',
   attic: 'wieszaki do poddaszy',
+  hat: 'dyble wprost przez profil kapeluszowy',
 };
 
 function ceilingParams(s: CeilingSystem): [string, string][] {
@@ -222,6 +229,9 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
       fr.mount === 'hanger' ? `${fr.hangerLabel} co max ${s.hangerSpacing} cm` : fr.mount === 'direct' ? `wprost do krokwi, co max ${s.hangerSpacing} cm` : 'między krokwiami – więźba widoczna',
     ]);
     if (fr.battens) out.push(['Łaty', fr.battens.map((b) => `${b.size} mm do ${b.maxFix} cm`).join(' · ')]);
+  } else if (s.kind === 'direct' && s.hangerType === 'hat') {
+    out.push(['Profile kapeluszowe 15/48', `co ${s.secondarySpacing} cm, wprost na stropie, bez UD`]);
+    out.push(['Mocowanie', `dyble w dwóch rzędach (na obu półkach), w rzędzie max co ${s.hangerSpacing} cm`]);
   } else if (s.kind === 'direct') {
     out.push(['Profile CD 60', `co ${s.secondarySpacing} cm`]);
     out.push(['Mocowanie', `${HANGER_LABEL[s.hangerType ?? 'es']} co ${s.hangerSpacing} cm`]);
@@ -620,7 +630,7 @@ function WallEditor({ initial, onSave, onCancel }: { initial: WallSystem; onSave
         </div>
       </div>
       <div className="grid-3">
-        {s.frame !== 'cd-lining' && s.frame !== 'glued' && s.frame !== 'point-fix' && (
+        {s.frame !== 'cd-lining' && s.frame !== 'glued' && s.frame !== 'point-fix' && s.frame !== 'hat-lining' && (
           <div className="field">
             <label htmlFor="ew-prof">Profil CW/UW</label>
             <Picker id="ew-prof" label="Profil CW/UW" value={s.profile} options={PROFILE_OPTIONS} onChange={(v) => set({ profile: v })} />
@@ -657,8 +667,16 @@ function WallEditor({ initial, onSave, onCancel }: { initial: WallSystem; onSave
           max={1200}
           onChange={(v) => set({ maxHeight: v > 0 ? { [s.studSpacing]: v } : undefined })}
         />
-        {s.frame === 'cd-lining' && (
-          <NumField id="ew-br" label="Rozstaw uchwytów ES" unit="cm" value={s.bracketSpacing ?? 100} min={30} max={150} onChange={(v) => set({ bracketSpacing: v })} />
+        {(s.frame === 'cd-lining' || s.frame === 'hat-lining') && (
+          <NumField
+            id="ew-br"
+            label={s.frame === 'hat-lining' ? 'Rozstaw kołków w rzędzie' : 'Rozstaw uchwytów ES'}
+            unit="cm"
+            value={s.bracketSpacing ?? 100}
+            min={30}
+            max={150}
+            onChange={(v) => set({ bracketSpacing: v })}
+          />
         )}
         {s.frame === 'point-fix' && (
           <NumField id="ew-pt" label="Rozstaw łączników pionowo" unit="cm" value={s.pointSpacing ?? 50} min={30} max={60} onChange={(v) => set({ pointSpacing: v })} />
@@ -755,6 +773,7 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
                 { value: 'es' as HangerType, label: 'uchwyty ES', short: 'ES' },
                 { value: 'elastic' as HangerType, label: 'uchwyty elastyczne', short: 'elastyczne' },
                 { value: 'attic' as HangerType, label: 'wieszaki do poddaszy', short: 'do poddaszy' },
+                { value: 'hat' as HangerType, label: 'profile kapeluszowe na dyblach (bez uchwytów)', short: 'kapeluszowe' },
               ]}
               onChange={(v) => set({ hangerType: v })}
             />

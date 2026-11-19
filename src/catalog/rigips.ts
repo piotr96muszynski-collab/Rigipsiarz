@@ -14,6 +14,7 @@ import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFi
 import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
 import { KNAUF_BOARDS, KNAUF_CEILING_SYSTEMS, KNAUF_WALL_SYSTEMS } from './knauf';
 import { SINIAT_BOARDS, SINIAT_CEILING_SYSTEMS, SINIAT_WALL_SYSTEMS } from './siniat';
+import { HAT_CEILING_SYSTEMS, HAT_WALL_SYSTEMS } from './hat.gen';
 
 export type Unit = 'szt.' | 'mb' | 'm²' | 'kg' | 'opak.' | 'rolka' | 'worek';
 
@@ -526,8 +527,10 @@ export type WallCategory = 'działowa' | 'podwójna' | 'instalacyjna' | 'okładz
  * - cd-lining: okładzina na profilach CD 60 i uchwytach ES mocowanych do ściany
  * - glued: płyta klejona do ściany na placki z kleju gipsowego (suchy tynk)
  * - point-fix: płyta na łącznikach talerzykowych ATLAS M-SYSTEM 3G (bez profili)
+ * - hat-lining: okładzina na profilach kapeluszowych 15/48 przykręconych (kołkowanych) wprost do ściany,
+ *   bez UD i bez uchwytów – kołki w dwóch rzędach (na obu półkach profilu)
  */
-export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix';
+export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix' | 'hat-lining';
 
 export const WALL_CATEGORY_LABEL: Record<WallCategory, string> = {
   działowa: 'Ściany działowe – pojedynczy ruszt',
@@ -545,7 +548,13 @@ export const WALL_FRAME_LABEL: Record<WallFrame, string> = {
   'cd-lining': 'ruszt CD 60 na uchwytach ES',
   glued: 'płyta klejona (bez rusztu)',
   'point-fix': 'łączniki ATLAS M-SYSTEM 3G (bez profili)',
+  'hat-lining': 'profile kapeluszowe 15/48 kołkowane do ściany',
 };
+
+/** Wysokość profilu kapeluszowego 15/48 (odstęp płyty od podłoża), mm */
+export const HAT_MM = 15;
+/** Szerokość profilu kapeluszowego z półkami, m (na rysunkach i w 3D) */
+export const HAT_W = 0.08;
 
 export type StudSpacing = 60 | 40 | 30;
 
@@ -628,8 +637,10 @@ export interface WallSystem {
   /** Odporność ogniowa / izolacyjność akustyczna wg karty */
   fire?: string;
   acoustic?: string;
-  /** Rozstaw uchwytów ES na profilu CD (okładziny), cm */
+  /** Rozstaw uchwytów ES na profilu CD (okładziny), cm; profile kapeluszowe: rozstaw kołków w jednym rzędzie (półce) */
   bracketSpacing?: number;
+  /** Okładzina na profilach kapeluszowych: produkt kołka / dybla (brak = kołek szybkiego montażu) */
+  anchor?: string;
   /** Szerokość przestrzeni między rusztami (ściana instalacyjna), cm */
   gap?: number;
   /**
@@ -731,6 +742,7 @@ const HAND_WALLS: WallSystem[] = [
   ...NORGIPS_WALL_SYSTEMS,
   ...KNAUF_WALL_SYSTEMS,
   ...SINIAT_WALL_SYSTEMS,
+  ...HAT_WALL_SYSTEMS,
 ];
 
 /** Systemy podstawowe – widoczne od razu; reszta katalogu jest pod „Pozostałe systemy” i w wyszukiwarce */
@@ -770,7 +782,7 @@ const wallOrder = (s: WallSystem): number[] => [
   MAKER_ORDER.indexOf(s.maker ?? 'rigips'),
   s.basic ? 0 : 1,
   isStandardBoard(s.defaultBoard) && !s.innerBoard && !s.akuStuds ? 0 : 1,
-  s.frame === 'glued' ? 0 : s.frame === 'cd-lining' ? 1 : 2,
+  s.frame === 'glued' ? 0 : s.frame === 'cd-lining' ? 1 : s.frame === 'hat-lining' ? 2 : 3,
   s.profile,
   s.layers,
 ];
@@ -812,8 +824,12 @@ export const CEILING_KIND_LABEL: Record<CeilingKind, string> = {
   'point-fix': 'ATLAS M-System 3G – sufity na łącznikach (bez profili)',
 };
 
-/** Wieszaki noniuszowe (sufit podwieszany) albo mocowanie bezpośrednie: uchwyt ES, uchwyt elastyczny, wieszak do poddaszy */
-export type HangerType = 'noniusz' | 'es' | 'elastic' | 'attic';
+/**
+ * Wieszaki noniuszowe (sufit podwieszany) albo mocowanie bezpośrednie: uchwyt ES, uchwyt elastyczny, wieszak do poddaszy;
+ * hat = profile kapeluszowe 15/48 przykręcone dyblami wprost do stropu (bez uchwytów i bez UD), `hangerSpacing` = rozstaw
+ * dybli w jednym rzędzie (półce) profilu
+ */
+export type HangerType = 'noniusz' | 'es' | 'elastic' | 'attic' | 'hat';
 
 /**
  * Ruszt zabudowy poddasza inny niż profile CD 60 na uchwytach ES / elastycznych / wieszakach do poddaszy.
@@ -1020,6 +1036,7 @@ const CEILING_LIST: CeilingSystem[] = [
   ...NORGIPS_CEILING_SYSTEMS,
   ...KNAUF_CEILING_SYSTEMS,
   ...SINIAT_CEILING_SYSTEMS,
+  ...HAT_CEILING_SYSTEMS,
 ];
 
 /** Sufity podstawowe – widoczne od razu; reszta pod „Pozostałe systemy” */
@@ -1110,11 +1127,16 @@ export function ceilingMaxSpan(sys: CeilingSystem): number | undefined {
 
 /** Okładzina istniejącej ściany (jednostronna, mocowana do muru): CD na ES, klej gipsowy, ATLAS M-System 3G */
 export const isLiningSystem = (sys: WallSystem): boolean =>
-  sys.sides === 1 && (sys.frame === 'cd-lining' || sys.frame === 'glued' || sys.frame === 'point-fix');
+  sys.sides === 1 && (sys.frame === 'cd-lining' || sys.frame === 'glued' || sys.frame === 'point-fix' || sys.frame === 'hat-lining');
+
+/** Ruszt z profili kapeluszowych mocowanych wprost do podłoża (ściana lub strop) */
+export const isHatWall = (sys: WallSystem): boolean => sys.frame === 'hat-lining';
+export const isHatCeiling = (sys: CeilingSystem): boolean => sys.kind === 'direct' && sys.hangerType === 'hat' && !sys.atticFrame;
 
 /** Nazwa słupka ściany do opisów i rysunków, np. „CW 75”, „UA 50”, „2×U 75 (UU)” */
 export function wallStudLabel(sys: WallSystem): string {
   if (sys.frame === 'cd-lining') return 'CD 60';
+  if (sys.frame === 'hat-lining') return 'kapeluszowy 15/48';
   if (sys.studKind === 'UA') return `UA ${sys.profile}`;
   if (sys.studKind === 'UU') return `2×U ${sys.profile} (UU)`;
   return `CW ${sys.profile}`;
@@ -1135,6 +1157,8 @@ export function wallFrameDepth(sys: WallSystem): number {
       return sys.profile * 2 + (sys.gap ?? 10) * 10;
     case 'cd-lining':
       return 27 + 10;
+    case 'hat-lining':
+      return HAT_MM;
     case 'glued':
       return 10;
     case 'point-fix':
