@@ -1,6 +1,6 @@
 import { atticPlacements, atticPlanLines } from '../calc/atticPlan';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { bbox, dist, existingRooms, isNewWall, masonrySide, nodeMap, pointInPolygon, sameOutline, wallEnds } from '../geometry/geometry';
+import { bbox, dist, existingRooms, isNewWall, masonryEndExtension, masonrySide, nodeMap, pointInPolygon, sameOutline, wallEnds } from '../geometry/geometry';
 import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
 import { createAttic, createCeiling, createOpening } from '../model/factory';
@@ -114,8 +114,9 @@ export function PlanCanvas(props: Props) {
     return new Map(project.walls.filter((w) => !isNewWall(w)).map((w) => [w.id, masonrySide(project, w, rooms)]));
   }, [project]);
   // obrys nowych ścian z modelu styków: w narożnikach (także ścian różnej grubości) lica schodzą się równo
+  const contacts = useMemo(() => buildContacts(project), [project]);
   const outlines = useMemo(() => {
-    const m = buildContacts(project);
+    const m = contacts;
     const out = new Map<string, string>();
     for (const w of project.walls) {
       if (!isNewWall(w)) continue;
@@ -123,7 +124,7 @@ export function PlanCanvas(props: Props) {
       if (pts && pts.length >= 3) out.set(w.id, pts.map((q) => `${q.x},${q.y}`).join(' '));
     }
     return out;
-  }, [project, nodes]);
+  }, [project, nodes, contacts]);
   // węzły, w których spotykają się co najmniej dwie istniejące ściany
   const cornerNodes = useMemo(() => {
     const c = new Map<string, number>();
@@ -821,10 +822,14 @@ export function PlanCanvas(props: Props) {
             const inner = existing ? (interiors.get(w.id) ?? 0) : 0;
             // istniejąca ściana: linia to lico od strony pomieszczenia, mur rysujemy na zewnątrz
             const off = existing ? -inner * (t / 2) : 0;
-            // narożnik obrysu: mur przedłużony, żeby domknąć zewnętrzny róg
-            const ext = (nid: string) => (existing && inner && cornerNodes.has(nid) ? t / 2 : 0);
-            const ea = ext(w.a);
-            const eb = ext(w.b);
+            // narożnik obrysu: w wypukłym mur przedłużony do zewnętrznego lica drugiej ściany,
+            // w wklęsłym kończy się w węźle (końcówka kwadratowa dokłada t/2, stąd odjęte t/2)
+            const ext = (end: 'a' | 'b') => {
+              const e = existing && cornerNodes.has(end === 'a' ? w.a : w.b) ? masonryEndExtension(project, w, end, inner, nodes) : null;
+              return e === null ? 0 : e - t / 2;
+            };
+            const ea = ext('a');
+            const eb = ext('b');
             const a = { x: a0.x + nx * off - ux * ea, y: a0.y + ny * off - uy * ea };
             const b = { x: b0.x + nx * off + ux * eb, y: b0.y + ny * off + uy * eb };
             const faded = (tool === 'wall' || tool === 'room') && existing !== (layer === 'existing');
@@ -868,14 +873,17 @@ export function PlanCanvas(props: Props) {
                 {(w.linings ?? []).map((l) => {
                   const lt = liningThickness(l);
                   const lo = off + l.side * (t / 2 + lt / 2);
-                  // okładzina przerwana w otworach
+                  // zakres z modelu styków (w narożnikach obrysu okładziny schodzą się równo), przerwany w otworach
+                  const range = contacts.linings.get(`${w.id}:${l.side}`);
+                  const r0 = range ? range[0] * 100 : 0;
+                  const r1 = range ? range[1] * 100 : L;
                   const segs: [number, number][] = [];
-                  let cur = 0;
+                  let cur = r0;
                   for (const o of sorted) {
-                    if (o.offset > cur) segs.push([cur, o.offset]);
+                    if (Math.min(o.offset, r1) > cur) segs.push([cur, Math.min(o.offset, r1)]);
                     cur = Math.max(cur, o.offset + o.width);
                   }
-                  if (cur < L) segs.push([cur, L]);
+                  if (cur < r1) segs.push([cur, r1]);
                   return segs.map(([s0, s1], i) => [
                     <line
                       key={`${l.side}-${i}-e`}
