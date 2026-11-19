@@ -2,13 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { boardById } from '../catalog/rigips';
 import type { ProjectCalc } from '../calc/materials';
 import type { Project } from '../model/types';
 import { findCollisions } from '../geometry/contacts';
 import { EXIT_FULLSCREEN_ICON, FULLSCREEN_ICON } from '../ui/fullscreen';
 import type { FullscreenControl } from '../ui/PlanTab';
-import { buildModel3D, type Layer3D, type MatKey, type Model3D } from './model3d';
+import { buildModel3D, type BoxPart, type Layer3D, type MatKey, type Model3D } from './model3d';
+import { profileOutline, type ProfileSpec } from './profiles';
 
 const FRAME_COLORS: Record<string, number> = {
   cw: 0x9aa7b4,
@@ -32,20 +38,79 @@ const LAYERS: { id: Layer3D; label: string }[] = [
 type Visibility = Record<Layer3D, boolean>;
 const ALL_ON: Visibility = { existing: true, wallBoards: true, wallFrame: true, ceilingBoards: true, ceilingFrame: true };
 
-function materialFor(key: MatKey): THREE.Material {
-  if (key.startsWith('board:')) {
-    const color = new THREE.Color(boardById(key.slice(6)).color);
-    return new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide });
+/** Jakość grafiki: niska – bez cieni (słabe telefony), średnia – cienie, wysoka – miękkie cienie i AO */
+export type Quality3D = 'low' | 'medium' | 'high';
+const QUALITY_LABEL: Record<Quality3D, string> = { low: 'niska', medium: 'średnia', high: 'wysoka' };
+const QUALITY_NEXT: Record<Quality3D, Quality3D> = { low: 'medium', medium: 'high', high: 'low' };
+const QUALITY_KEY = 'rigipsiarz.view3d.quality';
+
+function initialQuality(): Quality3D {
+  try {
+    const q = localStorage.getItem(QUALITY_KEY);
+    if (q === 'low' || q === 'medium' || q === 'high') return q;
+  } catch {
+    /* brak dostępu do pamięci – domyślna jakość */
   }
-  return new THREE.MeshLambertMaterial({ color: FRAME_COLORS[key] ?? 0x999999 });
+  // telefon (dotyk) – średnia, komputer – wysoka
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 'medium' : 'high';
+}
+
+/** Wygląd materiałów: płyty matowe, stal ocynkowana lekko metaliczna */
+const FRAME_LOOK: Record<string, { metalness: number; roughness: number }> = {
+  cw: { metalness: 0.65, roughness: 0.38 },
+  uw: { metalness: 0.65, roughness: 0.42 },
+  cdMain: { metalness: 0.65, roughness: 0.38 },
+  cdSec: { metalness: 0.65, roughness: 0.38 },
+  ud: { metalness: 0.65, roughness: 0.42 },
+  ua: { metalness: 0.45, roughness: 0.45 },
+  hanger: { metalness: 0.5, roughness: 0.45 },
+  masonry: { metalness: 0, roughness: 0.95 },
+};
+
+function materialFor(key: MatKey, quality: Quality3D): THREE.Material {
+  const isBoard = key.startsWith('board:');
+  const color = new THREE.Color(isBoard ? boardById(key.slice(6)).color : (FRAME_COLORS[key] ?? 0x999999));
+  // płyty obustronnie – przekroje przy otworach i wycięciach też mają być widoczne
+  const side = isBoard ? THREE.DoubleSide : THREE.FrontSide;
+  if (quality === 'low') return new THREE.MeshLambertMaterial({ color, side });
+  const look = isBoard ? { metalness: 0, roughness: 0.92 } : (FRAME_LOOK[key] ?? { metalness: 0.4, roughness: 0.5 });
+  return new THREE.MeshStandardMaterial({ color, side, ...look });
+}
+
+/** Przekrój profilu wyciągnięty na długość 1 m wzdłuż osi profilu (y dla 'up', x dla 'along') */
+function profileGeometry(spec: ProfileSpec, A: number, B: number): THREE.BufferGeometry {
+  const outline = profileOutline(spec, A, B);
+  // punkty kształtu dobrane tak, by po obrocie (a, b) trafiły w osie lokalne bryły
+  const pts = outline.map((q) => (spec.axis === 'up' ? new THREE.Vector2(q.x, -q.y) : new THREE.Vector2(-q.y, q.x)));
+  const g: THREE.BufferGeometry = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: 1, bevelEnabled: false, steps: 1 });
+  if (spec.axis === 'up') {
+    g.rotateX(-Math.PI / 2); // (a, -b, z) → (a, z, b)
+    g.translate(0, -0.5, 0);
+  } else {
+    g.rotateY(Math.PI / 2); // (-b, a, z) → (z, a, b)
+    g.translate(-0.5, 0, 0);
+  }
+  g.deleteAttribute('uv');
+  return g;
 }
 
 /** Buduje grupy siatek (po jednej na warstwę i materiał – mało wywołań rysowania) */
-function buildGroups(model: Model3D): Map<Layer3D, THREE.Group> {
+function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Group> {
   const byKey = new Map<string, THREE.BufferGeometry[]>();
   const edgesByLayer = new Map<Layer3D, THREE.BufferGeometry[]>();
+  // profile tego samego przekroju – jedna siatka z instancjami (InstancedMesh)
+  const profiles = new Map<string, { layer: Layer3D; mat: MatKey; spec: ProfileSpec; A: number; B: number; parts: BoxPart[] }>();
   const tmp = new THREE.Object3D();
   for (const part of model.parts) {
+    if (part.type === 'box' && part.profile) {
+      const spec = part.profile;
+      const A = spec.axis === 'up' ? part.s[0] : part.s[1];
+      const B = part.s[2];
+      const key = `${part.layer}|${part.mat}|${spec.axis}|${spec.web}|${spec.t}|${spec.lip}|${A.toFixed(4)}|${B.toFixed(4)}`;
+      const entry = profiles.get(key) ?? profiles.set(key, { layer: part.layer, mat: part.mat, spec, A, B, parts: [] }).get(key)!;
+      entry.parts.push(part);
+      continue;
+    }
     let g: THREE.BufferGeometry;
     if (part.type === 'box') {
       g = new THREE.BoxGeometry(part.s[0], part.s[1], part.s[2]);
@@ -64,14 +129,12 @@ function buildGroups(model: Model3D): Map<Layer3D, THREE.Group> {
       tmp.rotation.set(0, part.rotY, 0);
       tmp.updateMatrix();
       g.applyMatrix4(tmp.matrix);
-      g = g.toNonIndexed();
     } else {
       // obrys w płaszczyźnie XY (x, -z), potem obrót do poziomu
       const shape = new THREE.Shape(part.points.map((q) => new THREE.Vector2(q.x, -q.y)));
       g = new THREE.ExtrudeGeometry(shape, { depth: part.thickness, bevelEnabled: false });
       g.rotateX(-Math.PI / 2);
       g.translate(0, part.y, 0);
-      g = g.toNonIndexed();
     }
     if (g.index) g = g.toNonIndexed();
     g.deleteAttribute('uv');
@@ -82,6 +145,7 @@ function buildGroups(model: Model3D): Map<Layer3D, THREE.Group> {
       (edgesByLayer.get(part.layer) ?? edgesByLayer.set(part.layer, []).get(part.layer)!).push(e);
     }
   }
+  const shadows = quality !== 'low';
   const groups = new Map<Layer3D, THREE.Group>();
   const groupOf = (l: Layer3D) => groups.get(l) ?? groups.set(l, new THREE.Group()).get(l)!;
   for (const [key, list] of byKey) {
@@ -89,13 +153,37 @@ function buildGroups(model: Model3D): Map<Layer3D, THREE.Group> {
     const merged = mergeGeometries(list, false);
     list.forEach((g) => g.dispose());
     if (!merged) continue;
-    const mesh = new THREE.Mesh(merged, materialFor(mat));
+    const material = materialFor(mat, quality);
     if (layer === 'wallBoards' || layer === 'ceilingBoards') {
       // płyty lekko odsunięte w głąb, żeby krawędzie (spoiny) były widoczne
-      (mesh.material as THREE.MeshLambertMaterial).polygonOffset = true;
-      (mesh.material as THREE.MeshLambertMaterial).polygonOffsetFactor = 1;
-      (mesh.material as THREE.MeshLambertMaterial).polygonOffsetUnits = 1;
+      material.polygonOffset = true;
+      material.polygonOffsetFactor = 1;
+      material.polygonOffsetUnits = 1;
     }
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.castShadow = shadows;
+    mesh.receiveShadow = shadows;
+    groupOf(layer).add(mesh);
+  }
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const pos = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  for (const { layer, mat, spec, A, B, parts } of profiles.values()) {
+    const mesh = new THREE.InstancedMesh(profileGeometry(spec, A, B), materialFor(mat, quality), parts.length);
+    parts.forEach((part, i) => {
+      pos.set(...part.c);
+      q.setFromAxisAngle(up, part.rotY);
+      // skalujemy tylko długość – przekrój zostaje bez zmian
+      if (spec.axis === 'up') scale.set(1, part.s[1], 1);
+      else scale.set(part.s[0], 1, 1);
+      mesh.setMatrixAt(i, m.compose(pos, q, scale));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+    mesh.castShadow = shadows;
+    mesh.receiveShadow = shadows;
     groupOf(layer).add(mesh);
   }
   for (const [layer, list] of edgesByLayer) {
@@ -135,9 +223,11 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
     controls: OrbitControls;
     content: THREE.Group;
     groups: Map<Layer3D, THREE.Group>;
+    sun: THREE.DirectionalLight;
     dirty: boolean;
   } | null>(null);
   const [vis, setVis] = useState<Visibility>(ALL_ON);
+  const [quality, setQuality] = useState<Quality3D>(initialQuality);
   const [supported] = useState(webglAvailable);
   const model = useMemo(() => buildModel3D(project, calc), [project, calc]);
   // elementy różnych ścian zajmujące to samo miejsce (model styków nie umie ich połączyć)
@@ -149,21 +239,51 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
     return w?.kind === 'existing' ? `Istniejąca ściana ${n}` : `Ściana ${n}`;
   };
   const framed = useRef(false);
+  // położenie kamery zachowane przy zmianie jakości (scena budowana od nowa)
+  const view = useRef<{ pos: THREE.Vector3; target: THREE.Vector3 } | null>(null);
 
-  // inicjalizacja sceny
+  const changeQuality = () => {
+    const next = QUALITY_NEXT[quality];
+    try {
+      localStorage.setItem(QUALITY_KEY, next);
+    } catch {
+      /* bez zapisu – wybór tylko do zamknięcia widoku */
+    }
+    setQuality(next);
+  };
+
+  // inicjalizacja sceny (od nowa po zmianie jakości)
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !supported) return;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const high = quality === 'high';
+    const renderer = new THREE.WebGLRenderer({ antialias: !high, powerPreference: high ? 'high-performance' : 'low-power' });
+    const dpr = window.devicePixelRatio || 1;
+    renderer.setPixelRatio(Math.min(dpr, quality === 'low' ? 1 : quality === 'medium' ? 1.5 : 2));
     renderer.setClearColor(0x000000, 0);
+    renderer.toneMapping = quality === 'low' ? THREE.NoToneMapping : THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1;
+    renderer.shadowMap.enabled = quality !== 'low';
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, 1.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    const env = quality === 'low' ? null : new THREE.PMREMGenerator(renderer);
+    if (env) {
+      // odbicia otoczenia – stal ocynkowana wygląda jak metal, a nie jak szara plastelina
+      scene.environment = env.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environmentIntensity = 0.55;
+      env.dispose();
+    }
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, quality === 'low' ? 1.6 : 0.9));
+    const sun = new THREE.DirectionalLight(0xfff6ea, quality === 'low' ? 1.4 : 2.1);
     sun.position.set(5, 10, 7);
-    scene.add(sun);
+    sun.castShadow = quality !== 'low';
+    sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.02;
+    sun.shadow.radius = high ? 3 : 1;
+    scene.add(sun, sun.target);
     const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 500);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -173,10 +293,29 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
     controls.maxDistance = 120;
     controls.zoomToCursor = true;
     controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    if (view.current) {
+      camera.position.copy(view.current.pos);
+      controls.target.copy(view.current.target);
+      controls.update();
+      framed.current = true;
+    }
     const content = new THREE.Group();
     scene.add(content);
 
-    const state = { renderer, scene, camera, controls, content, groups: new Map(), dirty: true };
+    // wysoka jakość: cieniowanie zakamarków (GTAO) w osobnym przebiegu; MSAA w buforze pośrednim
+    let composer: EffectComposer | null = null;
+    if (high && renderer.capabilities.isWebGL2) {
+      const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+      composer = new EffectComposer(renderer, rt);
+      composer.addPass(new RenderPass(scene, camera));
+      const ao = new GTAOPass(scene, camera, 1, 1);
+      ao.updateGtaoMaterial({ radius: 0.25, distanceExponent: 1, thickness: 1, scale: 1 });
+      ao.blendIntensity = 0.85;
+      composer.addPass(ao);
+      composer.addPass(new OutputPass());
+    }
+
+    const state = { renderer, scene, camera, controls, content, groups: new Map(), sun, dirty: true };
     ctx.current = state;
     controls.addEventListener('change', () => (state.dirty = true));
 
@@ -185,6 +324,10 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
       const h = host.clientHeight;
       if (!w || !h) return;
       renderer.setSize(w, h, false);
+      if (composer) {
+        composer.setPixelRatio(renderer.getPixelRatio());
+        composer.setSize(w, h);
+      }
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       state.dirty = true;
@@ -200,7 +343,8 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
       controls.update();
       if (state.dirty) {
         state.dirty = false;
-        renderer.render(scene, camera);
+        if (composer) composer.render();
+        else renderer.render(scene, camera);
       }
     };
     loop();
@@ -208,14 +352,17 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      view.current = { pos: camera.position.clone(), target: controls.target.clone() };
       controls.dispose();
       disposeObject(scene);
+      scene.environment?.dispose();
+      composer?.dispose();
       renderer.dispose();
       renderer.domElement.remove();
       ctx.current = null;
       framed.current = false;
     };
-  }, [supported]);
+  }, [supported, quality]);
 
   // przebudowa zawartości po zmianie projektu
   useEffect(() => {
@@ -234,7 +381,28 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
     (grid.material as THREE.Material).opacity = 0.6;
     s.content.add(grid);
 
-    s.groups = buildGroups(model);
+    if (quality !== 'low') {
+      // posadzka przyjmująca cienie (sama niewidoczna – widać tylko cień)
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(span + 8, span + 8), new THREE.ShadowMaterial({ opacity: 0.22 }));
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.set(cx, -0.001, cz);
+      floor.receiveShadow = true;
+      s.content.add(floor);
+      // słońce i zakres mapy cieni dopasowane do modelu
+      const radius = Math.hypot(span, max[1]) / 2 + 1;
+      const dir = new THREE.Vector3(0.45, 1, 0.65).normalize();
+      s.sun.target.position.set(cx, max[1] / 2, cz);
+      s.sun.position.copy(s.sun.target.position).addScaledVector(dir, radius * 3);
+      const cam = s.sun.shadow.camera;
+      cam.left = cam.bottom = -radius;
+      cam.right = cam.top = radius;
+      cam.near = radius * 0.5;
+      cam.far = radius * 5;
+      cam.updateProjectionMatrix();
+      s.sun.shadow.needsUpdate = true;
+    }
+
+    s.groups = buildGroups(model, quality);
     for (const [layer, g] of s.groups) {
       g.visible = vis[layer];
       s.content.add(g);
@@ -245,7 +413,7 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
     }
     s.dirty = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model]);
+  }, [model, quality]);
 
   // widoczność warstw
   useEffect(() => {
@@ -297,6 +465,9 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
           }}
         >
           Wyśrodkuj
+        </button>
+        <button className="chip" onClick={changeQuality} title="Niska – bez cieni, najpłynniej na słabszym telefonie. Wysoka – miękkie cienie i cieniowanie zakamarków.">
+          Grafika: {QUALITY_LABEL[quality]}
         </button>
         {fullscreen && !fullscreen.on && (
           <button className="chip" onClick={fullscreen.toggle}>
