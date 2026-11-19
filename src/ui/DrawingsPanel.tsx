@@ -116,7 +116,7 @@ export function DrawingsPanel({ project, calc }: Props) {
     const out = new Map<DetailKind, (typeof walls)[number]>();
     for (const w of walls) {
       const frame = wallSystemById(w.systemId).frame;
-      if (frame === 'glued' || frame === 'cd-lining' || frame === 'point-fix') continue; // okładziny: detale połączeń ścian nie dotyczą
+      if (frame === 'glued' || frame === 'cd-lining' || frame === 'point-fix' || frame === 'hat-lining') continue; // okładziny: detale połączeń ścian nie dotyczą
       const j = junctions.get(w.id);
       if (!j) continue;
       for (const k of [j.endA, j.endB]) {
@@ -363,14 +363,14 @@ function SheetBody({ l, sys, name, req }: { l: WallLayout; sys: WallSystem; name
           <h4>Konstrukcja</h4>
           <WallFrameDrawing l={l} title={`${name} – konstrukcja`} />
           <p className="small stud-list">
-            <strong>Osie {l.frame === 'cd-lining' ? 'profili CD' : 'słupków'} od lewej krawędzi (cm):</strong> {studs.join(' · ')}
+            <strong>Osie {l.frame === 'cd-lining' ? 'profili CD' : l.frame === 'hat-lining' ? 'profili kapeluszowych' : 'słupków'} od lewej krawędzi (cm):</strong> {studs.join(' · ')}
           </p>
           {l.brackets && (
             <>
-              <h4>Uchwyty ES – miejsca wiercenia</h4>
-              <WallBracketsDrawing l={l} title={`${name} – uchwyty ES`} />
+              <h4>{l.brackets.hat ? 'Kołki profili kapeluszowych' : 'Uchwyty ES'} – miejsca wiercenia</h4>
+              <WallBracketsDrawing l={l} title={`${name} – ${l.brackets.hat ? 'kołki' : 'uchwyty ES'}`} />
               <p className="small stud-list">
-                <strong>Wysokości uchwytów od posadzki (cm):</strong>{' '}
+                <strong>Wysokości {l.brackets.hat ? 'kołków' : 'uchwytów'} od posadzki (cm):</strong>{' '}
                 {[...new Set(l.brackets.points.map((q) => Math.round(q.y * 100)))].sort((a, b) => a - b).join(' · ')}
               </p>
             </>

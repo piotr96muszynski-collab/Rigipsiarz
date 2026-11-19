@@ -6,7 +6,7 @@
 // Dodatkowe słupki CW w narożnikach i trójnikach dolicza ściana (wallRequirement),
 // tutaj są tylko opisane, żeby było widać, skąd się biorą.
 
-import { boardById, wallSystemById, type WallSystem } from '../catalog/rigips';
+import { HAT_MM, boardById, wallSystemById, type WallSystem } from '../catalog/rigips';
 import {
   ACRYLIC_M_PER_TUBE,
   compoundById,
@@ -93,7 +93,9 @@ export function wallThicknessMm(sys: WallSystem, boardId: string): number {
           ? 2 * sys.profile + (sys.gap ?? 10) * 10
           : sys.frame === 'cd-lining'
             ? 27
-            : 10;
+            : sys.frame === 'hat-lining'
+              ? HAT_MM
+              : 10;
   return core + sys.sides * sys.layers * t;
 }
 

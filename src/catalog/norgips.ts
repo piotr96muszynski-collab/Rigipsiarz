@@ -6,8 +6,9 @@
 // zużycie materiałów na 1 m² z kalkulatora na stronie każdego systemu (stan 19.11.2026).
 // Jedna pozycja katalogu = jedna konstrukcja (profil × liczba warstw × ruszt); różne płyty
 // i słupki podwójne są odmianami (`variants`). Systemy Norgips nie mają pola `code` – nazwy
-// systemów (SD, SO, SP…) są w nazwie pozycji. Nie ujęto: profili kapeluszowych (KAP) poza
-// zabudową poddasza i suchego jastrychu (SJ) – aplikacja jeszcze ich nie liczy.
+// systemów (SD, SO, SP…) są w nazwie pozycji. Okładziny ścian i sufitów na profilach
+// kapeluszowych (KAP) generuje scripts/gen-hat.mjs (src/catalog/hat.gen.ts). Nie ujęto suchego
+// jastrychu (SJ) – aplikacja jeszcze go nie liczy.
 //
 // Plik generowany: node scripts/gen-norgips.mjs (dane w data/norgips); importuje z `rigips.ts` wyłącznie typy.
 
@@ -2059,7 +2060,7 @@ export const NORGIPS_WALL_SYSTEMS: WallSystem[] = [
     insulationDefault: false,
     fire: 'EI 15',
     bracketSpacing: 120,
-    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) pominięte',
+    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OS-KAP',
     source: src('okladziny-scienne'),
     maker: 'norgips',
     basic: true,
@@ -2087,7 +2088,7 @@ export const NORGIPS_WALL_SYSTEMS: WallSystem[] = [
     insulationDefault: false,
     fire: 'EI 30 – EI 60',
     bracketSpacing: 120,
-    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) pominięte',
+    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OS-KAP',
     source: src('okladziny-scienne'),
     reference: [
       { label: 'Płyta g-k', qty: 2, unit: 'm²' },
@@ -2130,7 +2131,7 @@ export const NORGIPS_WALL_SYSTEMS: WallSystem[] = [
     insulationDefault: false,
     fire: 'EI 60 – EI 90',
     bracketSpacing: 120,
-    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) pominięte',
+    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OS-KAP',
     source: src('okladziny-scienne'),
     maker: 'norgips',
     variants: [
@@ -2155,7 +2156,7 @@ export const NORGIPS_WALL_SYSTEMS: WallSystem[] = [
     insulationDefault: false,
     fire: 'EI 120',
     bracketSpacing: 120,
-    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) pominięte',
+    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OS-KAP',
     source: src('okladziny-scienne'),
     reference: [
       { label: 'Płyta g-k', qty: 4, unit: 'm²' },
@@ -2612,7 +2613,7 @@ export const NORGIPS_CEILING_SYSTEMS: CeilingSystem[] = [
     screwsOuter: 25,
     screwsInner: 10,
     fire: 'EI 15',
-    info: 'CD 60 co 50 cm na wieszakach ES / ES Plus co 85 cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) pominięte',
+    info: 'CD 60 co 50 cm na wieszakach ES / ES Plus co 85 cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OSF-KAP',
     source: src('okladziny-sufitowe'),
     reference: [
       { label: 'Płyta g-k', qty: 1, unit: 'm²' },
@@ -2651,7 +2652,7 @@ export const NORGIPS_CEILING_SYSTEMS: CeilingSystem[] = [
     screwsOuter: 25,
     screwsInner: 10,
     fire: 'EI 30 – EI 60',
-    info: 'CD 60 co 50 cm na wieszakach ES / ES Plus co 85 cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) pominięte',
+    info: 'CD 60 co 50 cm na wieszakach ES / ES Plus co 85 cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OSF-KAP',
     source: src('okladziny-sufitowe'),
     reference: [
       { label: 'Płyta g-k', qty: 2, unit: 'm²' },
@@ -2693,7 +2694,7 @@ export const NORGIPS_CEILING_SYSTEMS: CeilingSystem[] = [
     screwsOuter: 25,
     screwsInner: 10,
     fire: 'EI 60 – EI 90',
-    info: 'CD 60 co 40 cm na wieszakach ES / ES Plus co 70 cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) pominięte',
+    info: 'CD 60 co 40 cm na wieszakach ES / ES Plus co 70 cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OSF-KAP',
     source: src('okladziny-sufitowe'),
     reference: [
       { label: 'Płyta g-k', qty: 3, unit: 'm²' },
@@ -2730,7 +2731,7 @@ export const NORGIPS_CEILING_SYSTEMS: CeilingSystem[] = [
     screwsOuter: 25,
     screwsInner: 10,
     fire: 'EI 120',
-    info: 'CD 60 co 40 cm na wieszakach ES / ES Plus co 60 cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) pominięte',
+    info: 'CD 60 co 40 cm na wieszakach ES / ES Plus co 60 cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OSF-KAP',
     source: src('okladziny-sufitowe'),
     reference: [
       { label: 'Płyta g-k', qty: 4, unit: 'm²' },
