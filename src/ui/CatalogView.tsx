@@ -211,7 +211,11 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
   } else if (s.atticFrame) {
     const fr = s.atticFrame;
     const name = fr.profileLabel.charAt(0).toUpperCase() + fr.profileLabel.slice(1);
-    out.push([name, `co ${s.secondarySpacing} cm`]);
+    if (fr.carrier) {
+      const c = fr.carrier;
+      out.push([c.label.charAt(0).toUpperCase() + c.label.slice(1), `pod każdą krokwią (krokwie co max ${c.maxSpacing} cm)${c.cross ? `, ${c.crossLabel ?? 'łącznik krzyżowy'} na skrzyżowaniach` : ''}`]);
+    }
+    out.push([name, `${fr.carrier ? 'w poprzek krokwi ' : ''}co ${s.secondarySpacing} cm`]);
     out.push([
       'Mocowanie',
       fr.mount === 'hanger' ? `${fr.hangerLabel} co max ${s.hangerSpacing} cm` : fr.mount === 'direct' ? `wprost do krokwi, co max ${s.hangerSpacing} cm` : 'między krokwiami – więźba widoczna',

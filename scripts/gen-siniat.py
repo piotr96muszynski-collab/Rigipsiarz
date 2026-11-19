@@ -714,7 +714,27 @@ ATTIC = {
     'EL': ('hanger', 'elastic', 'na CD 60 i elementach elastycznych EL60'),
     'PK': ('direct', None, 'na profilach kapeluszowych PK48 przykręconych do krokwi'),
     'LD': ('direct', None, 'na łatach drewnianych przykręconych do krokwi'),
+    'ES/DK': ('hanger', 'es', 'na ruszcie krzyżowym CD 60 i elementach ES60'),
+    'EL/DK': ('hanger', 'elastic', 'na ruszcie krzyżowym CD 60 i elementach elastycznych EL60'),
+    'DK/MFC': ('hanger', None, 'na ruszcie krzyżowym z profili MF i kątownikach MFC2330'),
 }
+
+# Ruszt krzyżowy (karty rozdz. 8 s. 11–14, rozdz. 9 s. 17–22): profile nośne pod krokwiami mocowane co max 100 cm,
+# profile pod płyty w poprzek krokwi co 40 cm. Zasięg wieszaka pod krokwią = jak w ruszcie jednopoziomowym
+# (ES 125 mm, EL60 90 mm) + drugi poziom CD 27 mm – założenie aplikacji, karty go nie podają.
+def cross_frame(typ):
+    cd = OrderedDict([('mount', 'hanger'), ('profile', 'CD60'), ('profileLabel', 'profil CD 60 pod płyty'), ('profileMm', 27), ('edge', 'UD30')])
+    if typ == 'DK/MFC':
+        return OrderedDict([('mount', 'hanger'), ('profile', 'MFCC50'), ('profileLabel', 'profil sufitowy MFCC50'), ('profileMm', 26), ('edge', 'MFCE26'),
+                            ('hanger', 'MFC2330'), ('hangerLabel', 'kątownik MFC2330'), ('hangerLn9', 2), ('woodScrews', 2),
+                            ('carrier', OrderedDict([('product', 'MFCP44'), ('label', 'profil główny MFCP44'), ('mm', 44), ('maxSpacing', 100), ('crossLn9', 2)]))])
+    es = typ == 'ES/DK'
+    return OrderedDict(list(cd.items()) + [
+        ('hanger', 'WIESZAK_ES' if es else 'UCHWYT_ELAST'), ('hangerLabel', 'element ES60' if es else 'element elastyczny EL60'), ('hangerLn9', 4),
+        ('joiner', 'LACZNIK_WZDL'), ('woodScrews', 2), ('maxUnderMm', 145 if es else 115),
+        ('maxUnderWhy', 'element ES60 (125 mm) + drugi poziom CD 60' if es else 'element elastyczny EL60 (90 mm) + drugi poziom CD 60'),
+        ('carrier', OrderedDict([('product', 'CD60'), ('label', 'profil nośny CD 60'), ('mm', 27), ('maxSpacing', 100),
+                                 ('cross', 'LACZNIK_KRZ'), ('crossLabel', 'łącznik krzyżowy LK60')]))])
 
 
 def make_attics():
@@ -723,11 +743,12 @@ def make_attics():
         for c in load(ch):
             for r in c['rows']:
                 code, rest = split_code(r)
-                m = re.match(r'^(WP|ES|EL)/CD60/([\d,]+)/|^(PK|LD)/([\d,]+)/', code)
+                m = re.match(r'^(WP|ES|EL|ES/DK|EL/DK)/CD60/([\d,]+)/|^(PK|LD|DK/MFC)/([\d,]+)/', code)
                 if not m:
-                    skip(code.rsplit('/', 1)[0], 'poddasza na ruszcie krzyżowym (ES/DK, EL/DK, DK/MFC) – silnik poddaszy liczy ruszt jednopoziomowy')
+                    print('PODDASZE nieznany ruszt', ch, c['page'], code, file=sys.stderr)
                     continue
                 typ = m[1] or m[3]
+                cross = '/DK' in typ or typ.startswith('DK/')
                 codes = board_codes(code.split('/')[-1])
                 cl = find_clad(rest)
                 if not cl:
@@ -736,7 +757,13 @@ def make_attics():
                 nl, th, ci = cl
                 ints = [num(t) for t in rest[ci + 1:]]
                 ints = [x for x in ints if isinstance(x, int)]
-                fix, sp = ints[0] // 10, ints[1] // 10
+                main = None
+                if cross:
+                    # mocowanie, rozstaw nośnych, rozstaw profili pod płyty (komórka bywa sklejona z rodzajem wełny)
+                    lead = [int(x[1]) for t in rest[ci + 1:] if (x := re.match(r'^(\d{3,4})\b', t))]
+                    fix, main, sp = lead[0] // 10, lead[1] // 10, lead[2] // 10
+                else:
+                    fix, sp = ints[0] // 10, ints[1] // 10
                 mi = max(i for i, t in enumerate(rest) if is_mass(t))
                 minh = num(rest[mi - 1])
                 ei = ei_of(rest[mi + 1:])
@@ -745,7 +772,7 @@ def make_attics():
                 # rozdz. 9 (Nida Dach, klasyfikacja LBO-039-KZ/21) ma pierwszeństwo; z rozdz. 8 tylko płyty, których tam brak
                 if ch == '08' and any(v['codes'] == codes and v['th'] == th for v in vs):
                     continue
-                vs.append(dict(ch=ch, page=c['page'], code=code, codes=codes, th=th, fix=fix, sp=sp, mass=num(rest[mi]), ei=ei, minh=minh))
+                vs.append(dict(ch=ch, page=c['page'], code=code, codes=codes, th=th, fix=fix, sp=sp, main=main, mass=num(rest[mi]), ei=ei, minh=minh))
     out = []
     for (typ, nl), vs in groups.items():
         mount, hanger, title = ATTIC[typ]
@@ -756,7 +783,7 @@ def make_attics():
         for v in sorted(vs, key=lambda v: (len(v['codes']), PREF.index(v['codes'][-1]), v['th'])):
             o = OrderedDict()
             o['code'] = v['code'].rsplit('/', 1)[0]
-            lab = layer_desc(v['codes'], nl, v['th']) + f' · {"łaty" if typ == "LD" else "profile"} co {v["sp"]} cm · mocowanie co {v["fix"]} cm · zabudowa min. {pl(v["minh"])} mm'
+            lab = layer_desc(v['codes'], nl, v['th']) + f' · {"łaty" if typ == "LD" else "profile"} co {v["sp"]} cm' + (f' · nośne co {v["main"]} cm' if v['main'] else '') + f' · mocowanie co {v["fix"]} cm · zabudowa min. {pl(v["minh"])} mm'
             if v['ei']:
                 lab += f' · REI {v["ei"]} ({"Nida Dach" if v["ch"] == "09" else "Nida Poddasze"})'
             o['label'] = lab
@@ -771,12 +798,13 @@ def make_attics():
         eis = sorted({v['ei'] for v in vs if v['ei']})
         pages = sorted({(v['ch'], v['page']) for v in vs})
         s = OrderedDict()
-        s['id'] = f'SN-P-{typ}-{nl}'
-        s['name'] = f'Nida Dach {typ}{"/CD60" if typ in ("WP", "ES", "EL") else ""} – zabudowa poddasza {title}, {nl}×{pl(dth)}'
+        cross = default['main'] is not None
+        s['id'] = f'SN-P-{typ.replace("/", "")}-{nl}'
+        s['name'] = f'Nida Dach {typ}{"/CD60" if typ in ("WP", "ES", "EL", "ES/DK", "EL/DK") else ""} – zabudowa poddasza {title}, {nl}×{pl(dth)}'
         s['kind'] = 'direct'
         s['layers'] = nl
         s['defaultBoard'] = board_id(dcode, dth)
-        s['mainSpacing'] = default['sp']
+        s['mainSpacing'] = default['main'] or default['sp']
         s['secondarySpacing'] = default['sp']
         s['hangerSpacing'] = default['fix']
         if hanger:
@@ -785,8 +813,16 @@ def make_attics():
         s['screwsInner'] = 12
         if eis:
             s['fire'] = f'REI {eis[0]}' if len(eis) == 1 else f'REI {eis[0]} – REI {eis[-1]}'
-        info = [f'{"Łaty drewniane" if typ == "LD" else "Profile " + ("PK48" if typ == "PK" else "CD 60")} co {default["sp"]} cm w układzie równoległym, mocowanie do krokwi co maks. {default["fix"]} cm',
-                f'zabudowa min. {pl(default["minh"])} mm', 'klasa REI z konstrukcją dachu i wełną 150 mm (Nida Dach)']
+        if cross:
+            fr = cross_frame(typ)
+            info = [f'Ruszt krzyżowy: {fr["carrier"]["label"]} pod każdą krokwią (rozstaw krokwi maks. {default["main"]} cm), {fr["hangerLabel"]} co maks. {default["fix"]} cm',
+                    f'{fr["profileLabel"]} w poprzek krokwi co {default["sp"]} cm']
+        else:
+            info = [f'{"Łaty drewniane" if typ == "LD" else "Profile " + ("PK48" if typ == "PK" else "CD 60")} co {default["sp"]} cm w układzie równoległym, mocowanie do krokwi co maks. {default["fix"]} cm']
+        info += [
+                 f'zabudowa min. {pl(default["minh"])} mm', 'klasa REI z konstrukcją dachu i wełną 150 mm (Nida Dach)']
+        if typ == 'DK/MFC':
+            info.append('karta podaje 0,5 kątownika/m², co nie zgadza się z mocowaniem co 100 cm – aplikacja liczy kątownik w każdym punkcie mocowania; wysokości profili MF przyjęte z nazw (44 i 26 mm)')
         if typ == 'LD':
             info.append('przekrój łat przyjęty 50×30 mm – karta go nie podaje')
         if typ == 'PK':
@@ -799,6 +835,8 @@ def make_attics():
         if typ == 'PK':
             s['atticFrame'] = OrderedDict([('mount', 'direct'), ('profile', 'KAPELUSZ'), ('profileLabel', 'profil kapeluszowy PK48'), ('profileMm', 15),
                                            ('woodScrews', 2)])
+        if cross:
+            s['atticFrame'] = cross_frame(typ)
         if typ == 'LD':
             s['atticFrame'] = OrderedDict([('mount', 'direct'), ('profile', 'LATA5030'), ('profileLabel', 'łata drewniana'), ('profileMm', 30),
                                            ('woodScrews', 1)])

@@ -386,6 +386,11 @@ export const PRODUCTS: Record<string, Product> = {
   LATA5030: { id: 'LATA5030', name: 'Łata drewniana 50×30 mm', group: 'Profile', unit: 'szt.', length: 4 },
   LATA6040: { id: 'LATA6040', name: 'Łata drewniana 60×40 mm', group: 'Profile', unit: 'szt.', length: 4 },
   LATA6050: { id: 'LATA6050', name: 'Łata drewniana 60×50 mm', group: 'Profile', unit: 'szt.', length: 4 },
+  // Ruszt krzyżowy z profili MF (Siniat DK/MFC – poddasza i sufity); długość handlowa przyjęta 4 m
+  MFCP44: { id: 'MFCP44', name: 'Profil główny Nida MFCP44', group: 'Profile', unit: 'szt.', length: 4 },
+  MFCC50: { id: 'MFCC50', name: 'Profil sufitowy Nida MFCC50', group: 'Profile', unit: 'szt.', length: 4 },
+  MFCE26: { id: 'MFCE26', name: 'Profil przyścienny Nida MFCE26', group: 'Profile', unit: 'szt.', length: 4 },
+  MFC2330: { id: 'MFC2330', name: 'Kątownik sufitowy Nida MFC2330 do profili MF', group: 'Akcesoria do sufitów', unit: 'szt.' },
   // Akcesoria sufitowe
   WIESZAK_KLICK: { id: 'WIESZAK_KLICK', name: 'Wieszak bezpośredni „Klick-Fix” do CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
   WIESZAK_RIGISTIL: {
@@ -816,6 +821,28 @@ export interface AtticFrame {
   battens?: { product: string; size: string; mm: number; maxFix: number }[];
   /** Największy rozstaw mocowania elementów wzdłuż krokwi (ruszt między krokwiami), cm */
   sideFix?: number;
+  /**
+   * Ruszt krzyżowy (dwupoziomowy): profile nośne biegną pod każdą krokwią (jętką) i mocuje się je wieszakami
+   * (`hanger`) co `hangerSpacing` systemu; elementy pod płyty (`profile`) idą w poprzek krokwi co `secondarySpacing`
+   * i łączą się z nośnymi na każdym skrzyżowaniu.
+   */
+  carrier?: AtticCarrier;
+}
+
+/** Profile nośne rusztu krzyżowego poddasza */
+export interface AtticCarrier {
+  /** Produkt i nazwa profilu nośnego */
+  product: string;
+  label: string;
+  /** Wysokość profilu nośnego, mm */
+  mm: number;
+  /** Największy rozstaw profili nośnych z karty = największy rozstaw krokwi, cm */
+  maxSpacing: number;
+  /** Łącznik na skrzyżowaniu nośnego z profilem pod płyty (brak = profile skręcane wkrętami) */
+  cross?: string;
+  crossLabel?: string;
+  /** Wkręty „pchełki” na jedno skrzyżowanie */
+  crossLn9?: number;
 }
 
 export interface CeilingSystem {
