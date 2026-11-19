@@ -1,5 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculateProject } from '../calc/materials';
+import { appBoardLength, isBoardLengthPref, setAppBoardLength, setProjectBoardLength, type BoardLengthPref } from '../calc/boardLength';
+import { BoardLengthField } from './BoardLengthField';
 import { PRODUCT_ALIASES, setCustomSystems, type CustomCatalog } from '../catalog/rigips';
 import { createProject, duplicateProject, sampleProject } from '../model/factory';
 import { migrateKeys, type PriceBook } from '../model/prices';
@@ -38,6 +40,8 @@ export function App() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   /** Zmienia się po każdej zmianie systemów własnych – odświeża wyliczenia */
   const [catalogVersion, setCatalogVersion] = useState(0);
+  // długość arkuszy płyt – ustawienie całej aplikacji (projekt może je nadpisać)
+  const [appBoardLen, setAppBoardLen] = useState<BoardLengthPref>(appBoardLength());
   const hash = useHash();
 
   const refresh = useCallback(() => listProjects().then(setProjects).catch(() => setProjects([])), []);
@@ -45,6 +49,12 @@ export function App() {
     refresh();
     requestPersistence();
     getKV<PriceBook>('prices').then((p) => p && setPrices(migrateKeys(p, PRODUCT_ALIASES)));
+    getKV<BoardLengthPref>('boardLength').then((v) => {
+      if (!isBoardLengthPref(v)) return;
+      setAppBoardLength(v);
+      setAppBoardLen(v);
+      setCatalogVersion((n) => n + 1);
+    });
     getKV<CustomCatalog>('customSystems').then((c) => {
       if (!c) return;
       setCustomSystems(c);
@@ -56,6 +66,13 @@ export function App() {
     setCustomSystems(c);
     setKV('customSystems', c);
     setCatalogVersion((v) => v + 1);
+  };
+
+  const saveBoardLen = (v: BoardLengthPref) => {
+    setAppBoardLength(v);
+    setAppBoardLen(v);
+    setKV('boardLength', v);
+    setCatalogVersion((n) => n + 1);
   };
 
   const setPrice = (key: string, value: number | undefined) =>
@@ -125,6 +142,8 @@ export function App() {
           prices={prices}
           setPrice={setPrice}
           catalogVersion={catalogVersion}
+          appBoardLen={appBoardLen}
+          setAppBoardLen={saveBoardLen}
           onOpenCatalog={() => setCatalogOpen(true)}
           onClose={() => {
             setOpenId(null);
@@ -143,6 +162,8 @@ export function App() {
           onDuplicate={duplicate}
           onRename={rename}
           onOpenCatalog={() => setCatalogOpen(true)}
+          appBoardLen={appBoardLen}
+          setAppBoardLen={saveBoardLen}
         />
       )}
       </div>
@@ -174,9 +195,13 @@ function Home({
   onDuplicate,
   onRename,
   onOpenCatalog,
+  appBoardLen,
+  setAppBoardLen,
 }: {
   projects: Project[] | null;
   onOpenCatalog: () => void;
+  appBoardLen: BoardLengthPref;
+  setAppBoardLen: (v: BoardLengthPref) => void;
   quick: boolean;
   setQuick: (v: boolean) => void;
   onOpen: (p: Project) => void;
@@ -239,12 +264,24 @@ function Home({
         )}
       </section>
 
+      <section className="card home-settings">
+        <BoardLengthField
+          label="Długość płyt"
+          value={appBoardLen}
+          onChange={(v) => setAppBoardLen(v ?? 'auto')}
+          hint={APP_BOARD_HINT}
+        />
+      </section>
+
       <p className="home-foot small">
         <a href="#dalmierz">Dalmierz Bluetooth – diagnostyka</a>
       </p>
     </main>
   );
 }
+
+const APP_BOARD_HINT =
+  'Arkusze tej długości idą do układu płyt, rysunków, 3D i listy zakupów. Auto – najkrótszy arkusz nie niższy od ściany. Gdy dostawka wyszłaby węższa niż 30 cm, pełny arkusz jest skracany.';
 
 type Tab = 'plan' | 'list' | 'elements' | 'joints' | '3d' | 'drawings' | 'settings';
 
@@ -253,12 +290,16 @@ function ProjectView({
   prices,
   setPrice,
   catalogVersion,
+  appBoardLen,
+  setAppBoardLen,
   onOpenCatalog,
   onClose,
   onDelete,
 }: {
   initial: Project;
   catalogVersion: number;
+  appBoardLen: BoardLengthPref;
+  setAppBoardLen: (v: BoardLengthPref) => void;
   onOpenCatalog: () => void;
   prices: PriceBook;
   setPrice: (k: string, v: number | undefined) => void;
@@ -269,6 +310,9 @@ function ProjectView({
   const [startTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'plan');
   const [tab, setTab] = useState<Tab>(startTab);
   // catalogVersion: przelicz po zmianie systemów własnych
+  // długość płyt tego projektu – wyliczenia, rysunki i 3D biorą ją z modułu boardLength
+  setProjectBoardLength(project.settings.boardLength);
+  useEffect(() => () => setProjectBoardLength(undefined), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const calc = useMemo(() => calculateProject(project), [project, catalogVersion]);
 
@@ -474,6 +518,19 @@ function ProjectView({
             </div>
             <hr />
             <ProjectHeights project={project} update={update} />
+            <hr />
+            <BoardLengthField
+              label="Długość płyt w tym projekcie"
+              value={project.settings.boardLength}
+              inherit={appBoardLen}
+              onChange={(v) =>
+                update((d) => {
+                  if (v === undefined) delete d.settings.boardLength;
+                  else d.settings.boardLength = v;
+                })
+              }
+            />
+            <BoardLengthField label="Domyślnie w aplikacji" value={appBoardLen} onChange={(v) => setAppBoardLen(v ?? 'auto')} hint={APP_BOARD_HINT} />
             <hr />
             <WoolSettings
               wool={project.settings.wool}

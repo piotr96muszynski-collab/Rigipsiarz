@@ -10,6 +10,7 @@ import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Ceiling, Point, Project, Wall } from '../model/types';
 import { profileFor, type ProfileSpec, type WebSide } from './profiles';
+import { rowSegments } from '../calc/boardLength';
 
 /** Warstwy, które można przełączać w widoku */
 export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
@@ -146,19 +147,7 @@ export function boardSheets(L: number, H: number, widthM: number, sheetLenM: num
   for (; x < L - EPS; x += widthM) cols.push([x, Math.min(L, x + widthM)]);
   cols.forEach(([x0, x1], i) => {
     // dostawki na zmianę u góry i u dołu, by spoiny poziome się mijały
-    const rows: [number, number][] = [];
-    if (H <= sheetLenM + EPS) rows.push([0, H]);
-    else if (i % 2 === 0) {
-      for (let y = 0; y < H - EPS; y += sheetLenM) rows.push([y, Math.min(H, y + sheetLenM)]);
-    } else {
-      const rest = H - Math.floor(H / sheetLenM) * sheetLenM;
-      let y = 0;
-      if (rest > EPS) {
-        rows.push([0, rest]);
-        y = rest;
-      }
-      for (; y < H - EPS; y += sheetLenM) rows.push([y, Math.min(H, y + sheetLenM)]);
-    }
+    const rows = rowSegments(H, sheetLenM, i % 2 === 1);
     for (const [y0, y1] of rows) out.push(...subtractRects({ x0, x1, y0, y1 }, holes));
   });
   return out;

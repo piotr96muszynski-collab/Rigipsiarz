@@ -14,6 +14,7 @@ import {
   type WallSystem,
   type Unit,
 } from '../catalog/rigips';
+import { pickBoardLengthCm } from './boardLength';
 import { FIXERS } from '../catalog/atlas';
 import {
   analyzeJunctions,
@@ -75,11 +76,8 @@ const addPiece = (req: Requirement, product: string, len: number) => {
   (req.pieces[product] ??= []).push(len);
 };
 
-/** Dobór długości arkusza: najkrótszy ≥ wysokości, inaczej najdłuższy (z dostawką) */
-export function pickBoardLength(boardId: string, heightCm: number): number {
-  const lens = [...boardById(boardId).lengths].sort((a, b) => a - b);
-  return lens.find((l) => l >= heightCm) ?? lens[lens.length - 1];
-}
+/** Dobór długości arkusza wg ustawienia aplikacji / projektu, cm */
+export const pickBoardLength = (boardId: string, heightCm: number) => pickBoardLengthCm(boardId, heightCm);
 
 const TAPE_FOR_PROFILE: Record<number, string> = { 50: 'TASMA_USZ50', 75: 'TASMA_USZ70', 100: 'TASMA_USZ95' };
 

@@ -278,7 +278,9 @@ export function DrawingsPanel({ project, calc }: Props) {
 
 function WallSheet({ index, project, wallId, j, req }: { index: number; project: Project; wallId: string; j: WallJunctions; req: Requirement }) {
   const w = project.walls.find((x) => x.id === wallId)!;
-  const l = useMemo(() => wallLayout(project, w, j), [project, w, j]);
+  // req zmienia się też po zmianie długości płyt w ustawieniach aplikacji
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const l = useMemo(() => wallLayout(project, w, j), [project, w, j, req]);
   const sys = wallSystemById(w.systemId);
   return (
     <section className="card sheet">
