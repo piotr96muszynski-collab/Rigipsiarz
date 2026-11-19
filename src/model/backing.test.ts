@@ -86,20 +86,23 @@ describe('siatka łączników ATLAS M-System', () => {
   it('skrajne rzędy 7 cm od każdego brzegu, kolumny w osiach styków płyt (instrukcja ATLAS)', () => {
     const g = pointFixGrid(0, 2.4, 2.6, 0.6, 0.5);
     expect(g.xs).toEqual([0.07, 0.6, 1.2, 1.8, 2.33]);
-    // 7 … 253 cm, równo co 49,2 cm (nie więcej niż 50)
-    expect(g.ys).toHaveLength(6);
+    // najpierw 7 i 253 cm, potem co 50 cm od dolnego rzędu: 7, 57, 107, 157, 207, 253
+    expect(g.ys).toEqual([0.07, 0.57, 1.07, 1.57, 2.07, 2.53]);
     expect(g.ys[0]).toBeCloseTo(0.07);
     expect(g.ys.at(-1)).toBeCloseTo(2.53);
     for (let i = 1; i < g.ys.length; i++) expect(g.ys[i] - g.ys[i - 1]).toBeLessThanOrEqual(0.5 + 1e-9);
     expect(g.points).toHaveLength(30);
   });
 
-  it('oś pośrednia tuż przy skrajnej odpada, odstępy nie przekraczają rozstawu', () => {
-    // 4,85 m: oś 4,80 m leżałaby 2 cm od skrajnej (4,78 m)
-    const xs = pointFixGrid(0, 4.85, 1, 0.6, 0.5).xs;
-    expect(xs.at(-1)).toBeCloseTo(4.78);
-    expect(xs).not.toContain(4.8);
+  it('krążek pośredni blisko skrajnego zostaje – łączniki są wtedy gęściej', () => {
+    // 4,90 m: skrajna kolumna 4,83 m, oś styku 4,80 m zostaje 3 cm obok
+    const xs = pointFixGrid(0, 4.9, 1, 0.6, 0.5).xs;
+    expect(xs.slice(-2)).toEqual([4.8, 4.83]);
+    expect(xs[0]).toBe(0.07);
     for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeLessThanOrEqual(0.6 + 1e-9);
+    // 2,40 m wysokości: rzędy 7, 57 … 207, a górny skrajny 233 cm – 26 cm wyżej, nic nie znika
+    const ys = pointFixGrid(0, 1, 2.4, 0.6, 0.5).ys;
+    expect(ys).toEqual([0.07, 0.57, 1.07, 1.57, 2.07, 2.33]);
   });
 
   it('pomija łączniki w świetle otworu', () => {
