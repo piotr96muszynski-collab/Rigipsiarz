@@ -8,6 +8,8 @@
 // CRC-8: wielomian 0xA6, wartość początkowa 0xAA, liczone od bajtu 0xC0 do końca danych.
 // Pomiar w trybie synchronizacji: C0 55 10 06 … – odległość jako float32 little-endian w metrach od bajtu 7.
 
+import { LEICA_SERVICE } from './leica';
+
 /** Usługa BLE „Bosch MT” w starszych modelach (GLM 50 C, GLM 100 C) */
 export const BOSCH_SERVICE = '02a6c0d0-0451-4000-b000-fb3210111989';
 /** Charakterystyka do zapisu poleceń i odbioru wskazań (indicate) */
@@ -28,6 +30,7 @@ export const BOSCH_CHANNELS = [
  */
 export const DIAG_CANDIDATE_SERVICES = [
   ...BOSCH_CHANNELS.map((c) => c.service),
+  LEICA_SERVICE, // Leica DISTO (zob. leica.ts)
   '00005300-0000-0041-5253-534f46540000',
   '00005302-0000-0041-5253-534f46540000',
   'device_information',

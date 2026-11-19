@@ -81,6 +81,9 @@ describe('diagnostyka', () => {
   it('lista kandydatów zawiera obie usługi Bosch', () => {
     for (const c of BOSCH_CHANNELS) expect(DIAG_CANDIDATE_SERVICES).toContain(c.service);
   });
+  it('lista kandydatów zawiera usługę Leica DISTO', () => {
+    expect(DIAG_CANDIDATE_SERVICES).toContain('3ab10100-f831-4395-b29d-570977d5bf94');
+  });
 });
 
 describe('ramki z prawdziwego PLR 30 C (dziennik z 2026-11-19)', () => {

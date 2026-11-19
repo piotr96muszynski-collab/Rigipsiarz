@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { describeLeica, isLeicaCharacteristic, LEICA_MEASURE } from '../device/leica';
 import { ENABLE_SYNC, floatCandidates, fromHex, parseFrame, toHex } from '../device/bosch';
 import { connectLaser, disconnectLaser, laser, type LogEntry, send } from '../device/laser';
 import { getBluetooth } from '../device/webBluetooth';
@@ -7,9 +8,11 @@ import { fmtMeters, useLaser, useLaserLog } from './useLaser';
 
 const time = (t: number) => new Date(t).toLocaleTimeString('pl-PL', { hour12: false }) + '.' + String(t % 1000).padStart(3, '0');
 
-function describe(bytes: Uint8Array): string[] {
+function describe(bytes: Uint8Array, uuid?: string): string[] {
   const out: string[] = [];
-  const f = parseFrame(bytes);
+  const leica = uuid ? describeLeica(uuid, bytes) : null;
+  if (leica) out.push(leica);
+  const f = uuid && isLeicaCharacteristic(uuid) ? null : parseFrame(bytes);
   if (f) {
     out.push(
       `ramka Bosch: polecenie 0x${f.cmd.toString(16).toUpperCase()}, ${f.payload.length} B danych, CRC ${f.crcOk ? 'OK' : 'niezgodne'}` +
@@ -32,6 +35,7 @@ export function LaserDiagnostics({ onClose }: { onClose: () => void }) {
   const s = useLaser();
   const log = useLaserLog();
   const [hex, setHex] = useState(toHex(ENABLE_SYNC));
+  const leica = s.brand === 'leica';
   const [extra, setExtra] = useState('');
   const [test, setTest] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -44,7 +48,7 @@ export function LaserDiagnostics({ onClose }: { onClose: () => void }) {
     .filter(Boolean);
 
   const copy = async () => {
-    const text = [`Rigipsiarz – dziennik dalmierza (${s.deviceName ?? 'brak nazwy'})`, navigator.userAgent, ...log.map(entryText)].join('\n');
+    const text = [`Rigipsiarz – dziennik dalmierza (${s.deviceName ?? 'brak nazwy'}, protokół: ${s.brand ?? 'nierozpoznany'})`, navigator.userAgent, ...log.map(entryText)].join('\n');
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -67,8 +71,10 @@ export function LaserDiagnostics({ onClose }: { onClose: () => void }) {
 
       <section className="card">
         <p className="small">
-          Ten ekran pokazuje surowe dane z dalmierza Bosch (PLR 30 C / 40 C / 50 C, GLM 50 C). Protokół nie jest oficjalnie opisany,
-          więc tu sprawdzisz, czy Twój egzemplarz odpowiada tak, jak zakłada aplikacja.
+          Ten ekran pokazuje surowe dane z dalmierza Bluetooth: Bosch (PLR 30 C / 40 C / 50 C, GLM 50 C) albo Leica DISTO (D1, D110,
+          D2, X3, X4, D510, D810 i inne z Bluetooth Smart). Tu sprawdzisz, czy Twój egzemplarz odpowiada tak, jak zakłada aplikacja.
+          Obsługa Leica jest zbudowana z publicznego opisu protokołu i nie była jeszcze sprawdzona na prawdziwym dalmierzu – dziennik
+          z pierwszego pomiaru bardzo pomoże.
         </p>
         {!supported && (
           <p className="error small">
@@ -78,7 +84,8 @@ export function LaserDiagnostics({ onClose }: { onClose: () => void }) {
         <ol className="small diag-steps">
           <li>Włącz dalmierz i Bluetooth na nim (przycisk z ikoną BT, na ekranie pojawi się symbol).</li>
           <li>
-            Zamknij aplikację Bosch MeasureOn, jeśli jest otwarta – dalmierz łączy się tylko z jednym telefonem naraz.
+            Zamknij aplikację producenta (Bosch MeasureOn, Leica DISTO Plan), jeśli jest otwarta – dalmierz łączy się tylko z jednym
+            telefonem naraz.
           </li>
           <li>Naciśnij „Połącz” i wybierz dalmierz z listy.</li>
           <li>Dotknij pola testowego poniżej i wykonaj pomiar przyciskiem na dalmierzu.</li>
@@ -91,7 +98,7 @@ export function LaserDiagnostics({ onClose }: { onClose: () => void }) {
         {s.error && <p className="error small">{s.error}</p>}
         <div className="laser-actions">
           <button className="btn primary" disabled={!supported || s.status === 'connecting'} onClick={() => connectLaser({ extraServices })}>
-            Połącz (filtr Bosch)
+            Połącz (Bosch, Leica)
           </button>
           <button className="btn" disabled={!supported || s.status === 'connecting'} onClick={() => connectLaser({ diagnostic: true, extraServices })}>
             Połącz – wszystkie urządzenia
@@ -102,6 +109,10 @@ export function LaserDiagnostics({ onClose }: { onClose: () => void }) {
             </button>
           )}
         </div>
+        <small className="hint">
+          Dalmierz, który udaje klawiaturę (tryb „klawiatura”/HID, np. Leica, Stabila, Hilti), nie potrzebuje łączenia tutaj: sparuj go
+          w ustawieniach Bluetooth telefonu, dotknij pole wymiaru i zmierz – wynik wpisze się jak z klawiatury.
+        </small>
         <small className="hint">
           „Wszystkie urządzenia” pokazuje każde urządzenie BLE w pobliżu i nasłuchuje wszystkich charakterystyk – przydatne, gdy dalmierza
           nie ma na liście z filtrem.
@@ -126,7 +137,15 @@ export function LaserDiagnostics({ onClose }: { onClose: () => void }) {
               Wyślij
             </button>
           </div>
-          <small className="hint">Domyślnie: włączenie synchronizacji pomiarów (C0 55 02 01 00 1A). Aplikacja wysyła je sama po połączeniu.</small>
+          <small className="hint">
+            Bosch: włączenie synchronizacji pomiarów (C0 55 02 01 00 1A), aplikacja wysyła je sama po połączeniu. Leica: 67 („g”) wyzwala
+            pomiar z telefonu.
+          </small>
+          {leica && hex !== toHex(LEICA_MEASURE) && (
+            <button className="btn ghost small" onClick={() => setHex(toHex(LEICA_MEASURE))}>
+              Wstaw polecenie Leica „zmierz”
+            </button>
+          )}
         </div>
         <div className="field">
           <label htmlFor="diag-svc">Dodatkowe usługi BLE (UUID, opcjonalnie)</label>
@@ -154,7 +173,7 @@ export function LaserDiagnostics({ onClose }: { onClose: () => void }) {
             {[...log].reverse().map((e) => (
               <li key={e.id} className={e.kind}>
                 <code>{entryText(e)}</code>
-                {e.kind === 'in' && e.bytes && describe(e.bytes).map((d, i) => <small key={i}>{d}</small>)}
+                {e.kind === 'in' && e.bytes && describe(e.bytes, e.uuid).map((d, i) => <small key={i}>{d}</small>)}
               </li>
             ))}
           </ol>
