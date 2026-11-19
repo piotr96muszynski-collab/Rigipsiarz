@@ -6,13 +6,13 @@
 // Dodatkowe słupki CW w narożnikach i trójnikach dolicza ściana (wallRequirement),
 // tutaj są tylko opisane, żeby było widać, skąd się biorą.
 
-import { HAT_MM, panelEdgeLabel, midBoardMm, sideLayers, sideStackMm, wallBoardsMm, wallSystemById, type WallSystem } from '../catalog/rigips';
+import { HAT_MM, ceilingSystemById, panelEdgeLabel, midBoardMm, sideLayers, sideStackMm, wallBoardsMm, wallSystemById, type Maker, type WallSystem } from '../catalog/rigips';
 import {
   ACRYLIC_M_PER_TUBE,
-  compoundById,
+  compoundFor,
   cornerTypeById,
   resolveFinishing,
-  tapeById,
+  tapeFor,
   type CornerType,
   type EdgeUse,
   type FinishingSettings,
@@ -123,7 +123,7 @@ export function defaultTypeId(f: FinishingSettings, kind: JointKind, use: EdgeUs
 }
 
 /** Materiały wykończenia krawędzi wybranym typem */
-export function addEdgeFinish(req: Requirement, type: CornerType, lengths: number[], f: FinishingSettings) {
+export function addEdgeFinish(req: Requirement, type: CornerType, lengths: number[], f: FinishingSettings, maker?: Maker) {
   const total = lengths.reduce((a, b) => a + b, 0);
   if (total <= 0 || type.id === 'none') return;
   if (type.product) {
@@ -131,8 +131,8 @@ export function addEdgeFinish(req: Requirement, type: CornerType, lengths: numbe
     if (type.measure === 'meter') add(req.meters, type.product, total);
     if (type.measure === 'tube') add(req.counts, type.product, total / ACRYLIC_M_PER_TUBE);
   }
-  if (type.tapePerM) add(req.meters, tapeById(f.tape).product, total * type.tapePerM);
-  add(req.kg, compoundById(f.compound).product, total * type.kgPerM);
+  if (type.tapePerM) add(req.meters, tapeFor(f, maker).product, total * type.tapePerM);
+  add(req.kg, compoundFor(f, maker).product, total * type.kgPerM);
 }
 
 /**
@@ -162,7 +162,7 @@ export function analyzeJoints(p: Project): Joint[] {
   const finish = (j: Joint) => {
     for (const e of [j.outer, j.inner]) {
       if (!e || !e.lengths.length) continue;
-      addEdgeFinish(j.req, e.type, e.lengths, f);
+      addEdgeFinish(j.req, e.type, e.lengths, f, makerOf(j));
       if (e.odd && !e.type.anyAngle && e.type.id !== 'none')
         j.warnings.push(`${e.type.name} jest do kątów prostych – przy ${Math.round(j.angleDeg ?? 0)}° wybierz narożnik do kątów dowolnych.`);
     }
@@ -171,6 +171,13 @@ export function analyzeJoints(p: Project): Joint[] {
 
   const newJoint = (id: string, kind: JointKind, wallIds: Id[]): Joint => ({ id, kind, wallIds, frame: [], warnings: [], req: emptyReq() });
   const sysOf = (w: Wall) => wallSystemById(w.systemId);
+  /** Producent systemu połączenia (pierwsza ściana albo sufit) – do masy i taśmy „wg producenta” */
+  const makerOf = (j: Joint): Maker | undefined => {
+    const w = p.walls.find((x) => x.id === j.wallIds[0]);
+    if (w) return sysOf(w).maker;
+    const c = j.ceilingId ? p.ceilings.find((x) => x.id === j.ceilingId) : undefined;
+    return c ? ceilingSystemById(c.systemId).maker : undefined;
+  };
 
   /** Słupek dochodzącej ściany przykręcony przez płytę do słupka ściany ciągłej (detal T) */
   const abutFrame = (j: Joint, through: Wall, abut: Wall, H: number) => {
