@@ -17,6 +17,8 @@ interface Props {
   onApply: (pick: WallPick) => void;
   onDouble: (on: boolean) => void;
   onInner: (boardId: string) => void;
+  /** line: tylko linia z karty i podpowiedź przy za wysokiej ścianie; options: tylko słupki podwójne i płyta wewnętrzna */
+  part?: 'line' | 'options';
 }
 
 const range = (vals: (number | undefined)[]) => {
@@ -29,7 +31,7 @@ const range = (vals: (number | undefined)[]) => {
  * dopuszczalna wysokość, EI i akustyka. Gdy ściana jest za wysoka, podpowiada odmianę z gęstszymi
  * albo podwójnymi słupkami. Tu też przełącznik słupków podwójnych i płyta warstw wewnętrznych.
  */
-export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds, innerBoardId, heightCm, onApply, onDouble, onInner }: Props) {
+export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds, innerBoardId, heightCm, onApply, onDouble, onInner, part }: Props) {
   const cw = sys.frame === 'single' || sys.frame === 'double' || sys.frame === 'separate';
   const maker = MAKER_LABEL[makerOf(sys)];
   const match = (sys.variants ?? []).filter((v) => v.board === boardId && (v.studSpacing ?? sys.studSpacing) === studSpacing && !!v.doubleStuds === !!doubleStuds);
@@ -43,9 +45,11 @@ export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds
   const ra1 = range(match.map((v) => v.ra1));
   const hMax = match.length ? Math.max(...match.map((v) => v.maxHeight ?? 0)) : 0;
   const codes = [...new Set(match.map((v) => v.code).filter(Boolean))];
+  const line = part !== 'options';
+  const opts = part !== 'line';
   return (
     <div className="variant-info">
-      {sys.custom ? null : match.length ? (
+      {!line || sys.custom ? null : match.length ? (
         <p className="variant-line">
           <SourceBadge />
           <span>
@@ -70,7 +74,8 @@ export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds
           <span>System bez karty producenta – wartości orientacyjne.</span>
         </p>
       ) : null}
-      {tooHigh &&
+      {line &&
+        tooHigh &&
         (better ? (
           <button type="button" className="btn small variant-apply" onClick={() => onApply(better)}>
             Zastosuj słupki {better.doubleStuds ? 'podwójne ' : ''}co {better.studSpacing} cm
@@ -82,7 +87,7 @@ export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds
             <span>Żadna odmiana tego systemu nie sięga {fmtNum(heightCm / 100)} m – wybierz mocniejszy system w „Dobierz po wymaganiach”.</span>
           </p>
         ))}
-      {(cw || innerOptions.length > 0) && (
+      {opts && (cw || innerOptions.length > 0) && (
         <div className="variant-opts">
           {cw && (
             <label className="check">
