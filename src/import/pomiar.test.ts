@@ -113,4 +113,12 @@ describe('poddasze ze skosów', () => {
     expect(project.attics).toBeUndefined();
     expect(warnings[0]).toMatch(/Sypialnia/);
   });
+
+  it('okna dachowe zgłasza jako uwagę z wymiarami w cm', () => {
+    const f = file();
+    f.rooms[0].skylights = [{ id: 's', wall: f.rooms[0].walls[0].id, offset: 1000, width: 780, length: 1180, mount: 1200 }];
+    const { warnings } = importPomiar(f);
+    expect(warnings.some((w) => /okna dachowe \(78×118 cm\)/.test(w))).toBe(true);
+    expect(importPomiar(file()).warnings.some((w) => /okna dachowe/.test(w))).toBe(false);
+  });
 });

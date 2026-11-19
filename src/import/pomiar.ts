@@ -42,6 +42,8 @@ export interface PomiarRoom {
   area?: number;
   outline: PomiarPoint[];
   walls: PomiarWall[];
+  /** Okna dachowe w skosie nad ścianą `wall`, mm (poddasze nie ma jeszcze okien dachowych – tylko uwaga) */
+  skylights?: { id: string; wall: string; offset: number; width: number; length: number; mount?: number }[];
 }
 
 export interface PomiarFile {
@@ -171,6 +173,16 @@ export function importPomiar(file: PomiarFile): PomiarImport {
       );
   }
   if (attics.length) p.attics = attics;
+
+  // okna dachowe: zabudowa poddasza nie ma jeszcze otworów w skosie – podajemy wymiary do ręcznego uwzględnienia
+  for (const r of rooms) {
+    const sk = r.skylights ?? [];
+    if (!sk.length) continue;
+    const list = sk.map((s) => `${cm(s.width)}×${cm(s.length)} cm`).join(', ');
+    warnings.push(
+      `„${r.name || 'Pomieszczenie'}”: okna dachowe (${list}) nie są jeszcze przenoszone do zabudowy poddasza – uwzględnij je ręcznie (płyty i ruszt wokół okna).`,
+    );
+  }
 
   // strop: najwyższe z pomieszczeń bez skosów (nowe ściany i sufity dojdą do tej wysokości)
   const flat = rooms.filter((r) => !r.walls.some((w) => w.slope)).map((r) => cm(r.height));
