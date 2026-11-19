@@ -371,6 +371,12 @@ export function wallRequirement(
         add(areaByKey, keyOf(layer), Math.max(0, (x1 - x0) * H - openingArea));
       }
   for (const [k, a] of Object.entries(areaByKey)) add(req.boardArea, k, a);
+  // płyta dosztywniająca między rzędami rusztu (Siniat 168B50…): pełna powierzchnia netto, przykręcona do jednego rzędu
+  if (sys.midBoard) {
+    const n = sys.midLayers ?? 1;
+    add(req.boardArea, `${sys.midBoard}|${pickBoardLength(sys.midBoard, w.height)}`, net * n);
+    addBoardScrews(req, net, Array(n).fill(sys.midBoard), WALL_SCREWS_OUTER * (0.6 / Math.max(0.2, w.studSpacing / 100)), WALL_SCREWS_INNER);
+  }
   // odpad z wycięć liczymy do płyty zewnętrznej
   if (cutWaste > 0) add(req.boardArea, sheetKey, cutWaste);
   if (cutWaste > 0) add((req.boardCutWaste ??= {}), sheetKey, cutWaste);
@@ -681,7 +687,8 @@ export function ceilingRequirement(
   // obwodowe UD 30 (w suficie na CW: UW o szerokości profilu)
   const cwSpan = sys.kind === 'cw-span';
   const profile = sys.profile ?? 50;
-  const perimeterProfile = cwSpan ? `UW${profile}` : 'UD30';
+  const mf = sys.profiles;
+  const perimeterProfile = cwSpan ? `UW${profile}` : (mf?.edge ?? 'UD30');
   for (const e of edges) {
     addPiece(req, perimeterProfile, e);
     add(req.counts, 'KOLEK', anchorsFor(e, 0.8));
@@ -689,13 +696,14 @@ export function ceilingRequirement(
   add(req.meters, cwSpan ? TAPE_FOR_PROFILE[profile] : 'TASMA_USZ30', P);
 
   const grid = ceilingGrid(c, sys);
-  const mainProduct = sys.kind === 'ua-span' ? 'UA50' : cwSpan ? `CW${profile}` : 'CD60';
+  const mainProduct = mf?.main ?? (sys.kind === 'ua-span' ? 'UA50' : cwSpan ? `CW${profile}` : 'CD60');
+  const secondaryProduct = mf?.secondary ?? 'CD60';
 
   let longestMain = 0;
   for (const g of grid) {
     for (const [s0, s1] of g.segments) {
       const run = (s1 - s0) / 100;
-      const product = g.level === 'main' ? mainProduct : 'CD60';
+      const product = g.level === 'main' ? mainProduct : secondaryProduct;
       addPiece(req, product, run);
       if (product === 'CD60') add(req.counts, 'LACZNIK_WZDL', Math.max(0, Math.ceil(run / 4 - 1e-9) - 1));
       if (g.level !== 'main') continue;
@@ -711,7 +719,12 @@ export function ceilingRequirement(
         continue;
       }
       const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100) - 1e-9));
-      if (sys.kind === 'direct') {
+      if (mf) {
+        // zawiesie z kątownika ciętego na długość zwieszenia, przykręcone do stropu i do profilu głównego
+        add(req.meters, mf.hangerAngle, hangers * (levels.hangerGap / 100 + mf.hangerOverlap));
+        add(req.counts, mf.screw, hangers * mf.hangerScrews);
+        addNote(req, mf.hangerAngle, `sufit: zwieszenie ok. ${Math.round(levels.hangerGap * 10)} mm na zawiesie`);
+      } else if (sys.kind === 'direct') {
         const pid = sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : sys.hangerType === 'attic' ? 'WIESZAK_PODD' : 'WIESZAK_ES';
         add(req.counts, pid, hangers);
         add(req.counts, 'LN9', hangers * 4);
@@ -733,7 +746,8 @@ export function ceilingRequirement(
 
   // skrzyżowania profili nośnych i montażowych (te same co na rysunku i w 3D)
   const crossings = ceilingCrossings(c, sys, grid).length;
-  if (sys.kind === 'two-level') add(req.counts, 'LACZNIK_KRZ', crossings);
+  if (mf) add(req.counts, mf.screw, crossings * mf.crossScrews);
+  else if (sys.kind === 'two-level') add(req.counts, 'LACZNIK_KRZ', crossings);
   else if (sys.kind === 'one-level') add(req.counts, 'LACZNIK_JEDNO', crossings * 2);
   else if (sys.kind === 'ua-span') add(req.counts, 'LACZNIK_UA_CD', crossings * 2);
 

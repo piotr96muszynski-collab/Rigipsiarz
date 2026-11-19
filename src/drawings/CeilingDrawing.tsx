@@ -1,6 +1,6 @@
 import { ceilingBoardLayout, hangerPositions, splicePositions } from '../calc/layout';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, type CeilingGridLine } from '../calc/materials';
-import { ceilingSystemById } from '../catalog/rigips';
+import { ceilingSystemById, isHungCeiling, PRODUCTS } from '../catalog/rigips';
 import { bbox } from '../geometry/geometry';
 import type { Ceiling } from '../model/types';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, nss } from './svg';
@@ -39,7 +39,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
   const clip = `clip-${c.id}`;
   const crossings = ceilingCrossings(c, sys, grid);
   const kind = sys.kind;
-  const hung = kind === 'two-level' || kind === 'one-level' || kind === 'direct';
+  const hung = isHungCeiling(kind);
   const cwSpan = kind === 'cw-span';
   // najdłuższy odcinek nośny – na nim wymiarujemy wieszaki
   const longest = !hung ? undefined : mains
@@ -47,7 +47,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
     .sort((a, b) => b.s[1] - b.s[0] - (a.s[1] - a.s[0]))[0];
   const hangers = !hung ? [] : mains.flatMap((g) => g.segments.flatMap(([a, b]) => hangerPositions(a, b, sys.hangerSpacing).map((s) => pt(g, s))));
   // łączniki wzdłużne tylko na CD (UA i CW docina się na długość przęsła)
-  const splices = grid.filter((g) => g.level === 'secondary' || kind === 'two-level' || kind === 'one-level' || kind === 'direct').flatMap((g) => g.segments.flatMap(([a, b]) => splicePositions(a, b).map((s) => ({ g, ...pt(g, s) }))));
+  const splices = grid.filter((g) => !sys.profiles && (g.level === 'secondary' || hung)).flatMap((g) => g.segments.flatMap(([a, b]) => splicePositions(a, b).map((s) => ({ g, ...pt(g, s) }))));
   const mainLabel =
     kind === 'direct'
       ? sys.hangerType === 'attic' ? 'CD 60 na wieszakach do poddaszy' : `CD 60 na uchwytach ${sys.hangerType === 'elastic' ? 'elastycznych' : 'ES'}`
@@ -55,9 +55,13 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
         ? `CW ${sys.profile ?? 50} oparty na UW (przęsło)`
         : kind === 'ua-span'
           ? 'UA 50 oparty na ścianach (przęsło)'
-          : 'CD 60 nośny (górny)';
-  const mainSpacing = kind === 'direct' || cwSpan ? sys.secondarySpacing : sys.mainSpacing;
-  const crossLabel = kind === 'two-level' ? 'łącznik krzyżowy' : kind === 'ua-span' ? 'łącznik UA–CD ×2' : 'łącznik jednopoziomowy ×2';
+          : kind === 'parallel'
+            ? `CD 60 na wieszakach ${sys.hangerType === 'noniusz' ? 'noniuszowych' : ''}`.trim()
+            : sys.profiles
+              ? `${PRODUCTS[sys.profiles.main]?.name ?? sys.profiles.main} (górny)`
+              : 'CD 60 nośny (górny)';
+  const mainSpacing = kind === 'direct' || kind === 'parallel' || cwSpan ? sys.secondarySpacing : sys.mainSpacing;
+  const crossLabel = sys.profiles ? `wpięcie profilu dolnego, ${sys.profiles.crossScrews} wkręty` : kind === 'two-level' ? 'łącznik krzyżowy' : kind === 'ua-span' ? 'łącznik UA–CD ×2' : 'łącznik jednopoziomowy ×2';
 
   return (
     <figure className="drawing">
@@ -123,11 +127,11 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
       </Paper>
       <Legend
         items={[
-          { color: C.ud, label: `${cwSpan ? `UW ${sys.profile ?? 50}` : 'UD 30'} po obwodzie na taśmie, kołki` },
+          { color: C.ud, label: `${cwSpan ? `UW ${sys.profile ?? 50}` : sys.profiles ? (PRODUCTS[sys.profiles.edge]?.name ?? sys.profiles.edge) : 'UD 30'} po obwodzie na taśmie, kołki` },
           { color: C.main, label: `${mainLabel} co ${mainSpacing} cm (${mains.length} linii)` },
-          ...(secs.length ? [{ color: C.secondary, label: `CD 60 montażowy (dolny) co ${sys.secondarySpacing} cm (${secs.length} linii)` }] : []),
+          ...(secs.length ? [{ color: C.secondary, label: `${sys.profiles ? (PRODUCTS[sys.profiles.secondary]?.name ?? sys.profiles.secondary) : 'CD 60 montażowy'} (dolny) co ${sys.secondarySpacing} cm (${secs.length} linii)` }] : []),
           ...(hung
-            ? [{ color: C.hanger, label: `${kind === 'direct' ? 'uchwyt bezpośredni + kotwa' : 'wieszak noniuszowy + kotwa'}, max co ${sys.hangerSpacing} cm (${hangers.length} szt.)` }]
+            ? [{ color: C.hanger, label: `${kind === 'direct' ? 'uchwyt bezpośredni + kotwa' : sys.profiles ? 'zawiesie z kątownika + kotwa' : 'wieszak noniuszowy + kotwa'}, max co ${sys.hangerSpacing} cm (${hangers.length} szt.)` }]
             : []),
           ...(crossings.length
             ? [{ color: '#fff', label: `${crossLabel} (${crossings.length} skrzyżowań)` }]
@@ -147,7 +151,7 @@ export function CeilingBoardsDrawing({ c, title }: { c: Ceiling; title: string }
   const sys = ceilingSystemById(c.systemId);
   const { bb, w, h, f, vb } = frame(c);
   const grid = ceilingGrid(c);
-  const carriers = grid.filter((g) => g.level === (sys.kind === 'direct' || sys.kind === 'cw-span' ? 'main' : 'secondary'));
+  const carriers = grid.filter((g) => g.level === (sys.kind === 'direct' || sys.kind === 'parallel' || sys.kind === 'cw-span' ? 'main' : 'secondary'));
   const { pieces, sheetLen, stagger } = ceilingBoardLayout(c);
   const clip = `clipb-${c.id}`;
   const full = pieces.filter((p) => !p.cut).length;

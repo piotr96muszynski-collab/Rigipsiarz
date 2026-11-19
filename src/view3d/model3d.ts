@@ -2,7 +2,7 @@
 // dzięki czemu da się ją testować w Node. Wszystko w metrach.
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
-import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
+import { boardById, ceilingSystemById, isHungCeiling, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
 import { ceilingLevels } from '../calc/ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
@@ -512,8 +512,8 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
 
   // profile CD: dolne (montażowe) przy płycie, nośne nad nimi w suficie dwupoziomowym
   const grid = ceilingGrid(c, sys);
-  const onCD = (g: (typeof grid)[number]) => g.level === 'secondary' || twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
-  const hung = twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
+  const onCD = (g: (typeof grid)[number]) => !sys.profiles && (g.level === 'secondary' || isHungCeiling(sys.kind));
+  const hung = isHungCeiling(sys.kind);
   for (const g of grid) {
     const isMain = g.level === 'main';
     const y0 = twoLevel && isMain ? yFrame + CD_H : yFrame;

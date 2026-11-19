@@ -70,7 +70,40 @@ NAME = {
 }
 
 
+def split_mix(code, t):
+    """„OP@12.5x2” = 2 warstwy wewnętrzne OP 12,5 mm (poszycie z płyt różnej grubości)."""
+    if '@' in code:
+        base, rest = code.split('@')
+        th, n = rest.split('x')
+        return base, num(th), int(n)
+    return code, t, None
+
+
+def inner_count(codes, nl):
+    """Liczba warstw wewnętrznych (od rusztu) w poszyciu z dwóch rodzajów płyt."""
+    n = split_mix(codes[0], 0)[2] if len(codes) > 1 else None
+    return n if n is not None else nl - 1
+
+
+def mix_key(codes):
+    """
+    Klucz grupy dla poszycia z dwóch rodzajów płyt: hybrydy (Expert+Twarda) – kody płyt wewnętrznych,
+    różne grubości (12,5 pod 15) – układ warstw, np. „12.5x2” (Ogień+, Twarda, Hydro to odmiany jednego systemu).
+    """
+    if len(codes) < 2:
+        return ''
+    if '@' in codes[0]:
+        return codes[0].split('@')[1]
+    return '+'.join(codes[:-1])
+
+
+def mix_id(mixed):
+    """Kod do id systemu: „12.5x2” → „IN12.5x2”, hybrydy bez zmian."""
+    return f'IN{mixed}' if re.match(r'^\d', mixed) else mixed
+
+
 def board_id(code, t):
+    code, t, _ = split_mix(code, t)
     k = (code, t)
     if k not in BOARDS:
         raise KeyError(k)
@@ -78,10 +111,12 @@ def board_id(code, t):
 
 
 def short(code, t):
+    code, t, _ = split_mix(code, t)
     return BOARDS[(code, t)][2]
 
 
 def btype(code, t):
+    code, t, _ = split_mix(code, t)
     return BOARDS[(code, t)][3]
 
 
@@ -117,9 +152,15 @@ def split_code(row):
 CLAD = re.compile(r'(?:(\d)x(\d+(?:,\d)?)(?:\s*\+\s*(\d)x(\d+(?:,\d)?))?)|(?:(\d+,\d)\s*\+\s*(\d+,\d))|^(12,5|15,0|18,0|10,0|15|18)$')
 
 
+def norm_clad(t):
+    """„2x12,5+15,0” → „2x12,5+1x15,0” (karta pomija „1x” przy drugiej grubości)."""
+    return re.sub(r'(\dx\d+(?:,\d)?)\s*\+\s*(\d+,\d)', r'\1+1x\2', t)
+
+
 def find_clad(tokens):
     """(liczba warstw, grubość, indeks) – np. „2x12,5”, „12,5+12,5”, „15,0”."""
     for i, t in enumerate(tokens):
+        t = norm_clad(t)
         for part in [t] + t.split(' '):
             m = CLAD.search(part)
             if not m:
@@ -157,26 +198,28 @@ def is_mass(t):
 MIXED_TH = re.compile(r'(\d)x(\d+(?:,\d)?)\s*\+\s*(\d)x(\d+(?:,\d)?)|(\d+,\d)\s*\+\s*(\d+,\d)')
 
 
-def mixed_thickness(row):
-    """Poszycie z płyt różnej grubości (np. 1x12,5+1x15,0) – silnik liczy jedną grubość w poszyciu."""
-    for t in row[1:]:
-        m = MIXED_TH.search(t)
-        if m and ((m[1] and num(m[2]) != num(m[4])) or (m[5] and num(m[5]) != num(m[6]))):
-            return True
-    return False
+def apply_mix(codes, tokens, nl, th):
+    """
+    Poszycie z płyt różnej grubości („1x12,5+1x15,0”, „2x12,5+2x15,0”): pierwsza w zapisie karty = warstwy
+    wewnętrzne (od rusztu, jak w kartach Knauf „2×15 + 2×12,5”), druga = zewnętrzne. Zwraca (kody, grubość zewnętrzna).
+    """
+    for t in tokens:
+        m = MIXED_TH.search(norm_clad(t))
+        if not m:
+            continue
+        if m[1]:
+            n1, t1, n2, t2 = int(m[1]), num(m[2]), int(m[3]), num(m[4])
+        else:
+            n1, t1, n2, t2 = 1, num(m[5]), 1, num(m[6])
+        if t1 == t2 or t2 < 5:  # ta sama grubość albo „12,5+0,5” (powłoka ołowiana RTG)
+            return codes, th
+        assert len(codes) == 1 and n1 + n2 == nl, (codes, t, nl)
+        return [f'{codes[0]}@{t1}x{n1}', codes[0]], t2
+    return codes, th
 
 
 def load(ch):
-    cards = json.load(open(f'{SRC}/{FILES[ch]}.json', encoding='utf-8'))
-    for c in cards:
-        keep = []
-        for r in c['rows']:
-            if mixed_thickness(r):
-                skip(r[0].split(' ')[0], 'odmiany z poszyciem z płyt różnej grubości (12,5 + 15 mm) – aplikacja liczy jedną grubość płyt w poszyciu')
-            else:
-                keep.append(r)
-        c['rows'] = keep
-    return cards
+    return json.load(open(f'{SRC}/{FILES[ch]}.json', encoding='utf-8'))
 
 
 def card_src(ch, page):
@@ -224,6 +267,7 @@ def wall_rows():
                 continue
             cl = find_clad(rest)
             nl, th, ci = cl
+            codes, th = apply_mix(codes, rest, nl, th)
             # wysokość: pierwsza liczba ≥ 2000 za poszyciem
             hi = next(i for i in range(ci + 1, len(rest)) if (num(rest[i]) or 0) >= 2000)
             wool = num(rest[hi - 2].replace('2x', '')) if hi - 2 > ci else None
@@ -259,13 +303,16 @@ WALL_FAM = {
 def layer_desc(codes, nl, th):
     if len(codes) == 1:
         return f'{nl}×{pl(th)} {short(codes[0], th)} ({btype(codes[0], th)})'
-    inner = nl - 1
-    return f'{inner}×{pl(th)} {short(codes[0], th)} + 1×{pl(th)} {short(codes[1], th)}'
+    inner = inner_count(codes, nl)
+    ith = split_mix(codes[0], th)[1]
+    if ith != th:
+        return f'{inner}×{pl(ith)} + {nl - inner}×{pl(th)} {short(codes[1], th)} ({btype(codes[1], th)})'
+    return f'{inner}×{pl(th)} {short(codes[0], th)} + {nl - inner}×{pl(th)} {short(codes[1], th)}'
 
 
 def wall_key(r):
     fam = {'AA': 'A', 'BB': 'B'}.get(r['fam'], r['fam'])
-    mixed = '+'.join(r['codes'][:-1]) if len(r['codes']) > 1 else ''
+    mixed = mix_key(r['codes'])
     return (fam, r['pwa'], r['prof'], r['layers'], mixed)
 
 
@@ -276,7 +323,7 @@ def make_walls(rows, tab, ch_sources):
     walls = []
     for (fam, pwa, prof, nl, mixed), vs in groups.items():
         cat, frame, sides, kind = WALL_FAM[fam]
-        sid = f'SN-W-{fam}{prof}' + ('-PWA' if pwa else '') + f'-{nl}' + (f'-{mixed}' if mixed else '')
+        sid = f'SN-W-{fam}{prof}' + ('-PWA' if pwa else '') + f'-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
         single = [v for v in vs if not v['double'] and v['spacing'] == 60]
         default = min((v for v in (single or vs)), key=lambda v: (PREF.index(v['codes'][-1]), v['th'], -v['maxh']))
         dcode, dth = default['codes'][-1], default['th']
@@ -342,8 +389,8 @@ def make_walls(rows, tab, ch_sources):
         w['sides'] = sides
         w['defaultBoard'] = board_id(dcode, dth)
         if mixed:
-            w['innerBoard'] = board_id(mixed.split('+')[0], dth)
-            w['innerLayers'] = nl - 1
+            w['innerBoard'] = board_id(default['codes'][0], dth)
+            w['innerLayers'] = inner_count(default['codes'], nl)
         w['studSpacing'] = 60
         w['maxHeight'] = {sp: hmax[sp] for sp in (30, 40, 60) if sp in hmax}
         w['insulationDefault'] = bool(default['wool'])
@@ -362,7 +409,7 @@ def make_walls(rows, tab, ch_sources):
         if pwa:
             info.append('przewiązki wibroakustyczne Nida PWA co ≤ 100 cm między rzędami – aplikacja ich nie liczy, dolicz wg karty')
         if mixed:
-            info.append(f'warstwa wewnętrzna {short(mixed.split("+")[0], dth)}, zewnętrzna {short(dcode, dth)}')
+            info.append(f'warstwa wewnętrzna {short(default['codes'][0], dth)}, zewnętrzna {short(dcode, dth)}')
         if frame == 'separate':
             info.append('rozstaw rusztów dowolny – podana grubość minimalna')
         w['info'] = ' · '.join(info)
@@ -393,6 +440,7 @@ def lining_rows(ch):
             if not cl:
                 continue
             nl, th, ci = cl
+            codes, th = apply_mix(codes, rest, nl, th)
             out.append(dict(page=c['page'], title=c['title'], code=code, parts=parts, rest=rest, codes=codes, layers=nl, th=th, ci=ci))
     return out
 
@@ -434,14 +482,14 @@ def make_linings():
             hi, h, ac, mass, ei = tail(rest, r['ci'] + 1)
             woolm = [num(t) for t in rest[r['ci'] + 1:hi] if num(t)]
             wool = int(woolm[-2]) if len(woolm) >= 3 else 0
-            groups.setdefault((prof, r['layers'], '+'.join(r['codes'][:-1])), []).append(
+            groups.setdefault((prof, r['layers'], mix_key(r['codes'])), []).append(
                 dict(r, double=double, spacing=sp, maxh=h, ac=ac, mass=mass, ei=ei, wool=wool))
         for (prof, nl, mixed), vs in groups.items():
             single = [v for v in vs if not v['double']]
             default = min(single or vs, key=lambda v: (PREF.index(v['codes'][-1]), v['th'], -(v['maxh'] or 0)))
             dcode, dth = default['codes'][-1], default['th']
             pfx = 'SN-O' if ch == '03' else 'SN-SZ'
-            sid = f'{pfx}-C{prof}-{nl}' + (f'-{mixed}' if mixed else '')
+            sid = f'{pfx}-C{prof}-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
             variants = []
             for v in sorted(vs, key=lambda v: (v['double'], PREF.index(v['codes'][-1]), v['th'], v['ei'] or 0)):
                 outer = v['codes'][-1]
@@ -481,8 +529,8 @@ def make_linings():
             w['sides'] = 1
             w['defaultBoard'] = board_id(dcode, dth)
             if mixed:
-                w['innerBoard'] = board_id(mixed.split('+')[0], dth)
-                w['innerLayers'] = nl - 1
+                w['innerBoard'] = board_id(default['codes'][0], dth)
+                w['innerLayers'] = inner_count(default['codes'], nl)
             w['studSpacing'] = default['spacing']
             if default['maxh']:
                 w['maxHeight'] = {default['spacing']: default['maxh']}
@@ -513,7 +561,7 @@ def make_linings():
             ints = [x for x in nums if isinstance(x, int)]
             bracket, sp = ints[0] // 10, ints[1] // 10
             hi, h, ac, mass, ei = tail(rest, r['ci'] + 1)
-            key = ('CD', 'EL' if el else 'ES', r['layers'], '+'.join(r['codes'][:-1]))
+            key = ('CD', 'EL' if el else 'ES', r['layers'], mix_key(r['codes']))
             groups.setdefault(key, []).append(dict(r, bracket=bracket, spacing=sp, maxh=None, ac=ac, mass=mass, ei=ei, double=False))
         elif re.match(r'^C\d+$', sysc) and len(r['parts']) > 2 and r['parts'][1].startswith(('L-', 'PWA-')):
             prof = int(sysc[1:])
@@ -523,7 +571,7 @@ def make_linings():
             fix, sp = ints[0] // 10, ints[1] // 10
             hi, h, ac, mass, ei = tail(rest, r['ci'] + 1)
             double = 'ZDWOJONEJ' in r['title']
-            key = (how, prof, r['layers'], '+'.join(r['codes'][:-1]))
+            key = (how, prof, r['layers'], mix_key(r['codes']))
             groups.setdefault(key, []).append(dict(r, bracket=fix, spacing=sp, maxh=h, ac=ac, mass=mass, ei=ei, double=double))
         else:
             skip(sysc, 'okładziny kotwione na profilach kapeluszowych PK48 (wall), Sonic, RTG')
@@ -562,13 +610,13 @@ def make_linings():
         desc = layer_desc(default['codes'], nl, dth) if mixed else f'{nl}×{pl(dth)}'
         if how == 'CD':
             el = key[1] == 'EL'
-            w['id'] = f'SN-O-CD{"EL" if el else "ES"}-{nl}' + (f'-{mixed}' if mixed else '')
+            w['id'] = f'SN-O-CD{"EL" if el else "ES"}-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
             w['name'] = f'Nida Tynk – okładzina kotwiona na CD 60 i uchwytach {"elastycznych EL60" if el else "ES60"}, {desc}'
             w['frame'] = 'cd-lining'
             w['profile'] = 50
         else:
             prof = key[1]
-            w['id'] = f'SN-O-C{prof}{how}-{nl}' + (f'-{mixed}' if mixed else '')
+            w['id'] = f'SN-O-C{prof}{how}-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
             w['name'] = f'Nida Tynk – okładzina kotwiona na C{prof} ({"kątowniki stalowe" if how == "L" else "przewiązki PWA"}), {desc}'
             w['frame'] = 'single'
             w['profile'] = prof
@@ -578,8 +626,8 @@ def make_linings():
         w['sides'] = 1
         w['defaultBoard'] = board_id(dcode, dth)
         if mixed:
-            w['innerBoard'] = board_id(mixed.split('+')[0], dth)
-            w['innerLayers'] = nl - 1
+            w['innerBoard'] = board_id(default['codes'][0], dth)
+            w['innerLayers'] = inner_count(default['codes'], nl)
         w['studSpacing'] = default['spacing']
         if default['maxh']:
             w['maxHeight'] = {default['spacing']: default['maxh']}
@@ -632,6 +680,7 @@ def make_ceilings():
                 skip(code, 'sufity na PK48, MF, UA50, gięte, Sonic, RTG, z dodatkowym sufitem akustycznym, jednopoziomowe na wieszakach WO/WON')
                 continue
             nl, th, ci = find_clad(rest)
+            codes, th = apply_mix(codes, rest, nl, th)
             ints = [num(t.split('/')[0]) for t in rest[1:ci]]
             ints = [x for x in ints if isinstance(x, int)]
             if typ in ('ES', 'WP'):
@@ -641,7 +690,7 @@ def make_ceilings():
             mi = max(i for i, t in enumerate(rest) if is_mass(t))
             minh = num(rest[ci + 1])
             ei = ei_of(rest[mi + 1:])
-            groups.setdefault((typ, nl), []).append(dict(page=c['page'], code=code, codes=codes, th=th, main=main, sec=sec, hang=hang,
+            groups.setdefault((typ, nl, mix_key(codes)), []).append(dict(page=c['page'], code=code, codes=codes, th=th, main=main, sec=sec, hang=hang,
                                                          mass=num(rest[mi]), ei=ei, minh=minh))
     out = []
     NAMES = {
@@ -652,7 +701,7 @@ def make_ceilings():
         'DK/WO': ('two-level', 'noniusz', 'sufit krzyżowy dwupoziomowy CD 60 na wieszakach obrotowych WO60'),
         'DK/WON': ('two-level', 'noniusz', 'sufit krzyżowy dwupoziomowy CD 60 na wieszakach obrotowych z noniuszem WON60'),
     }
-    for (typ, nl), vs in groups.items():
+    for (typ, nl, mixed), vs in groups.items():
         kind, hanger, title = NAMES[typ]
         single = [v for v in vs if len(v['codes']) == 1]
         default = min(single or vs, key=lambda v: (PREF.index(v['codes'][-1]), v['th']))
@@ -677,11 +726,14 @@ def make_ceilings():
         eis = sorted({v['ei'] for v in vs if v['ei']})
         pages = sorted({v['page'] for v in vs})
         s = OrderedDict()
-        s['id'] = f'SN-S-{typ.replace("/", "")}-{nl}'
-        s['name'] = f'Nida Sufit {typ}/CD60 – {title}, {nl}×{pl(dth)}'
+        s['id'] = f'SN-S-{typ.replace("/", "")}-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
+        s['name'] = f'Nida Sufit {typ}/CD60 – {title}, ' + (layer_desc(default['codes'], nl, dth) if mixed else f'{nl}×{pl(dth)}')
         s['kind'] = kind
         s['layers'] = nl
         s['defaultBoard'] = board_id(dcode, dth)
+        if mixed:
+            s['innerBoard'] = board_id(default['codes'][0], dth)
+            s['innerLayers'] = inner_count(default['codes'], nl)
         s['mainSpacing'] = default['main'] or default['sec']
         s['secondarySpacing'] = default['sec']
         s['hangerSpacing'] = default['hang']

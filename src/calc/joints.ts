@@ -6,7 +6,7 @@
 // Dodatkowe słupki CW w narożnikach i trójnikach dolicza ściana (wallRequirement),
 // tutaj są tylko opisane, żeby było widać, skąd się biorą.
 
-import { boardById, wallSystemById, type WallSystem } from '../catalog/rigips';
+import { boardStackMm, midBoardMm, wallSystemById, type WallSystem } from '../catalog/rigips';
 import {
   ACRYLIC_M_PER_TUBE,
   compoundById,
@@ -82,19 +82,18 @@ const STRIP_SCREW_SPACING = 0.25;
 const hasCavityFrame = (sys: WallSystem) => sys.frame === 'single' || sys.frame === 'double' || sys.frame === 'separate';
 
 /** Grubość ściany, mm (ruszt + płyty) */
-export function wallThicknessMm(sys: WallSystem, boardId: string): number {
-  const t = boardById(boardId).thickness;
+export function wallThicknessMm(sys: WallSystem, boardId: string, innerBoardId?: string): number {
   const core =
     sys.frame === 'single'
       ? sys.profile
       : sys.frame === 'double'
-        ? 2 * sys.profile + 5
+        ? 2 * sys.profile + 5 + midBoardMm(sys)
         : sys.frame === 'separate'
           ? 2 * sys.profile + (sys.gap ?? 10) * 10
           : sys.frame === 'cd-lining'
             ? 27
             : 10;
-  return core + sys.sides * sys.layers * t;
+  return core + sys.sides * boardStackMm(sys, boardId, innerBoardId);
 }
 
 const fmt = (m: number) => m.toFixed(2).replace('.', ',');
@@ -174,7 +173,7 @@ export function analyzeJoints(p: Project): Joint[] {
     const ts = sysOf(through);
     const as = sysOf(abut);
     if (!hasCavityFrame(as)) return;
-    const stack = boardById(through.boardId).thickness * ts.layers;
+    const stack = boardStackMm(ts, through.boardId, through.innerBoardId);
     const screw = screwFor(stack);
     const n = Math.ceil(H / THROUGH_SCREW_SPACING - 1e-9) + 1;
     add(j.req.counts, screw, n);
@@ -209,11 +208,11 @@ export function analyzeJoints(p: Project): Joint[] {
       if (free) {
         j.outer = edges(j, 'outer', 'external', Array(sys.sides).fill(Hw), false);
         if (sys.frame !== 'glued') {
-          const thick = wallThicknessMm(sys, w.boardId) / 1000;
+          const thick = wallThicknessMm(sys, w.boardId, w.innerBoardId) / 1000;
           const key = `${w.boardId}|${pickBoardLength(w.boardId, w.height)}`;
           add(j.req.boardArea, key, thick * Hw * sys.layers);
           const n = (Math.ceil(Hw / STRIP_SCREW_SPACING - 1e-9) + 1) * 2;
-          add(j.req.counts, screwFor(boardById(w.boardId).thickness * sys.layers), n);
+          add(j.req.counts, screwFor(boardStackMm(sys, w.boardId, w.innerBoardId)), n);
           j.frame.push(`zamknięcie czoła paskiem płyty ${Math.round(thick * 100)} cm × ${fmt(Hw)} m (${sys.layers} warstw${sys.layers > 1 ? 'y' : 'a'}), ${n} wkrętów`);
         }
       } else {

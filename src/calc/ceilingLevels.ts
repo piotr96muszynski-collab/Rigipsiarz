@@ -1,29 +1,23 @@
 // Poziomy sufitu: istniejący strop, spód płyt sufitu, ruszt i zwieszenie wieszaków.
 // Model w cm (od posadzki). Jedno źródło dla widoku 3D, rysunków i ilości (długość wieszaków).
 
-import { boardById, ceilingSystemById, type CeilingSystem } from '../catalog/rigips';
+import { boardStackMm, ceilingSystemById, layerBoards, type CeilingSystem } from '../catalog/rigips';
 import { dist, nodeMap, projectOnSegment } from '../geometry/geometry';
 import type { Ceiling, Project, Wall } from '../model/types';
 
-/**
- * Płyty kolejnych warstw jednej strony, od rusztu: `innerLayers` warstw z płyty wewnętrznej
- * (systemy z dwoma rodzajami płyt, np. PRO pod Habito), reszta z płyty wybranej w elemencie.
- */
-export function layerBoards(sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): string[] {
-  const inner = sys.innerBoard ? Math.min(sys.layers - 1, sys.innerLayers ?? sys.layers - 1) : 0;
-  return Array.from({ length: sys.layers }, (_, i) => (i < inner ? (innerBoardId ?? sys.innerBoard!) : boardId));
-}
+export { layerBoards };
 
 /** Grubość wszystkich warstw płyt sufitu, mm */
-export const ceilingBoardsMm = (sys: CeilingSystem, boardId: string) =>
-  layerBoards(sys, boardId).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
+export const ceilingBoardsMm = (sys: CeilingSystem, boardId: string) => boardStackMm(sys, boardId);
 
 /** Grubość rusztu nad płytami (bez wieszaków), mm */
 export function ceilingFrameMm(sys: CeilingSystem): number {
+  if (sys.profiles) return sys.profiles.frameMm;
   switch (sys.kind) {
     case 'two-level':
       return 2 * 27;
     case 'one-level':
+    case 'parallel':
     case 'direct':
       return 27;
     case 'ua-span':
@@ -46,6 +40,7 @@ function assumedFrameMm(sys: CeilingSystem): number {
     case 'two-level':
       return 218;
     case 'one-level':
+    case 'parallel':
       return 188;
     case 'direct':
       return sys.hangerType === 'elastic' ? 33 : sys.hangerType === 'attic' ? 28 : 30;

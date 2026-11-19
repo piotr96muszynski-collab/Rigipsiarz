@@ -20,6 +20,7 @@ import {
   type StudSpacing,
   type SystemVariant,
   MAKER_LABEL,
+  isHungCeiling,
   type WallCategory,
   type WallFrame,
   type WallSystem,
@@ -204,7 +205,12 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
   const out: [string, string][] = [
     ['Płyty', innerN ? `${innerN}× ${boardById(s.innerBoard!).name} (od rusztu) + ${s.layers - innerN}× ${boardById(s.defaultBoard).name}` : `${s.layers}× ${boardById(s.defaultBoard).name}`],
   ];
-  if (s.kind === 'two-level' || s.kind === 'one-level') {
+  if (s.profiles) {
+    out.push(['Ruszt', s.profiles.label]);
+    out.push(['Profile główne (górne)', `co ${s.mainSpacing} cm`]);
+    out.push(['Profile nośne (dolne)', `co ${s.secondarySpacing} cm`]);
+    out.push(['Zawiesia', `kątownik cięty na długość zwieszenia, co ${s.hangerSpacing} cm`]);
+  } else if (s.kind === 'two-level' || s.kind === 'one-level') {
     out.push(['Profile nośne CD 60', `co ${s.mainSpacing} cm`]);
     out.push(['Profile montażowe CD 60', `co ${s.secondarySpacing} cm`]);
     out.push(['Wieszaki', `${HANGER_LABEL[s.hangerType ?? 'noniusz']} co ${s.hangerSpacing} cm`]);
@@ -217,7 +223,7 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
       fr.mount === 'hanger' ? `${fr.hangerLabel} co max ${s.hangerSpacing} cm` : fr.mount === 'direct' ? `wprost do krokwi, co max ${s.hangerSpacing} cm` : 'między krokwiami – więźba widoczna',
     ]);
     if (fr.battens) out.push(['Łaty', fr.battens.map((b) => `${b.size} mm do ${b.maxFix} cm`).join(' · ')]);
-  } else if (s.kind === 'direct') {
+  } else if (s.kind === 'direct' || s.kind === 'parallel') {
     out.push(['Profile CD 60', `co ${s.secondarySpacing} cm`]);
     out.push(['Mocowanie', `${HANGER_LABEL[s.hangerType ?? 'es']} co ${s.hangerSpacing} cm`]);
   } else if (s.kind === 'ua-span') {
@@ -688,7 +694,7 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
   const [s, setS] = useState(initial);
   const set = (p: Partial<CeilingSystem>) => setS((x) => ({ ...x, ...p }));
   const preview = useMemo(() => ceilingConsumption(s), [s]);
-  const hung = s.kind === 'two-level' || s.kind === 'one-level' || s.kind === 'direct';
+  const hung = isHungCeiling(s.kind);
   return (
     <form
       className="card editor"
@@ -723,7 +729,7 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
         )}
         <NumField
           id="ec-sec"
-          label={s.kind === 'cw-span' ? 'Rozstaw CW' : s.kind === 'direct' ? 'Rozstaw CD' : s.kind === 'point-fix' ? 'Siatka łączników – kierunek 2' : 'Rozstaw montażowych'}
+          label={s.kind === 'cw-span' ? 'Rozstaw CW' : s.kind === 'direct' || s.kind === 'parallel' ? 'Rozstaw CD' : s.kind === 'point-fix' ? 'Siatka łączników – kierunek 2' : 'Rozstaw montażowych'}
           unit="cm"
           value={s.secondarySpacing}
           min={20}
