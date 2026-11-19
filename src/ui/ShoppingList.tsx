@@ -96,6 +96,7 @@ export function ShoppingList({ project, lines, prices, setPrice, update }: Props
         </label>
       </div>
 
+      <div className="groups">
       {groups.map(([g, ls]) => (
         <section key={g} className="group">
           <h3>{g}</h3>
@@ -148,6 +149,7 @@ export function ShoppingList({ project, lines, prices, setPrice, update }: Props
           </ul>
         </section>
       ))}
+      </div>
 
       {showPrices && (
         <div className="total-bar">

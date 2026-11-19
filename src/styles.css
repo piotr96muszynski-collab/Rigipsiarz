@@ -2347,6 +2347,15 @@ kbd {
   flex-direction: column;
   gap: 14px;
 }
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/* arkusz rysunków to karta na całą szerokość – nie wysuwany panel .sheet (480 px) */
+.drawings > .card.sheet {
+  width: auto;
+}
 .drawings h4 {
   font-size: 0.95rem;
   margin: 4px 0 0;
@@ -2887,6 +2896,31 @@ kbd {
     position: static;
     max-height: none;
     overflow: visible;
+  }
+}
+/* komputer: lista zakupów i wykończenie na całą szerokość, karty w dwóch kolumnach */
+@media screen and (min-width: 1024px) {
+  .split.solo-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .split.solo-list .groups {
+    display: block;
+    columns: 2;
+    column-gap: 16px;
+  }
+  .split.solo-list .groups > .group {
+    break-inside: avoid;
+    margin-bottom: 14px;
+  }
+  .finishing {
+    max-width: none;
+    display: block;
+    columns: 2;
+    column-gap: 20px;
+  }
+  .finishing > * {
+    break-inside: avoid;
+    margin: 0 0 14px;
   }
 }
 @media print {
