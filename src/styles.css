@@ -1404,6 +1404,15 @@ svg.plan.tool-window {
 .plan .wall {
   stroke-linecap: square;
 }
+.plan polygon.wall-edge {
+  fill: var(--wall-edge);
+  stroke-linejoin: miter;
+}
+.plan polygon.wall-halo {
+  fill: var(--accent);
+  fill-opacity: 0.35;
+  stroke-linejoin: round;
+}
 .plan .wall-halo {
   stroke: var(--accent);
   stroke-opacity: 0.35;
