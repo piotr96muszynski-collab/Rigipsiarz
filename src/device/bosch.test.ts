@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFrame, crc8, distanceCm, ENABLE_SYNC, floatCandidates, fromHex, parseFrame, toHex } from './bosch';
+import { BOSCH_CHANNELS, buildFrame, crc8, distanceCm, ENABLE_SYNC, floatCandidates, fromHex, isBoschCharacteristic, parseFrame, toHex } from './bosch';
 
 /** Ramka wyniku taka, jak opisują ją otwarte projekty: C0 55 10 <tryb> … float32 LE od bajtu 7 */
 function resultFrame(meters: number, mode = 0x06): Uint8Array {
@@ -63,5 +63,16 @@ describe('protokół Bosch', () => {
     expect(toHex(fromHex('0xC0,0x55')!)).toBe('C0 55');
     expect(fromHex('C0 5')).toBeNull();
     expect(fromHex('zz')).toBeNull();
+  });
+});
+
+describe('usługi BLE różnych modeli', () => {
+  it('rozpoznaje charakterystykę nowszych modeli (PLR 30 C) i starszych (GLM 50 C)', () => {
+    expect(isBoschCharacteristic('00004301-0000-0041-5253-534F46540000')).toBe(true);
+    expect(isBoschCharacteristic('02a6c0d1-0451-4000-b000-fb3210111989')).toBe(true);
+    expect(isBoschCharacteristic('00002a19-0000-1000-8000-00805f9b34fb')).toBe(false);
+  });
+  it('najpierw próbuje usługi nowszych modeli', () => {
+    expect(BOSCH_CHANNELS[0].service).toBe('00005301-0000-0041-5253-534f46540000');
   });
 });
