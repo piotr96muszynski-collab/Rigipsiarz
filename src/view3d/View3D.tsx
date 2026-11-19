@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { HelpButton, HelpText } from '../ui/HelpTip';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -251,6 +252,7 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
   const [vis, setVis] = useState<Visibility>(ALL_ON);
   const [quality, setQuality] = useState<Quality3D>(initialQuality);
   const [supported] = useState(webglAvailable);
+  const [help, setHelp] = useState(false);
   const model = useMemo(() => buildModel3D(project, calc), [project, calc]);
   // elementy różnych ścian zajmujące to samo miejsce (model styków nie umie ich połączyć)
   const collisions = useMemo(() => findCollisions(project), [project]);
@@ -492,6 +494,7 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
         <button className="chip" onClick={changeQuality} title="Niska – bez cieni, najpłynniej na słabszym telefonie. Wysoka – miękkie cienie i cieniowanie zakamarków.">
           Grafika: {QUALITY_LABEL[quality]}
         </button>
+        {!fullscreen?.on && <HelpButton open={help} onToggle={() => setHelp((x) => !x)} label="Jak obracać model" />}
         {fullscreen && !fullscreen.on && (
           <button className="chip" onClick={fullscreen.toggle}>
             <svg className="chip-icon" viewBox="0 0 24 24" aria-hidden>
@@ -507,6 +510,12 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
             <path d={EXIT_FULLSCREEN_ICON} />
           </svg>
         </button>
+      )}
+      {help && !fullscreen?.on && (
+        <HelpText>
+          Obracaj jednym palcem, przybliżaj i przesuwaj dwoma. Na komputerze: lewy przycisk obraca, kółko przybliża, prawy
+          przesuwa.
+        </HelpText>
       )}
       <div className="view3d-canvas" ref={hostRef}>
         {!hasWalls && !hasCeilings && <p className="view3d-hint">Dodaj ścianę, sufit lub poddasze, żeby zobaczyć model.</p>}
@@ -524,10 +533,6 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
           </ul>
         </div>
       )}
-      <p className="muted small view3d-help">
-        Obracaj jednym palcem, przybliżaj i przesuwaj dwoma. Na komputerze: lewy przycisk obraca, kółko przybliża, prawy
-        przesuwa.
-      </p>
     </div>
   );
 }

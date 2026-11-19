@@ -1,4 +1,5 @@
 import { AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
+import { HelpTip } from './HelpTip';
 import { useMemo, useState } from 'react';
 import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc/layout';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
@@ -157,16 +158,14 @@ export function DrawingsPanel({ project, calc }: Props) {
         </p>
       </div>
 
-      <div className="card drawings-intro no-print">
-        <p>
+      <div className="drawings-intro no-print">
+        <button className="btn primary" onClick={() => window.print()}>
+          Drukuj / PDF z listą materiałów
+        </button>
+        <HelpTip label="Jak czytać rysunki">
           Rysunki powstają z tych samych wyliczeń co lista zakupów: każdy słupek, profil i wieszak na schemacie jest policzony w
           materiałach. Dotknij rysunku, żeby otworzyć go na całym ekranie i powiększać dwoma palcami.
-        </p>
-        <div className="actions wrap">
-          <button className="btn primary" onClick={() => window.print()}>
-            Drukuj / PDF z listą materiałów
-          </button>
-        </div>
+        </HelpTip>
       </div>
 
       {walls.map((w) => {

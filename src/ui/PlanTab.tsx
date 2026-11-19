@@ -76,23 +76,6 @@ const EXISTING_HINT = {
   room: 'Przeciągnij prostokąt – powstanie obrys z 4 istniejących ścian (np. pustego pokoju). Okna i drzwi dodasz narzędziami obok.',
 };
 
-/** Podpowiedzi narzędzi raz zamknięte (albo użyte) nie wracają – pamiętane na tym urządzeniu */
-const HINTS_KEY = 'rigipsiarz.hintsSeen';
-function loadHints(): Record<string, boolean> {
-  try {
-    return JSON.parse(localStorage.getItem(HINTS_KEY) ?? '{}') ?? {};
-  } catch {
-    return {};
-  }
-}
-function saveHints(h: Record<string, boolean>) {
-  try {
-    localStorage.setItem(HINTS_KEY, JSON.stringify(h));
-  } catch {
-    /* pamięć przeglądarki niedostępna – podpowiedzi wrócą po odświeżeniu */
-  }
-}
-
 export interface FullscreenControl {
   on: boolean;
   toggle: () => void;
@@ -111,13 +94,8 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
   const [fitSignal, setFitSignal] = useState(0);
   const [zoom, setZoom] = useState({ seq: 0, factor: 1 });
   const [msg, setMsg] = useState<string | null>(null);
-  const [hintSeen, setHintSeenRaw] = useState<Record<string, boolean>>(loadHints);
-  const setHintSeen = (fn: (h: Record<string, boolean>) => Record<string, boolean>) =>
-    setHintSeenRaw((h) => {
-      const next = fn(h);
-      if (next !== h) saveHints(next);
-      return next;
-    });
+  /** podpowiedź do narzędzia – tylko na żądanie (przycisk „?”), żeby nie zasłaniała rysunku */
+  const [helpOpen, setHelpOpen] = useState(false);
   const [multi, setMulti] = useState(false);
   const [defaultsOpen, setDefaultsOpen] = useState(false);
   /** ściana, której długość zmienia się w oknie po dotknięciu opisu wymiaru */
@@ -126,14 +104,9 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
   const sheetRef = useRef<HTMLDivElement>(null);
   const [sheetH, setSheetH] = useState(0);
 
-  // podpowiedź znika, gdy narzędzie zostało użyte
+  // podpowiedź znika po zmianie narzędzia albo gdy narzędzie zostało użyte
   const shape = project.walls.length + project.ceilings.length * 1000 + project.walls.reduce((n, w) => n + w.openings.length, 0) * 1e6;
-  const lastShape = useRef(shape);
-  useEffect(() => {
-    const key = tool === 'wall' || tool === 'room' ? `${tool}-${layer}` : tool;
-    if (shape !== lastShape.current) setHintSeen((h) => (h[key] ? h : { ...h, [key]: true }));
-    lastShape.current = shape;
-  }, [shape, tool, layer]);
+  useEffect(() => setHelpOpen(false), [shape, tool, layer, multi]);
 
   const setSelection = (s: Selection) => {
     setSelectionRaw(s);
@@ -225,13 +198,12 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
 
   const current = TOOLS.find((t) => t.id === tool)!;
   const layered = tool === 'wall' || tool === 'room';
-  const hintKey = multi ? 'multi' : layered ? `${tool}-${layer}` : tool;
   const hintText = multi
     ? 'Dotykaj kolejnych ścian, żeby dodać je do zaznaczenia (drugie dotknięcie odznacza). Przeciągnij zaznaczoną ścianę, żeby przesunąć wszystkie.'
     : layered && layer === 'existing'
       ? EXISTING_HINT[tool as 'wall' | 'room']
       : current.hint;
-  const showHint = !hintSeen[hintKey] && !msg && !(hasSel && !wide);
+  const showHint = helpOpen && !msg;
   const empty = project.walls.length === 0 && project.ceilings.length === 0;
 
   const inspector = (
@@ -248,7 +220,6 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
       onShowList={onShowList}
       wide={wide}
       onSelect={setSelection}
-      onResetHints={Object.keys(hintSeen).length ? () => setHintSeen(() => ({})) : undefined}
     />
   );
   const showDefaults = layered && layer === 'new';
@@ -350,6 +321,15 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
               <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
             </svg>
           </button>
+          <button
+            className={`fab help-fab ${helpOpen ? 'on' : ''}`}
+            onClick={() => setHelpOpen((x) => !x)}
+            aria-label="Jak używać tego narzędzia"
+            aria-pressed={helpOpen}
+            title="Jak używać tego narzędzia"
+          >
+            ?
+          </button>
         </div>
 
         <div className="plan-top">
@@ -412,7 +392,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
             <div className={`plan-hint ${msg ? 'msg' : ''}`} role="status">
               <span>{msg ?? hintText}</span>
               {!msg && (
-                <button className="hint-close" onClick={() => setHintSeen((h) => ({ ...h, [hintKey]: true }))} aria-label="Ukryj podpowiedź">
+                <button className="hint-close" onClick={() => setHelpOpen(false)} aria-label="Ukryj podpowiedź">
                   ×
                 </button>
               )}
@@ -476,10 +456,8 @@ function Inspector({
   onShowList,
   wide,
   onSelect,
-  onResetHints,
 }: {
   onSelect: (s: Selection) => void;
-  onResetHints?: () => void;
   project: Project;
   calc: ProjectCalc;
   update: Props['update'];
@@ -602,10 +580,6 @@ function Inspector({
           materiałach, ale można na nie nałożyć okładzinę z płyt. Potem wybierz „Nowa zabudowa” i wstaw ściany g-k. Dotknij
           elementu, żeby ustawić wysokość, system, płytę i otwory.
         </p>
-        <details className="insp-defaults">
-          <summary>Ustawienia nowych ścian · {systemShort(project.settings.defaultWallSystem)}</summary>
-          <WallDefaultsEditor project={project} update={update} />
-        </details>
         <ul className="shortcuts muted small">
           <li>
             <kbd>W</kbd> ściana · <kbd>R</kbd> pokój · <kbd>D</kbd> drzwi · <kbd>O</kbd> okno · <kbd>S</kbd> sufit · <kbd>V</kbd> wybierz
@@ -614,11 +588,6 @@ function Inspector({
             <kbd>Shift</kbd> + klik – kilka ścian · <kbd>Del</kbd> usuń · <kbd>Esc</kbd> przerwij · <kbd>F</kbd> cały plan · kółko myszy – powiększenie · prawy przycisk – przesuwanie
           </li>
         </ul>
-        {onResetHints && (
-          <button className="btn ghost small" onClick={onResetHints}>
-            Pokaż znowu podpowiedzi narzędzi
-          </button>
-        )}
         {!wide && (
           <button className="btn" onClick={onShowList}>
             Lista zakupów

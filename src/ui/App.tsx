@@ -144,7 +144,6 @@ export function App() {
           setPrice={setPrice}
           catalogVersion={catalogVersion}
           appBoardLen={appBoardLen}
-          setAppBoardLen={saveBoardLen}
           onOpenCatalog={() => setCatalogOpen(true)}
           onClose={() => {
             setOpenId(null);
@@ -267,7 +266,7 @@ function Home({
 
       <section className="card home-settings">
         <BoardLengthField
-          label="Długość płyt"
+          label="Domyślna długość płyt"
           value={appBoardLen}
           onChange={(v) => setAppBoardLen(v ?? 'auto')}
           hint={APP_BOARD_HINT}
@@ -290,7 +289,6 @@ function ProjectView({
   setPrice,
   catalogVersion,
   appBoardLen,
-  setAppBoardLen,
   onOpenCatalog,
   onClose,
   onDelete,
@@ -298,7 +296,6 @@ function ProjectView({
   initial: Project;
   catalogVersion: number;
   appBoardLen: BoardLengthPref;
-  setAppBoardLen: (v: BoardLengthPref) => void;
   onOpenCatalog: () => void;
   prices: PriceBook;
   setPrice: (k: string, v: number | undefined) => void;
@@ -382,12 +379,7 @@ function ProjectView({
         <button className="icon-btn back-btn" onClick={onClose} aria-label="Wszystkie projekty">
           <NavIcon d={BACK_ICON} />
         </button>
-        <input
-          className="title-input"
-          value={project.name}
-          onChange={(e) => update((d) => void (d.name = e.target.value))}
-          aria-label="Nazwa projektu"
-        />
+        <ProjectTitle name={project.name} onChange={(v) => update((d) => void (d.name = v))} />
         {wide && <StageBar stages={stages} active={stage} onSelect={goStage} className="in-topbar" />}
         <div className="topbar-actions">
           <LaserButton />
@@ -472,16 +464,8 @@ function ProjectView({
         {tab === 'drawings' && <DrawingsPanel project={project} calc={calc} />}
         {activeTab === 'settings' && (
           <div className="card settings">
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={project.settings.wasteEnabled}
-                onChange={(e) => update((d) => void (d.settings.wasteEnabled = e.target.checked))}
-              />
-              Doliczaj zapas na docinki i odpady
-            </label>
             <div className="field narrow">
-              <label htmlFor="waste">Zapas</label>
+              <label htmlFor="waste">Zapas na docinki i odpady</label>
               <div className="input-unit">
                 <input
                   id="waste"
@@ -489,12 +473,11 @@ function ProjectView({
                   min={0}
                   max={50}
                   value={project.settings.waste}
-                  disabled={!project.settings.wasteEnabled}
                   onChange={(e) => update((d) => void (d.settings.waste = Math.max(0, Math.min(50, Number(e.target.value) || 0))))}
                 />
                 <span className="unit">%</span>
               </div>
-              <small className="hint">Dotyczy płyt, wkrętów, taśm, masy i wełny. Profile liczone są z rozkroju.</small>
+              <small className="hint">Dotyczy płyt, wkrętów, taśm, masy i wełny. Profile liczone są z rozkroju. Zapas włączasz i wyłączasz na liście zakupów.</small>
             </div>
             <hr />
             <ProjectHeights project={project} update={update} />
@@ -503,6 +486,7 @@ function ProjectView({
               label="Długość płyt w tym projekcie"
               value={project.settings.boardLength}
               inherit={appBoardLen}
+              hint="Domyślną długość dla wszystkich projektów ustawisz na ekranie startowym."
               onChange={(v) =>
                 update((d) => {
                   if (v === undefined) delete d.settings.boardLength;
@@ -510,7 +494,6 @@ function ProjectView({
                 })
               }
             />
-            <BoardLengthField label="Domyślnie w aplikacji" value={appBoardLen} onChange={(v) => setAppBoardLen(v ?? 'auto')} hint={APP_BOARD_HINT} />
             <hr />
             <WoolSettings
               wool={project.settings.wool}
@@ -537,6 +520,34 @@ function ProjectView({
 
       {!wide && <StageBar stages={stages} active={stage} onSelect={goStage} />}
     </div>
+  );
+}
+
+/**
+ * Nazwa projektu w górnym pasku: na co dzień tekst w dwóch liniach (cała nazwa widoczna na telefonie),
+ * po dotknięciu pole do zmiany nazwy.
+ */
+function ProjectTitle({ name, onChange }: { name: string; onChange: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  if (editing)
+    return (
+      <input
+        className="title-input"
+        value={name}
+        autoFocus
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => setEditing(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+        }}
+        aria-label="Nazwa projektu"
+      />
+    );
+  return (
+    <button className="title-input title-text" onClick={() => setEditing(true)} title="Zmień nazwę projektu">
+      {name || 'Bez nazwy'}
+    </button>
   );
 }
 

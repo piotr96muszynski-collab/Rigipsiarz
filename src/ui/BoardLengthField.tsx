@@ -6,7 +6,7 @@ const OPTIONS: { value: BoardLengthPref; label: string }[] = [
 ];
 
 /**
- * Wybór długości arkuszy płyt. `inherit` – dodatkowa opcja „Jak w aplikacji” (ustawienie projektu).
+ * Wybór długości arkuszy płyt. `inherit` – dodatkowa opcja „Domyślna” (z ekranu startowego) (ustawienie projektu).
  */
 export function BoardLengthField({
   label,
@@ -23,7 +23,7 @@ export function BoardLengthField({
   hint?: string;
 }) {
   const opts: { value: BoardLengthPref | undefined; label: string }[] =
-    inherit !== undefined ? [{ value: undefined, label: `Jak w aplikacji (${inherit === 'auto' ? 'auto' : boardLengthLabel(inherit)})` }, ...OPTIONS] : OPTIONS;
+    inherit !== undefined ? [{ value: undefined, label: `Domyślna (${inherit === 'auto' ? 'auto' : boardLengthLabel(inherit)})` }, ...OPTIONS] : OPTIONS;
   return (
     <div className="field">
       <span className="label">{label}</span>
