@@ -3118,3 +3118,26 @@ button.catalog-part {
   flex: 1;
   min-height: 48px;
 }
+
+/* dobór ściany: cechy do zaznaczenia (wielokrotny wybór) */
+.sys-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sys-chip {
+  min-height: var(--tap);
+  padding: 6px 14px;
+  font-size: 0.9375rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sys-chip.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}

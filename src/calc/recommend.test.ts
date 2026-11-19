@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { boardById, isLiningSystem, wallSystemById } from '../catalog/rigips';
-import { ACOUSTIC_MIN_RA1, makerOf, recommendCeilings, recommendWalls, variantForHeight, type WallNeeds } from './recommend';
+import { ACOUSTIC_MIN_RA1, featureNeeds, hasStudProfile, makerOf, profileWidths, recommendCeilings, recommendWalls, variantForHeight, type WallNeeds } from './recommend';
 
 const base: WallNeeds = { purpose: 'partition', heightCm: 260, room: 'dry', fire: 0, acoustic: 'any', maker: 'rigips' };
 
@@ -100,5 +100,46 @@ describe('dobór sufitu', () => {
     const narrow = recommendCeilings({ mount: 'span', room: 'dry', fire: 0, spanCm: 200, maker: 'rigips' });
     const wide = recommendCeilings({ mount: 'span', room: 'dry', fire: 0, spanCm: 320, maker: 'rigips' });
     expect(narrow.length).toBeGreaterThan(wide.length);
+  });
+});
+
+describe('dobór ściany: szerokość profilu, płytowanie i cechy', () => {
+  it('szerokość profilu zawęża wyniki do rusztu z tym profilem', () => {
+    const picks = recommendWalls({ ...base, profile: 75 });
+    expect(picks.length).toBeGreaterThan(0);
+    expect(picks.every((p) => p.system.profile === 75 && hasStudProfile(p.system))).toBe(true);
+    expect(picks[0].system.id).toBe('W-CW75-1');
+  });
+  it('płytowanie pojedyncze i podwójne zawęża liczbę warstw z jednej strony', () => {
+    for (const layers of [1, 2] as const) {
+      const picks = recommendWalls({ ...base, layers });
+      expect(picks.length).toBeGreaterThan(0);
+      expect(picks.every((p) => p.system.layers === layers)).toBe(true);
+    }
+    expect(recommendWalls({ ...base, profile: 100, layers: 2 })[0].system.id).toBe('W-CW100-2');
+  });
+  it('przy wybranym profilu okładziny bez słupków CW (klej, CD 60) odpadają', () => {
+    const lining = { ...base, purpose: 'lining' as const };
+    expect(recommendWalls(lining).some((p) => !hasStudProfile(p.system))).toBe(true);
+    const picks = recommendWalls({ ...lining, profile: 50 });
+    expect(picks.length).toBeGreaterThan(0);
+    expect(picks.every((p) => hasStudProfile(p.system) && p.system.profile === 50)).toBe(true);
+  });
+  it('lista szerokości profili pochodzi z katalogu', () => {
+    const widths = profileWidths('partition');
+    for (const w of [50, 75, 100]) expect(widths).toContain(w);
+    expect([...widths].sort((a, b) => a - b)).toEqual(widths);
+  });
+  it('cechy zamieniają się na wymagania: ogień = EI 30 lub więcej, akustyka = RA1 ≥ 45 dB', () => {
+    expect(featureNeeds([])).toEqual({ room: 'dry', fire: 0, acoustic: 'any', hang: false });
+    expect(featureNeeds(['fire', 'acoustic', 'humid', 'hang'])).toEqual({ room: 'humid', fire: 30, acoustic: 'better', hang: true });
+    expect(featureNeeds(['humid', 'wet']).room).toBe('wet');
+    const picks = recommendWalls({ ...base, ...featureNeeds(['fire', 'acoustic']), profile: 75 });
+    expect(picks.length).toBeGreaterThan(0);
+    for (const p of picks) {
+      expect(p.fire).toBeGreaterThanOrEqual(30);
+      expect(p.ra1).toBeGreaterThanOrEqual(ACOUSTIC_MIN_RA1.better);
+      expect(p.approx).toBe(false);
+    }
   });
 });
