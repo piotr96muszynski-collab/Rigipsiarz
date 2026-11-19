@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { boardById, isLiningSystem, wallSystemById } from '../catalog/rigips';
-import { ACOUSTIC_MIN_RA1, featureNeeds, hasStudProfile, makerOf, profileWidths, recommendCeilings, recommendWalls, variantForHeight, type WallNeeds } from './recommend';
+import { allCeilingSystems, boardById, isLiningSystem, wallSystemById } from '../catalog/rigips';
+import { atticFrameKind } from './attic';
+import { ACOUSTIC_MIN_RA1, featureNeeds, hasStudProfile, isAtticSystem, makerOf, recommendAttics, profileWidths, recommendCeilings, recommendWalls, variantForHeight, type WallNeeds } from './recommend';
 
 const base: WallNeeds = { purpose: 'partition', heightCm: 260, room: 'dry', fire: 0, acoustic: 'any', maker: 'rigips' };
 
@@ -141,5 +142,43 @@ describe('dobór ściany: szerokość profilu, płytowanie i cechy', () => {
       expect(p.ra1).toBeGreaterThanOrEqual(ACOUSTIC_MIN_RA1.better);
       expect(p.approx).toBe(false);
     }
+  });
+});
+
+describe('dobór systemu poddasza', () => {
+  it('bez wymagań: wszystkie systemy poddaszy, od jednej płyty i najprostszego rusztu', () => {
+    const picks = recommendAttics({ room: 'dry', fire: 0 });
+    expect(new Set(picks.map((p) => p.system.id)).size).toBe(picks.length);
+    // ruszty tylko do poddaszy (łaty, kapelusze, więźba widoczna, ruszt krzyżowy) też są do wyboru
+    expect(picks.some((p) => p.system.atticFrame)).toBe(true);
+    expect(picks.length).toBe(allCeilingSystems().filter(isAtticSystem).length);
+    expect(picks[0].system.layers).toBe(1);
+    expect(atticFrameKind(picks[0].system)).toBe('battens');
+    for (let i = 1; i < picks.length; i++) expect(picks[i].system.layers).toBeGreaterThanOrEqual(picks[i - 1].system.layers);
+  });
+  it('filtr rusztu, płyt i producenta', () => {
+    const cross = recommendAttics({ room: 'dry', fire: 0, frame: 'cross' });
+    expect(cross.length).toBe(9);
+    expect(cross.every((p) => makerOf(p.system) === 'siniat')).toBe(true);
+    const hat2 = recommendAttics({ room: 'dry', fire: 0, frame: 'hat', layers: 2, maker: 'norgips' });
+    expect(hat2.map((p) => p.system.id)).toEqual(['NG-ZP-KAP-2']);
+    const hanger = recommendAttics({ room: 'dry', fire: 0, frame: 'hanger', maker: 'rigips', layers: 1 });
+    expect(hanger.map((p) => p.system.id)).toContain('S-PODD-1');
+    expect(hanger.every((p) => atticFrameKind(p.system) === 'hanger')).toBe(true);
+  });
+  it('EI 60: tylko odmiany z klasą z karty, najniższa wystarczająca płyta', () => {
+    const picks = recommendAttics({ room: 'dry', fire: 60 });
+    expect(picks.length).toBeGreaterThan(5);
+    for (const p of picks) expect(p.fire).toBeGreaterThanOrEqual(60);
+    // Rigips 4.70.02, 2 warstwy: EI 60 dopiero z płytą Fire+ 15 mm
+    const hat = picks.find((p) => p.system.id === 'S-4.70.02-2')!;
+    expect(hat.boardId).toBe('RFP15');
+    // łaty Rigips nie mają w karcie klasy EI
+    expect(picks.some((p) => p.system.id === 'S-4.70.01-1')).toBe(false);
+  });
+  it('łazienka pod skosem → płyta impregnowana', () => {
+    const picks = recommendAttics({ room: 'humid', fire: 0, maker: 'rigips' });
+    expect(picks.length).toBeGreaterThan(0);
+    for (const p of picks) expect(boardById(p.boardId).moisture).toBeDefined();
   });
 });

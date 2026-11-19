@@ -19,6 +19,7 @@ import {
 import {
   isAtticSystem,
   makerOf,
+  recommendAttics,
   recommendCeilings,
   recommendWalls,
   featureNeeds,
@@ -33,6 +34,8 @@ import {
   type WallPick,
   type WallPurpose,
 } from '../calc/recommend';
+import { ATTIC_FRAME_KIND_LABEL, atticFrameKind, type AtticFrameKind } from '../calc/attic';
+import { atticSystemShort } from '../catalog/systemLabel';
 import { Picker, type PickOption } from './Picker';
 import { DimInput } from './DimInput';
 import { useBack } from './back';
@@ -58,6 +61,8 @@ interface Row {
   maker: Maker;
   /** Krótkie parametry pod nazwą */
   facts: string;
+  /** Krótki opis na przycisku wyboru (brak = nazwa) */
+  short?: string;
 }
 
 const uniq = <T,>(a: T[]) => [...new Set(a)];
@@ -339,7 +344,7 @@ function SystemSheet({
           />
           {current && (
             <p className="sys-current">
-              Teraz: <strong>{current.name}</strong>
+              Teraz: <strong>{current.short ?? current.name}</strong>
             </p>
           )}
         </div>
@@ -370,7 +375,7 @@ function SystemButton({
   return (
     <>
       <button ref={btn} id={id} type="button" className="picker-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
-        <span className="picker-value">{current?.name ?? 'Wybierz…'}</span>
+        <span className="picker-value">{current?.short ?? current?.name ?? 'Wybierz…'}</span>
         <svg viewBox="0 0 24 24" aria-hidden>
           <path d="M7 10l5 5 5-5" />
         </svg>
@@ -663,6 +668,116 @@ export function CeilingSystemSelect({ id, value, onChange, label = 'System sufit
         <CeilingWizard
           value={value}
           spanCm={spanCm}
+          rows={rows}
+          onPick={(p) => {
+            close();
+            if (onPick) onPick(p);
+            else if (p.system.id !== value) onChange(p.system.id);
+          }}
+        />
+      )}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Poddasza
+// ---------------------------------------------------------------------------
+
+const ATTIC_KINDS = Object.keys(ATTIC_FRAME_KIND_LABEL) as AtticFrameKind[];
+const ATTIC_FRAME_CHIPS: { id: AtticFrameKind; label: string; hint: string }[] = [
+  { id: 'hanger', label: 'Na wieszakach', hint: 'CD 60 (lub C) na uchwytach ES, elastycznych, wieszakach do poddaszy – miejsce na wełnę pod krokwiami' },
+  { id: 'hat', label: 'Kapeluszowe', hint: 'profile kapeluszowe przykręcone wprost do krokwi' },
+  { id: 'battens', label: 'Łaty', hint: 'łaty drewniane przykręcone wprost do krokwi' },
+  { id: 'between', label: 'Więźba widoczna', hint: 'ruszt między krokwiami, spód krokwi zostaje widoczny' },
+  { id: 'cross', label: 'Ruszt krzyżowy', hint: 'profile nośne pod krokwiami i profile pod płyty w poprzek (Siniat)' },
+];
+const ATTIC_LAYER_OPTIONS: PickOption<0 | 1 | 2 | 3>[] = [
+  { value: 0, label: 'Dowolne' },
+  { value: 1, label: '1 płyta', short: '1×' },
+  { value: 2, label: '2 płyty', short: '2×' },
+  { value: 3, label: '3 płyty', short: '3×' },
+];
+const ATTIC_FIRE_OPTIONS = FIRE_OPTIONS.filter((o) => o.value <= 60);
+
+function AtticWizard({ value, rows, onPick }: { value: string; rows: Row[]; onPick: (pick: CeilingPick) => void }) {
+  const [frame, setFrame] = useState<AtticFrameKind | undefined>();
+  const [layers, setLayers] = useState<0 | 1 | 2 | 3>(0);
+  const [room, setRoom] = useState<Room>('dry');
+  const [fire, setFire] = useState<FireNeed>(0);
+  const [maker, setMaker] = useState<MakerFilter>('all');
+  const makers = useMemo(() => makerOptions(rows), [rows]);
+  const picks = recommendAttics({ frame, layers: layers || undefined, room, fire, maker: maker === 'all' ? undefined : maker });
+  return (
+    <>
+      <div className="sys-wizard">
+        <Ask label="Ruszt">
+          <div className="sys-chips" role="group" aria-label="Rodzaj rusztu">
+            {ATTIC_FRAME_CHIPS.map((o) => (
+              <button key={o.id} type="button" className={`sys-chip ${frame === o.id ? 'on' : ''}`} aria-pressed={frame === o.id} title={o.hint} onClick={() => setFrame(frame === o.id ? undefined : o.id)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </Ask>
+        <Ask label="Płytowanie">
+          <Picker label="Płytowanie" value={layers} options={ATTIC_LAYER_OPTIONS} onChange={setLayers} mode="segments" />
+        </Ask>
+        <Ask label="Pomieszczenie">
+          <Picker label="Pomieszczenie" value={room} options={ROOM_OPTIONS} onChange={setRoom} mode="segments" />
+        </Ask>
+        <Ask label="Odporność ogniowa">
+          <Picker label="Odporność ogniowa" value={fire} options={ATTIC_FIRE_OPTIONS} onChange={setFire} mode="segments" />
+        </Ask>
+        {makers.length > 2 && (
+          <Ask label="Producent">
+            <Picker label="Producent" value={maker} options={makers} onChange={setMaker} mode="segments" />
+          </Ask>
+        )}
+      </div>
+      <Picks
+        value={value}
+        rows={picks.map((p) => ({
+          key: p.system.id,
+          id: p.system.id,
+          name: atticSystemShort(p.system, p.boardId),
+          detail: [boardById(p.boardId).short, ...p.reasons, p.variant?.code ?? p.system.code].filter(Boolean).join(' · '),
+          approx: p.approx,
+          onPick: () => onPick(p),
+        }))}
+      />
+      <p className="sys-note">
+        Klasy EI pochodzą z kart producentów. Kolejność: mniej warstw płyt, prostszy ruszt.
+      </p>
+    </>
+  );
+}
+
+function atticRows(): Row[] {
+  const all = allCeilingSystems().filter(isAtticSystem);
+  return [
+    ...ATTIC_KINDS.flatMap((k) =>
+      all
+        .filter((s) => !s.custom && atticFrameKind(s) === k)
+        .map((s) => ({ ...rowOf(s, ATTIC_FRAME_KIND_LABEL[k]), name: s.name.replace(/^Poddasze: /, ''), short: atticSystemShort(s) })),
+    ),
+    ...all.filter((s) => s.custom).map((s) => ({ ...rowOf(s, 'Systemy własne'), short: s.name })),
+  ];
+}
+
+/** Wybór systemu zabudowy poddasza: dobór po wymaganiach (ruszt, płyty, EI, producent) albo lista wg rodzaju rusztu */
+export function AtticSystemSelect({ id, value, onChange, label = 'System zabudowy poddasza', onPick }: Props & { onPick?: (pick: CeilingPick) => void }) {
+  const rows = useMemo(atticRows, []);
+  return (
+    <SystemButton
+      id={id}
+      label={label}
+      rows={rows}
+      value={value}
+      onChange={onChange}
+      wizard={(close) => (
+        <AtticWizard
+          value={value}
           rows={rows}
           onPick={(p) => {
             close();

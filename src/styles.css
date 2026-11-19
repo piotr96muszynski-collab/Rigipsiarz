@@ -3512,3 +3512,8 @@ button.catalog-part {
 .profile-len-name {
   min-width: 2.2em;
 }
+
+/* system poddasza na całą szerokość – pod spodem opis rusztu z karty */
+.attic-system {
+  grid-column: 1 / -1;
+}

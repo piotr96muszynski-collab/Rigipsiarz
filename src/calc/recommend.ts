@@ -18,6 +18,7 @@ import {
   type SystemVariant,
   type WallSystem,
 } from '../catalog/rigips';
+import { atticFrameKind, type AtticFrameKind } from './attic';
 
 /** Pomieszczenie: suche, wilgotne (łazienka, kuchnia), strefa mokra (prysznic, pralnia) */
 export type Room = 'dry' | 'humid' | 'wet';
@@ -349,4 +350,60 @@ export function recommendCeilings(needs: CeilingNeeds, systems: CeilingSystem[] 
     if (best) picks.push(best);
   }
   return picks.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity) || Number(!!b.system.basic) - Number(!!a.system.basic));
+}
+
+// ---------------------------------------------------------------------------
+// Poddasza
+// ---------------------------------------------------------------------------
+
+export interface AtticNeeds {
+  /** Rodzaj rusztu (brak = dowolny) */
+  frame?: AtticFrameKind;
+  /** Liczba warstw płyt (brak = dowolna) */
+  layers?: 1 | 2 | 3;
+  room: Room;
+  fire: FireNeed;
+  maker?: Maker;
+}
+
+/** Kolejność rusztów od najprostszego w montażu */
+const ATTIC_FRAME_RANK: Record<AtticFrameKind, number> = { battens: 0, hat: 1, hanger: 2, between: 3, cross: 4 };
+
+/**
+ * Dobór systemu zabudowy poddasza: wszystkie systemy poddaszy (także ruszty tylko do poddaszy – łaty,
+ * profile kapeluszowe, więźba widoczna, ruszt krzyżowy). Z każdej konstrukcji najtańsza odmiana z karty,
+ * która spełnia wymagania; kolejność: mniej warstw płyt, prostszy ruszt, systemy podstawowe.
+ */
+export function recommendAttics(needs: AtticNeeds, systems: CeilingSystem[] = allCeilingSystems()): CeilingPick[] {
+  const picks: (CeilingPick & { rank: number })[] = [];
+  for (const sys of systems) {
+    if (!isAtticSystem(sys)) continue;
+    if (needs.maker && makerOf(sys) !== needs.maker) continue;
+    const kind = atticFrameKind(sys);
+    if (needs.frame && kind !== needs.frame) continue;
+    if (needs.layers && sys.layers !== needs.layers) continue;
+    const list: (SystemVariant | undefined)[] = sys.variants?.length ? sys.variants : [undefined];
+    let best: CeilingPick | undefined;
+    for (const v of list) {
+      const boardId = v?.board ?? sys.defaultBoard;
+      if (!roomOk(boardId, needs.room)) continue;
+      if (needs.fire > 0 && !(v?.fire && v.fire >= needs.fire)) continue;
+      const reasons: string[] = [];
+      if (v?.fire) reasons.push(`EI ${v.fire}`);
+      const pick: CeilingPick = { system: sys, variant: v, boardId, fire: v?.fire, price: v?.price, approx: !!sys.source.approx || !v, reasons };
+      // przy wymaganiu ogniowym najniższa wystarczająca klasa, potem najtańsza odmiana; przy remisie pierwsza z karty
+      const better = !best || (needs.fire > 0 && (pick.fire ?? 0) !== (best.fire ?? 0) ? (pick.fire ?? 0) < (best.fire ?? 0) : (pick.price ?? Infinity) < (best.price ?? Infinity));
+      if (better) best = pick;
+    }
+    if (best) picks.push({ ...best, rank: ATTIC_FRAME_RANK[kind] });
+  }
+  return picks
+    .sort(
+      (a, b) =>
+        a.system.layers - b.system.layers ||
+        a.rank - b.rank ||
+        Number(!!b.system.basic) - Number(!!a.system.basic) ||
+        (a.price ?? Infinity) - (b.price ?? Infinity),
+    )
+    .map(({ rank: _rank, ...p }) => p);
 }

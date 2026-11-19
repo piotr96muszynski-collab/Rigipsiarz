@@ -217,6 +217,26 @@ export function atticFrameOf(sys: CeilingSystem): AtticFrame {
   };
 }
 
+/** Rodzaj rusztu poddasza – filtr w wyborze systemu */
+export type AtticFrameKind = 'hanger' | 'hat' | 'battens' | 'between' | 'cross';
+
+export const ATTIC_FRAME_KIND_LABEL: Record<AtticFrameKind, string> = {
+  hanger: 'Profile na wieszakach',
+  hat: 'Profile kapeluszowe do krokwi',
+  battens: 'Łaty drewniane do krokwi',
+  between: 'Między krokwiami (więźba widoczna)',
+  cross: 'Ruszt krzyżowy',
+};
+
+/** Rodzaj rusztu systemu poddasza */
+export function atticFrameKind(sys: CeilingSystem): AtticFrameKind {
+  const f = atticFrameOf(sys);
+  if (f.carrier) return 'cross';
+  if (f.mount === 'between') return 'between';
+  if (f.mount === 'direct') return f.battens || f.profile.startsWith('LATA') ? 'battens' : 'hat';
+  return 'hanger';
+}
+
 /** Najkrótszy wieszak z listy systemu, który sięga na potrzebny odstęp; brak listy albo żaden nie sięga = undefined */
 export function atticHangerSize(frame: AtticFrame, needMm: number) {
   return frame.hangerSizes?.find((s) => s.reachMm + 0.5 >= needMm);
