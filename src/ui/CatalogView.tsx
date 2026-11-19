@@ -85,7 +85,7 @@ export function CatalogView({ onClose, onSave }: Props) {
             <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <h1 className="topbar-title">{draft ? 'System własny' : 'Katalog systemów Rigips i ATLAS'}</h1>
+        <h1 className="topbar-title">{draft ? 'System własny' : 'Katalog systemów'}</h1>
       </header>
 
       {draft ? (
@@ -196,10 +196,14 @@ const HANGER_LABEL: Record<HangerType, string> = {
   noniusz: 'wieszaki noniuszowe',
   es: 'uchwyty bezpośrednie ES',
   elastic: 'uchwyty elastyczne',
+  attic: 'wieszaki do poddaszy',
 };
 
 function ceilingParams(s: CeilingSystem): [string, string][] {
-  const out: [string, string][] = [['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}`]];
+  const innerN = s.innerBoard ? Math.min(s.layers - 1, s.innerLayers ?? s.layers - 1) : 0;
+  const out: [string, string][] = [
+    ['Płyty', innerN ? `${innerN}× ${boardById(s.innerBoard!).name} (od rusztu) + ${s.layers - innerN}× ${boardById(s.defaultBoard).name}` : `${s.layers}× ${boardById(s.defaultBoard).name}`],
+  ];
   if (s.kind === 'two-level' || s.kind === 'one-level') {
     out.push(['Profile nośne CD 60', `co ${s.mainSpacing} cm`]);
     out.push(['Profile montażowe CD 60', `co ${s.secondarySpacing} cm`]);
@@ -358,7 +362,9 @@ function VariantTable({ variants, maker }: { variants: SystemVariant[]; maker: M
   const has = (k: keyof SystemVariant) => variants.some((v) => v[k] !== undefined);
   return (
     <details className="variants">
-      <summary>Odmiany z karty ({variants.length}) – płyta, słupki, wysokość, EI</summary>
+      <summary>
+        Odmiany z karty ({variants.length}) – {has('studSpacing') ? 'płyta, słupki, wysokość, EI' : 'płyta, EI, akustyka, grubość zabudowy'}
+      </summary>
       <div className="variants-scroll">
         <table className="consumption">
           <thead>
@@ -734,6 +740,7 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
               options={[
                 { value: 'es' as HangerType, label: 'uchwyty ES', short: 'ES' },
                 { value: 'elastic' as HangerType, label: 'uchwyty elastyczne', short: 'elastyczne' },
+                { value: 'attic' as HangerType, label: 'wieszaki do poddaszy', short: 'do poddaszy' },
               ]}
               onChange={(v) => set({ hangerType: v })}
             />

@@ -592,7 +592,7 @@ export function ceilingRequirement(
       }
       const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100) - 1e-9));
       if (sys.kind === 'direct') {
-        add(req.counts, sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : 'WIESZAK_ES', hangers);
+        add(req.counts, sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : sys.hangerType === 'attic' ? 'WIESZAK_PODD' : 'WIESZAK_ES', hangers);
         add(req.counts, 'LN9', hangers * 4);
       } else {
         add(req.counts, 'WIESZAK_NONIUSZ', hangers);
@@ -626,8 +626,9 @@ export function ceilingRequirement(
   const bb = bbox(c.points);
   const longSide = Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY);
   const sheetLen = pickBoardLength(c.boardId, Math.min(longSide, 300));
-  add(req.boardArea, `${c.boardId}|${sheetLen}`, A * sys.layers);
-  addBoardScrews(req, A, layerBoards(sys, c.boardId), sys.screwsOuter, sys.screwsInner);
+  const boards = layerBoards(sys, c.boardId);
+  for (const id of boards) add(req.boardArea, `${id}|${id === c.boardId ? sheetLen : pickBoardLength(id, Math.min(longSide, 300))}`, A);
+  addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
   addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin);
   const ins = ceilingInsulation(c);
   if (ins) add(req.area, `WELNA${ins.thickness}`, A * ins.layers);

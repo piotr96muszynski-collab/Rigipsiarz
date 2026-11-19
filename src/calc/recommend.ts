@@ -284,7 +284,7 @@ export interface CeilingPick {
   reasons: string[];
 }
 
-export const isAtticSystem = (s: CeilingSystem): boolean => s.kind === 'direct' && (s.attic === true || s.hangerType === 'elastic');
+export const isAtticSystem = (s: CeilingSystem): boolean => s.kind === 'direct' && (s.attic ?? s.hangerType === 'elastic');
 
 export function recommendCeilings(needs: CeilingNeeds, systems: CeilingSystem[] = allCeilingSystems()): CeilingPick[] {
   const picks: CeilingPick[] = [];

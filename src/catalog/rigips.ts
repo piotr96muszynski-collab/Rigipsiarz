@@ -8,7 +8,7 @@
 // z wymaganiami ogniowymi lub akustycznymi zawsze sprawdź aktualną kartę systemu.
 
 import { CORNER_STOCK_LENGTHS, FINISHING_PRODUCTS } from './finishing';
-import { RIGIPS_WALLS } from './rigips.gen';
+import { RIGIPS_CEILINGS, RIGIPS_WALLS } from './rigips.gen';
 import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
 import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
 
@@ -383,6 +383,7 @@ export const PRODUCTS: Record<string, Product> = {
   },
   ZAWLECZKA: { id: 'ZAWLECZKA', name: 'Klamra zabezpieczająca (zawleczka) do wieszaka noniuszowego', group: 'Akcesoria do sufitów', unit: 'szt.' },
   WIESZAK_ES: { id: 'WIESZAK_ES', name: 'Wieszak (uchwyt) bezpośredni ES do CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
+  WIESZAK_PODD: { id: 'WIESZAK_PODD', name: 'Wieszak do poddaszy do CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
   UCHWYT_ELAST: {
     id: 'UCHWYT_ELAST',
     name: 'Uchwyt elastyczny do CD 60 (poddasze)',
@@ -742,7 +743,8 @@ export const CEILING_KIND_LABEL: Record<CeilingKind, string> = {
   'point-fix': 'ATLAS M-System 3G – sufity na łącznikach (bez profili)',
 };
 
-export type HangerType = 'noniusz' | 'es' | 'elastic';
+/** Wieszaki noniuszowe (sufit podwieszany) albo mocowanie bezpośrednie: uchwyt ES, uchwyt elastyczny, wieszak do poddaszy */
+export type HangerType = 'noniusz' | 'es' | 'elastic' | 'attic';
 
 export interface CeilingSystem {
   id: string;
@@ -751,6 +753,10 @@ export interface CeilingSystem {
   kind: CeilingKind;
   layers: number;
   defaultBoard: string;
+  /** Płyta warstw wewnętrznych, gdy karta łączy dwie grubości (np. 2×15 + 2×12,5) */
+  innerBoard?: string;
+  /** Liczba warstw z płyty wewnętrznej */
+  innerLayers?: number;
   /** Rozstaw profili nośnych (górnych / UA), cm */
   mainSpacing: number;
   /** Rozstaw profili montażowych (dolnych CD) lub CW w suficie przęsłowym, cm */
@@ -778,7 +784,7 @@ export interface CeilingSystem {
   basic?: boolean;
   /** Odmiany z karty producenta (płyta, EI, akustyka) */
   variants?: SystemVariant[];
-  /** Zabudowa poddasza (skosy, jętki) – mocowanie do krokwi */
+  /** Zabudowa poddasza (skosy, jętki) – mocowanie do krokwi; false = okładzina sufitu mimo uchwytów elastycznych */
   attic?: boolean;
 }
 
@@ -833,310 +839,8 @@ const cwSpanSystem = (profile: 50 | 75 | 100, layers: number): CeilingSystem => 
   ],
 });
 
-const cdRef = (o: {
-  boards: number;
-  cd: number;
-  hangers: number;
-  cross: number;
-  crossLabel: string;
-  crossProduct: string;
-  long: number;
-  tn25: number;
-  tn35?: number;
-  anchors: number;
-  clips: number;
-}): RefLine[] => [
-  { label: 'Płyta', qty: o.boards, unit: 'm²' },
-  { product: 'CD60', label: 'Profil CD 60', qty: o.cd, unit: 'mb' },
-  { product: 'UD30', label: 'Profil UD 30', qty: 0.4, unit: 'mb' },
-  { product: 'WIESZAK_NONIUSZ', label: 'Wieszak noniuszowy (dolny + część górna)', qty: o.hangers, unit: 'szt.' },
-  { product: 'ZAWLECZKA', label: 'Klamra zabezpieczająca', qty: o.clips, unit: 'szt.' },
-  { product: o.crossProduct, label: o.crossLabel, qty: o.cross, unit: 'szt.' },
-  { product: 'LACZNIK_WZDL', label: 'Łącznik wzdłużny CD 60', qty: o.long, unit: 'szt.' },
-  { product: 'TN25', label: o.tn35 ? 'Wkręt TN 25 (1. warstwa)' : 'Wkręt TN 25', qty: o.tn25, unit: 'szt.' },
-  ...(o.tn35 ? [{ product: 'TN35', label: 'Wkręt TN 35 (2. warstwa)', qty: o.tn35, unit: 'szt.' }] : []),
-  { label: 'Kołki, dyble (wieszaki + UD)', qty: o.anchors, unit: 'szt.' },
-  { product: 'TASMA_USZ30', label: 'Taśma uszczelniająca 30 mm', qty: 0.4, unit: 'mb' },
-  { product: 'TASMA_SPOIN', label: 'Taśma spoinowa', qty: 1.2, unit: 'mb' },
-  ...ceilingRefCommon(o.boards),
-];
-
-const KRZ = { crossProduct: 'LACZNIK_KRZ', crossLabel: 'Łącznik krzyżowy CD 60' };
-const POPR = { crossProduct: 'LACZNIK_JEDNO', crossLabel: 'Łącznik poprzeczny (jednopoziomowy) CD 60' };
-
 const CEILING_LIST: CeilingSystem[] = [
-  {
-    id: 'S-CD-2P-1',
-    code: '4.05.24',
-    name: 'Sufit podwieszany dwupoziomowy CD 60, 1×12,5',
-    kind: 'two-level',
-    layers: 1,
-    defaultBoard: 'RB12.5',
-    mainSpacing: 100,
-    secondarySpacing: 50,
-    hangerSpacing: 90,
-    hangerType: 'noniusz',
-    screwsOuter: 14,
-    screwsInner: 6.5,
-    info: 'Ruszt krzyżowy: nośne CD co 100 cm, montażowe CD co 50 cm, wieszaki noniuszowe co 90 cm',
-    source: SOURCES.KSR_SUFITY,
-    reference: cdRef({ boards: 1, cd: 3.2, hangers: 1.2, clips: 2.4, cross: 2.2, ...KRZ, long: 0.6, tn25: 13.8, anchors: 1.7 }),
-  },
-  {
-    id: 'S-CD-2P-2',
-    code: '4.05.24',
-    name: 'Sufit podwieszany dwupoziomowy CD 60, 2×12,5',
-    kind: 'two-level',
-    layers: 2,
-    defaultBoard: 'RB12.5',
-    mainSpacing: 100,
-    secondarySpacing: 40,
-    hangerSpacing: 75,
-    hangerType: 'noniusz',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    info: 'Ruszt krzyżowy pod dwie warstwy: nośne co 100 cm, montażowe co 40 cm, wieszaki co 75 cm',
-    source: SOURCES.KSR_SUFITY,
-    reference: cdRef({ boards: 2, cd: 3.7, hangers: 1.5, clips: 3, cross: 2.8, ...KRZ, long: 0.6, tn25: 6.5, tn35: 17, anchors: 2 }),
-  },
-  {
-    id: 'S-CD-2P-1F',
-    code: '4.10.13',
-    name: 'Sufit ogniochronny dwupoziomowy CD 60, 1×GKF 12,5',
-    kind: 'two-level',
-    layers: 1,
-    defaultBoard: 'RF12.5',
-    mainSpacing: 100,
-    secondarySpacing: 40,
-    hangerSpacing: 90,
-    hangerType: 'noniusz',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    fire: 'EI 15',
-    info: 'Nośne co 100 cm, montażowe co 40 cm, wieszaki co 90 cm · wkręty co 15 cm',
-    source: SOURCES.KSR_SUFITY,
-    reference: cdRef({ boards: 1, cd: 3.7, hangers: 1.2, clips: 2.4, cross: 2.9, ...KRZ, long: 0.6, tn25: 17, anchors: 1.7 }),
-  },
-  {
-    id: 'S-CD-2P-2F',
-    code: '4.10.15',
-    name: 'Sufit ogniochronny dwupoziomowy CD 60, 2×GKF 12,5',
-    kind: 'two-level',
-    layers: 2,
-    defaultBoard: 'RF12.5',
-    mainSpacing: 100,
-    secondarySpacing: 40,
-    hangerSpacing: 70,
-    hangerType: 'noniusz',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    fire: 'EI 30',
-    info: 'Nośne co 100 cm, montażowe co 40 cm, wieszaki co 70 cm',
-    source: SOURCES.KSR_SUFITY,
-    reference: cdRef({ boards: 2, cd: 3.7, hangers: 1.5, clips: 3, cross: 2.9, ...KRZ, long: 0.6, tn25: 6.5, tn35: 17, anchors: 2 }),
-  },
-  {
-    id: 'S-CD-2P-2x15F',
-    code: '4.10.17',
-    name: 'Sufit ogniochronny dwupoziomowy CD 60, 2×GKF 15',
-    kind: 'two-level',
-    layers: 2,
-    defaultBoard: 'RF15',
-    mainSpacing: 100,
-    secondarySpacing: 40,
-    hangerSpacing: 70,
-    hangerType: 'noniusz',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    fire: 'wyższe klasy EI wg karty',
-    info: 'Nośne co 100 cm, montażowe co 40 cm, wieszaki co 70 cm · wkręty 25 i 45 mm',
-    source: SOURCES.KSR_SUFITY,
-  },
-  {
-    id: 'S-CD-2P-3F',
-    code: '4.10.19',
-    name: 'Sufit ogniochronny dwupoziomowy CD 60, 3×GKF 12,5',
-    kind: 'two-level',
-    layers: 3,
-    defaultBoard: 'RF12.5',
-    mainSpacing: 75,
-    secondarySpacing: 40,
-    hangerSpacing: 60,
-    hangerType: 'noniusz',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    fire: 'wysokie klasy EI wg karty',
-    info: 'Ciężki sufit: nośne co 75 cm, montażowe co 40 cm, wieszaki co 60 cm',
-    source: SOURCES.KSR_SUFITY,
-  },
-  {
-    id: 'S-CD-1P-1',
-    code: '4.05.25',
-    name: 'Sufit jednopoziomowy CD 60, 1×12,5',
-    kind: 'one-level',
-    layers: 1,
-    defaultBoard: 'RB12.5',
-    mainSpacing: 120,
-    secondarySpacing: 40,
-    hangerSpacing: 90,
-    hangerType: 'noniusz',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    info: 'Profile w jednej płaszczyźnie: nośne co 120 cm, montażowe co 40 cm, wieszaki co 90 cm · niższa zabudowa',
-    source: SOURCES.KSR_SUFITY,
-    reference: cdRef({ boards: 1, cd: 3.4, hangers: 0.9, clips: 1.8, cross: 4.1, ...POPR, long: 0.15, tn25: 17, anchors: 1.4 }),
-  },
-  {
-    id: 'S-CD-1P-2',
-    code: '4.05.25',
-    name: 'Sufit jednopoziomowy CD 60, 2×12,5',
-    kind: 'one-level',
-    layers: 2,
-    defaultBoard: 'RB12.5',
-    mainSpacing: 120,
-    secondarySpacing: 40,
-    hangerSpacing: 75,
-    hangerType: 'noniusz',
-    screwsOuter: 18,
-    screwsInner: 6.5,
-    info: 'Ruszt jednopoziomowy pod dwie warstwy: nośne co 120 cm, montażowe co 40 cm, wieszaki co 75 cm',
-    source: SOURCES.KSR_SUFITY,
-    reference: cdRef({ boards: 2, cd: 3.4, hangers: 1.1, clips: 2.1, cross: 4.1, ...POPR, long: 0.6, tn25: 6.5, tn35: 18, anchors: 1.5 }),
-  },
-  {
-    id: 'S-CD-1P-1F',
-    code: '4.10.14',
-    name: 'Sufit ogniochronny jednopoziomowy CD 60, 1×GKF 12,5',
-    kind: 'one-level',
-    layers: 1,
-    defaultBoard: 'RF12.5',
-    mainSpacing: 120,
-    secondarySpacing: 40,
-    hangerSpacing: 90,
-    hangerType: 'noniusz',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    fire: 'EI 15',
-    info: 'Nośne co 120 cm, montażowe co 40 cm, wieszaki co 90 cm',
-    source: SOURCES.KSR_SUFITY,
-  },
-  {
-    id: 'S-CD-1P-2F',
-    code: '4.10.16',
-    name: 'Sufit ogniochronny jednopoziomowy CD 60, 2×GKF 12,5',
-    kind: 'one-level',
-    layers: 2,
-    defaultBoard: 'RF12.5',
-    mainSpacing: 120,
-    secondarySpacing: 40,
-    hangerSpacing: 70,
-    hangerType: 'noniusz',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    fire: 'EI 30',
-    info: 'Nośne co 120 cm, montażowe co 40 cm, wieszaki co 70 cm',
-    source: SOURCES.KSR_SUFITY,
-  },
-  {
-    id: 'S-ES-1',
-    code: '4.05.23',
-    name: 'Okładzina sufitu CD 60 na uchwytach ES, 1×12,5',
-    kind: 'direct',
-    layers: 1,
-    defaultBoard: 'RB12.5',
-    mainSpacing: 40,
-    secondarySpacing: 40,
-    hangerSpacing: 100,
-    hangerType: 'es',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    fire: 'EI 15 z płytą Fire+',
-    info: 'Profile CD co 40 cm mocowane uchwytami ES co max 100 cm tuż pod stropem lub do belek',
-    source: SOURCES.C_40523,
-    reference: [
-      { label: 'Płyta', qty: 1, unit: 'm²' },
-      { product: 'CD60', label: 'Profil CD 60', qty: 2.5, unit: 'mb' },
-      { product: 'UD30', label: 'Profil UD 30', qty: 0.4, unit: 'mb' },
-      { product: 'WIESZAK_ES', label: 'Uchwyt ES', qty: 2.5, unit: 'szt.' },
-      { product: 'LACZNIK_WZDL', label: 'Łącznik wzdłużny CD 60', qty: 0.6, unit: 'szt.' },
-      { product: 'TN25', label: 'Wkręt 25 mm', qty: 17, unit: 'szt.' },
-      { product: 'LN9', label: 'Wkręt „pchełka”', qty: 10, unit: 'szt.' },
-      { label: 'Stalowe elementy mocujące', qty: 6.5, unit: 'szt.' },
-      { product: 'TASMA_USZ30', label: 'Taśma uszczelniająca 30 mm', qty: 0.4, unit: 'mb' },
-      { product: 'TASMA_SPOIN', label: 'Taśma spoinowa', qty: 1.2, unit: 'mb' },
-      ...ceilingRefCommon(1),
-    ],
-  },
-  {
-    id: 'S-ES-2',
-    code: '4.05.23',
-    name: 'Okładzina sufitu CD 60 na uchwytach ES, 2×12,5',
-    kind: 'direct',
-    layers: 2,
-    defaultBoard: 'RFP12.5',
-    mainSpacing: 40,
-    secondarySpacing: 40,
-    hangerSpacing: 100,
-    hangerType: 'es',
-    screwsOuter: 17,
-    screwsInner: 6.5,
-    fire: 'EI 30 z płytami Fire+',
-    info: 'Uchwyty ES co max 100 cm, dwie warstwy płyt, profile CD co 40 cm',
-    source: SOURCES.C_40523,
-    reference: [
-      { label: 'Płyta', qty: 2, unit: 'm²' },
-      { product: 'CD60', label: 'Profil CD 60', qty: 2.5, unit: 'mb' },
-      { product: 'WIESZAK_ES', label: 'Uchwyt ES', qty: 2.5, unit: 'szt.' },
-      { product: 'TN25', label: 'Wkręt 25 mm (1. warstwa)', qty: 6.5, unit: 'szt.' },
-      { product: 'TN35', label: 'Wkręt 35 mm (2. warstwa)', qty: 17, unit: 'szt.' },
-      { product: 'TASMA_SPOIN', label: 'Taśma spoinowa', qty: 1.2, unit: 'mb' },
-      ...ceilingRefCommon(2),
-    ],
-  },
-  {
-    id: 'S-PODD-1',
-    code: '4.70.06',
-    name: 'Poddasze: CD 60 na uchwytach elastycznych, 1×12,5',
-    kind: 'direct',
-    layers: 1,
-    defaultBoard: 'RB12.5',
-    mainSpacing: 40,
-    secondarySpacing: 40,
-    hangerSpacing: 60,
-    hangerType: 'elastic',
-    screwsOuter: 25,
-    screwsInner: 10,
-    fire: 'REI 60 w układzie z karty',
-    info: 'Skosy i jętki: CD co 40 cm, uchwyty elastyczne do krokwi co ok. 60 cm (ok. 4 szt./m² wg karty)',
-    source: SOURCES.C_47006,
-    reference: [
-      { label: 'Płyta', qty: 1, unit: 'm²' },
-      { product: 'CD60', label: 'Profil CD 60', qty: 3.2, unit: 'mb' },
-      { product: 'UD30', label: 'Profil UD 30', qty: 0.4, unit: 'mb' },
-      { product: 'UCHWYT_ELAST', label: 'Uchwyt elastyczny', qty: 4, unit: 'szt.' },
-      { product: 'TN25', label: 'Wkręt TN 25', qty: 25, unit: 'szt.' },
-      { product: 'LN9', label: 'Wkręt „pchełka”', qty: 16, unit: 'szt.' },
-      { product: 'TASMA_SPOIN', label: 'Taśma spoinowa', qty: 1.4, unit: 'mb' },
-      ...ceilingRefCommon(1),
-    ],
-  },
-  {
-    id: 'S-PODD-2',
-    code: '4.70.06',
-    name: 'Poddasze: CD 60 na uchwytach elastycznych, 2×12,5',
-    kind: 'direct',
-    layers: 2,
-    defaultBoard: 'RF12.5',
-    mainSpacing: 40,
-    secondarySpacing: 40,
-    hangerSpacing: 60,
-    hangerType: 'elastic',
-    screwsOuter: 25,
-    screwsInner: 10,
-    fire: 'REI 60 w układzie z karty',
-    info: 'Skosy z dwiema warstwami płyt (np. GKF)',
-    source: SOURCES.C_47006,
-  },
+  ...RIGIPS_CEILINGS,
   {
     id: 'S-UA-1',
     code: '4.05.83',
@@ -1193,12 +897,24 @@ const CEILING_LIST: CeilingSystem[] = [
 /** Sufity podstawowe – widoczne od razu; reszta pod „Pozostałe systemy” */
 const BASIC_CEILINGS = new Set(['S-CD-2P-1', 'S-CD-1P-1', 'S-ES-1', 'S-PODD-1', 'S-UA-1', 'S-CW75-1', 'A-S-L100']);
 
-export const CEILING_SYSTEMS: CeilingSystem[] = CEILING_LIST.map((s) =>
-  BASIC_CEILINGS.has(s.id) || s.id.startsWith('S-PODD')
-    ? { ...s, ...(BASIC_CEILINGS.has(s.id) ? { basic: true } : {}), ...(s.id.startsWith('S-PODD') ? { attic: true } : {}) }
-    : s,
-);
+const CEILING_KIND_ORDER: CeilingKind[] = ['two-level', 'one-level', 'direct', 'ua-span', 'cw-span', 'point-fix'];
+const stdBoard = (id: string) => (/^R(B|BI|F|FP|FI)\d/.test(id) ? 0 : 1);
 
+/**
+ * Katalog sufitów: systemy na CD 60 z kart Rigips (src/catalog/rigips.gen.ts), sufity bez wieszaków
+ * i systemy innych producentów. Kolejność: rodzaj, producent, podstawowe, poddasza na końcu grupy,
+ * płyty zwykłe przed specjalnymi, liczba warstw.
+ */
+export const CEILING_SYSTEMS: CeilingSystem[] = CEILING_LIST.map((s) => (BASIC_CEILINGS.has(s.id) ? { ...s, basic: true } : s))
+  .map((s, i) => ({ s, i }))
+  .sort(
+    (a, b) =>
+      CEILING_KIND_ORDER.indexOf(a.s.kind) - CEILING_KIND_ORDER.indexOf(b.s.kind) ||
+      MAKER_ORDER.indexOf(a.s.maker ?? 'rigips') - MAKER_ORDER.indexOf(b.s.maker ?? 'rigips') ||
+      Number(!!b.s.basic) - Number(!!a.s.basic) ||
+      (a.s.maker ? a.i - b.i : Number(!!a.s.attic) - Number(!!b.s.attic) || stdBoard(a.s.defaultBoard) - stdBoard(b.s.defaultBoard) || a.s.layers - b.s.layers || a.i - b.i),
+  )
+  .map((x) => x.s);
 
 // ---------------------------------------------------------------------------
 // Systemy własne użytkownika (przechowywane lokalnie, wczytywane przy starcie)

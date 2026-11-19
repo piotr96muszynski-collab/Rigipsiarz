@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boardClass, cell, clean, dB, fireMin, fmtTh, heightCm, matName, num, parseLabel, woolMm } from './rigips-parse.mjs';
+import { boardClass, boardIds, cell, clean, dB, fireMin, fmtTh, heightCm, matName, num, parseLabel, woolMm } from './rigips-parse.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const data = JSON.parse(fs.readFileSync(path.join(root, 'data/rigips-systemy.json'), 'utf8'));
@@ -323,7 +323,277 @@ if (DEBUG) {
     console.log(
       `${w.id.padEnd(26)} ${String(w.variants.length).padStart(3)}v ${w.defaultBoard.padEnd(11)} ${(w.innerBoard ?? '').padEnd(9)} H${JSON.stringify(w.maxHeight ?? {})} ${w.fire?.slice(0, 10) ?? ''} | ${uniq(w.variants.map((x) => x.code)).join(' ').slice(0, 90)}`,
     );
-  console.log(`\nPominięte (${skipped.length}):\n` + uniq(skipped).join('\n'));
+}
+
+// ---------------------------------------------------------------------------
+// Sufity podwieszane, okładziny sufitów i poddasza na profilach CD 60
+// ---------------------------------------------------------------------------
+
+const CEIL_CATS = new Set(['poddasza', 'okladziny-sufitowe', 'sufity-podwieszane']);
+/** Identyfikatory sufitów sprzed generatora – zostają, żeby zapisane projekty wskazywały ten sam system */
+const CEIL_LEGACY = {
+  '4.05.24|1': 'S-CD-2P-1',
+  '4.05.24|2': 'S-CD-2P-2',
+  '4.10.13|1': 'S-CD-2P-1F',
+  '4.10.15|2': 'S-CD-2P-2F',
+  '4.10.17|2': 'S-CD-2P-2x15F',
+  '4.10.19|3': 'S-CD-2P-3F',
+  '4.05.25|1': 'S-CD-1P-1',
+  '4.05.25|2': 'S-CD-1P-2',
+  '4.10.14|1': 'S-CD-1P-1F',
+  '4.10.16|2': 'S-CD-1P-2F',
+  '4.05.23|1': 'S-ES-1',
+  '4.05.23|2': 'S-ES-2',
+  '4.70.06|1': 'S-PODD-1',
+  '4.70.06|2': 'S-PODD-2',
+};
+const CEIL_SKIP = [
+  [/RIGISTIL/i, 'profile Rigistil'],
+  [/kapelusz/i, 'profile kapeluszowe'],
+  [/Klick/i, 'wieszaki Klick-Fix'],
+  [/łatach/i, 'ruszt z łat drewnianych'],
+  [/RIGITONE|GYPTONE|kaseton/i, 'sufit akustyczny lub kasetonowy'],
+  [/Riflex|Flexi|CURVE/i, 'sufit łukowy'],
+  [/sufit pod sufitem/i, 'sufit pod sufitem (dwa niezależne sufity)'],
+  [/CW i UW|\bUA\b/i, 'sufit bez wieszaków – w katalogu z tabelą rozpiętości z karty'],
+  [/wieszakach z elementem rozprężnym/i, 'ta sama konstrukcja co 4.05.241 AKU, na wieszakach z prętem (bez klasy ogniowej)'],
+];
+
+const cm = (text) => {
+  const v = num(text);
+  return v && v >= 100 ? v / 10 : undefined;
+};
+
+const ceilFams = new Map();
+for (const s of data.systems) {
+  if (!CEIL_CATS.has(s.cat)) continue;
+  const code = s.list[0];
+  const sysName = clean(s.list[1]);
+  const why = CEIL_SKIP.find(([re]) => re.test(sysName))?.[1];
+  if (why) {
+    skip(s, why);
+    continue;
+  }
+  if (!s.vars.length) {
+    skip(s, 'brak tabeli odmian na stronie');
+    continue;
+  }
+  for (const v of s.vars) {
+    const label = clean(v.cells[0]);
+    // pozycje o numerach ≥ 100 to zamienniki płyt dopisane na końcu zestawienia
+    const boardsM2 = v.mats.filter((x) => x[3] === 'Płyty' && x[2] === 'm2' && x[0] < 100).reduce((a, x) => a + x[1], 0);
+    let groups = parseLabel(label);
+    if (!groups.length) {
+      // etykieta bez liczby warstw („GLASROC X OCEAN typ GM-FH1 gr. 12,5 mm”) – warstwy z ilości płyt
+      const th = num(label.match(/gr\.? ?(\d+(?:,\d)?) ?mm/)?.[1]);
+      const ids = th ? boardIds(label, th) : [];
+      if (ids.length && boardsM2) groups = [{ n: Math.round(boardsM2 / 100), th, ids }];
+    }
+    if (/^Aku\b|\bAku Fire/i.test(label)) for (const g of groups) g.ids = g.ids.map((id) => id.replace(/^R(B|FP)(?=\d)/, (m0, t) => (t === 'B' ? 'AKU' : 'AKUF')));
+    if (!groups.length || groups.some((g) => !g.ids.length)) {
+      skip(s, `nierozpoznana płyta „${label.slice(0, 40)}”`);
+      break;
+    }
+    const layers = groups.reduce((a, g) => a + g.n, 0);
+    if (boardsM2 && Math.abs(boardsM2 - layers * 100) > 10) {
+      skip(s, `odmiana „${label.slice(0, 50)}” – ilość płyt niezgodna z opisem`);
+      continue;
+    }
+    if (groups.length > 2) {
+      skip(s, `odmiana „${label.slice(0, 50)}” – trzy rodzaje płyt`);
+      continue;
+    }
+    const main = groups[groups.length - 1];
+    const inner = groups.length > 1 ? groups[0] : undefined;
+    const cross = qty(v, /krzyżowy/, 'PC');
+    const trans = qty(v, /poprzeczny/, 'PC');
+    const kind = cross ? 'two-level' : trans ? 'one-level' : 'direct';
+    const hangRow = v.mats.find(([, , u, , names]) => u === 'PC' && /^(Wieszak|Uchwyt)/.test(matName(names[0])));
+    const hangName = hangRow ? matName(hangRow[4][0]) : '';
+    const hangerType = kind !== 'direct' ? 'noniusz' : /do poddaszy/i.test(sysName) ? 'attic' : /elastyczny/i.test(hangName) ? 'elastic' : 'es';
+    const cdM = qty(v, /^CD ?60/, 'm');
+    const along = cm(cell(s, v, /Podłużnie/));
+    const across = cm(cell(s, v, /Poprzecznie/));
+    let hangerSpacing = cm(cell(s, v, /rozstaw wieszaków|rozstaw mocowania/));
+    // okładziny sufitów nie mają w tabeli rozstawu uchwytów – wynika z zużycia profili i uchwytów w kalkulatorze
+    if (!hangerSpacing && hangRow) hangerSpacing = Math.min(100, Math.floor((cdM / hangRow[1]) * 20) * 5);
+    // Rigips: profile „główne” (górne) i „nośne” (dolne, pod płytę); w aplikacji to odpowiednio nośne i montażowe
+    const mainSpacing = kind === 'direct' ? along : cm(cell(s, v, /profili głównych/));
+    const secondarySpacing = kind === 'direct' ? along : cm(cell(s, v, /profili nośnych/));
+    if (!mainSpacing || !secondarySpacing || !hangerSpacing) {
+      skip(s, `odmiana „${label.slice(0, 40)}” – brak rozstawów w tabeli`);
+      continue;
+    }
+    const screws = v.mats
+      .filter(([, , u, , names]) => u === 'PC' && /^Wkręty/.test(matName(names[0])) && !/Pchełki|mocujący/i.test(names[0]))
+      .map(([, q, , , names]) => ({ q, len: Number(matName(names[0]).match(/(?:x ?|HB )(\d{2})/)?.[1] ?? 0) }))
+      .sort((a, b) => a.len - b.len);
+    const outerScrews = screws.length ? screws[screws.length - 1].q / 100 : 17;
+    const innerScrews = screws.length > 1 ? screws.slice(0, -1).reduce((a, x) => a + x.q, 0) / (screws.length - 1) / 100 : 6.5;
+
+    const key = `${code}|${layers}`;
+    let fam = ceilFams.get(key);
+    const load = label.match(/\((bez obciążenia[^)]*|z obciążeniem[^)]*)\)/)?.[1];
+    if (!fam) {
+      const cls = boardClass(main.ids[0]);
+      fam = {
+        id: CEIL_LEGACY[key] ?? `S-${code.replace(/\s+/g, '')}-${layers}`,
+        code, s, v, kind, hangerType, layers, main, inner, cls,
+        mainSpacing, secondarySpacing, hangerSpacing, across,
+        screwsOuter: outerScrews, screwsInner: innerScrews,
+        attic: s.cat === 'poddasza', variants: [], loads: [],
+      };
+      ceilFams.set(key, fam);
+    }
+    // odmiany z obciążeniem dodatkowym różnią się tylko rozstawem wieszaków – trafiają do opisu
+    if (load && !/^bez obciążenia/.test(load)) {
+      const kg = load.match(/<= ?(\d+) ?kg/)?.[1];
+      const note = `${kg ? `przy masie zabudowy do ${kg} kg/m²` : 'z obciążeniem dodatkowym'} wieszaki co ${hangerSpacing} cm`;
+      if (hangerSpacing !== fam.hangerSpacing && !fam.loads.includes(note)) fam.loads.push(note);
+      continue;
+    }
+    const base = {
+      code,
+      label: label.replace(/\s*\((bez obciążenia|z obciążeniem)[^)]*\)\s*/, '').trim(),
+      fire: fireMin(cell(s, v, /ogniow/)),
+      rw: dB(cell(s, v, /Rw/)),
+      wool: woolMm(cell(s, v, /wełn/i)),
+      thickness: num(cell(s, v, /Grubość/)),
+      mass: num(cell(s, v, /Masa/)),
+      price: num(cell(s, v, /Cena/)),
+    };
+    const innerBoards = inner ? [...inner.ids].sort(byRank) : undefined;
+    for (const board of [...main.ids].sort(byRank)) {
+      if (fam.variants.some((x) => x.board === board && x.fire === base.fire && x.thickness === base.thickness)) continue;
+      fam.variants.push({ ...base, board, innerBoards });
+    }
+  }
+}
+
+function ceilingReference(fam) {
+  const v = fam.v;
+  const out = [];
+  const used = new Set();
+  const UNIT = { m: 'mb', PC: 'szt.', kg: 'kg', m2: 'm²' };
+  const line = (pattern, unit, product, label, sum = false) => {
+    const byPos = new Map();
+    for (const row of v.mats) {
+      const [pos, q, u, , names] = row;
+      if (u !== unit || !names.some((n) => pattern.test(matName(n)))) continue;
+      used.add(row);
+      byPos.set(pos, Math.max(byPos.get(pos) ?? 0, q));
+    }
+    const vals = [...byPos.values()];
+    const q = vals.length ? (sum ? vals.reduce((a, b) => a + b, 0) : Math.max(...vals)) : 0;
+    if (q > 0) out.push({ ...(product ? { product } : {}), label, qty: Math.round(q) / 100, unit: UNIT[unit] });
+  };
+  const boardRows = v.mats.filter((x) => x[3] === 'Płyty');
+  boardRows.forEach((x) => used.add(x));
+  const boards = boardRows.filter((x) => x[2] === 'm2').reduce((a, x) => a + x[1], 0);
+  if (boards) out.push({ label: 'Płyty', qty: boards / 100, unit: 'm²' });
+  line(/^CD ?60/, 'm', 'CD60', 'Profil CD 60');
+  line(/^UD 30/, 'm', 'UD30', 'Profil UD 30');
+  if (fam.kind === 'direct') {
+    const product = { es: 'WIESZAK_ES', elastic: 'UCHWYT_ELAST', attic: 'WIESZAK_PODD' }[fam.hangerType];
+    line(/^(Uchwyt|Wieszak do poddaszy)/, 'PC', product, { es: 'Uchwyt ES', elastic: 'Uchwyt elastyczny', attic: 'Wieszak do poddaszy' }[fam.hangerType]);
+  } else {
+    line(/^Wieszak/, 'PC', 'WIESZAK_NONIUSZ', 'Wieszak (część dolna)');
+    line(/^(Część górna|Pręt wieszakowy)/, 'PC', undefined, 'Część górna wieszaka / pręt');
+    line(/^Klamra zabezpieczająca/, 'PC', 'ZAWLECZKA', 'Klamra zabezpieczająca');
+    line(/^Łącznik krzyżowy/, 'PC', 'LACZNIK_KRZ', 'Łącznik krzyżowy CD 60');
+    line(/^Łącznik poprzeczny/, 'PC', 'LACZNIK_JEDNO', 'Łącznik poprzeczny CD 60');
+  }
+  line(/^Łącznik wzdłużny/, 'PC', 'LACZNIK_WZDL', 'Łącznik wzdłużny CD 60');
+  for (const len of [25, 35, 45, 55]) line(new RegExp(`^Wkręty\\s+TN 3,5x${len}\\b`), 'PC', `TN${len}`, `Wkręt TN ${len}`);
+  line(/^Wkręty\s+TN 4,2x70/, 'PC', 'TN70', 'Wkręt TN 70');
+  for (const len of [25, 35, 45]) line(new RegExp(`^Wkręty HartFix 3,[89]x${len}`), 'PC', `HARTFIX${len}`, `Wkręt HartFix ${len}`);
+  line(/^Wkręty GLASROC F \(Ridurit\) 3,5x40/, 'PC', 'RIDURIT40', 'Wkręt Ridurit 40');
+  line(/^Wkręty GLASROC F \(Ridurit\) 3,5x58/, 'PC', undefined, 'Wkręt Ridurit 58');
+  line(/^Wkręty Aquaroc Interior HB 25/, 'PC', 'AQ25', 'Wkręt Aquaroc 25');
+  line(/^Wkręty Aquaroc Interior HB 3,5x41/, 'PC', 'AQ35', 'Wkręt Aquaroc 41');
+  line(/^"?Wkręty "+Pchełki/, 'PC', 'LN9', 'Wkręt „pchełka”');
+  line(/^Dybel sufitowy/, 'PC', undefined, 'Dybel sufitowy stalowy (wieszaki + UD)');
+  line(/^Taśma uszczelniająca.*szerkości 30 mm/, 'm', 'TASMA_USZ30', 'Taśma uszczelniająca 30 mm');
+  const plain = fam.cls === 'STD' || fam.cls === 'AKU';
+  line(/VARIO|SUPER|Q1 Zaczyna|ProMix HYDRO/, 'kg', plain ? 'MASA' : undefined, 'Masa do spoinowania', true);
+  line(/^Taśma (spoinowa|z włókna)|FLEECE|Fiba ?Tape/, 'm', plain ? 'TASMA_SPOIN' : undefined, 'Taśma spoinowa');
+  line(/Kończy|Finish|Premium Light|Airless/, 'kg', 'MASA_WYK', 'Masa wykończeniowa');
+  line(/Wełna|Aku-Płyta|Polterm|Mata/, 'm2', undefined, 'Wełna mineralna');
+  line(/Paroizolacja/, 'm2', undefined, 'Paroizolacja');
+  const rest = new Map();
+  for (const row of v.mats) {
+    if (used.has(row) || !UNIT[row[2]]) continue;
+    const label = matName(row[4][0]).replace(/\s*[–-]\s*(worek|wiadro|pojemnik|w tubie).*$/i, '').replace(/\s+\d+ szt\.?.*$/i, '').replace(/\*+$/, '').trim();
+    if (!rest.has(row[0])) rest.set(row[0], { label, qty: Math.round(row[1]) / 100, unit: UNIT[row[2]] });
+  }
+  out.push(...rest.values());
+  return out;
+}
+
+const HANGER_NAME = { noniusz: 'wieszaki', es: 'uchwyty ES', elastic: 'uchwyty elastyczne', attic: 'wieszaki do poddaszy' };
+const ceilings = [];
+for (const fam of ceilFams.values()) {
+  if (!fam.variants.length) continue;
+  const boards = uniq(fam.variants.map((x) => x.board)).sort(byRank);
+  const defaultBoard = boards[0];
+  const first = fam.variants.find((x) => x.board === defaultBoard);
+  const ths = uniq(fam.variants.map((x) => Number(x.board.match(/[\d.]+$/)[0]))).sort((a, b) => a - b);
+  const thText = `${fmtTh(ths[0])}${ths.length > 1 ? ` (lub ${ths.slice(1).map(fmtTh).join(', ')})` : ''}`;
+  const clsText = fam.cls === 'STD' ? '' : ` ${CLASS_NAME[fam.cls]}`;
+  const boardText = fam.inner
+    ? `${fam.inner.n}×${fmtTh(fam.inner.th)} + ${fam.main.n}×${thText}${clsText}`
+    : `${fam.layers}×${thText}${clsText}`;
+  const fireOnly = fam.variants.every((x) => x.fire);
+  const frameText =
+    fam.kind === 'two-level'
+      ? `Sufit ${fireOnly ? 'ogniochronny ' : ''}dwupoziomowy CD 60`
+      : fam.kind === 'one-level'
+        ? `Sufit ${fireOnly ? 'ogniochronny ' : ''}jednopoziomowy CD 60`
+        : fam.attic
+          ? `Poddasze: CD 60 na ${{ es: 'uchwytach ES', elastic: 'uchwytach elastycznych', attic: 'wieszakach do poddaszy' }[fam.hangerType]}`
+          : `Okładzina sufitu ${fireOnly ? 'ogniochronna ' : ''}CD 60 na ${fam.hangerType === 'elastic' ? 'uchwytach elastycznych' : 'uchwytach ES'}`;
+  const info = [
+    fam.kind === 'direct'
+      ? `Profile CD co ${fam.secondarySpacing} cm, ${HANGER_NAME[fam.hangerType]} co ${fam.hangerSpacing} cm`
+      : `Profile nośne (górne) co ${fam.mainSpacing} cm, montażowe (dolne) co ${fam.secondarySpacing} cm, wieszaki co ${fam.hangerSpacing} cm`,
+    fam.kind === 'direct' && fam.across && fam.across !== fam.secondarySpacing ? `przy płytach w poprzek profili z płytą typ A profile co ${fam.across} cm` : undefined,
+    first.thickness ? `zabudowa od ${first.thickness} mm` : undefined,
+    ...fam.loads,
+    fam.kind === 'two-level' && fam.secondarySpacing === 50 && qty(fam.v, /^CD ?60/, 'm') >= 360 ? 'kalkulator Rigips liczy tu profile montażowe co 40 cm' : undefined,
+    fam.inner ? `układ płyt z karty: ${fam.inner.n}×${fmtTh(fam.inner.th)} mm + ${fam.main.n}×${fmtTh(fam.main.th)} mm` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  ceilings.push({
+    id: fam.id,
+    code: fam.code,
+    name: `${frameText}, ${boardText}`,
+    kind: fam.kind,
+    layers: fam.layers,
+    defaultBoard,
+    ...(fam.inner ? { innerBoard: first.innerBoards[0], innerLayers: fam.inner.n } : {}),
+    mainSpacing: fam.mainSpacing,
+    secondarySpacing: fam.secondarySpacing,
+    hangerSpacing: fam.hangerSpacing,
+    hangerType: fam.hangerType,
+    screwsOuter: fam.screwsOuter,
+    screwsInner: fam.screwsInner,
+    fire: range(fam.variants.map((x) => x.fire), 'EI', fam.variants.some((x) => !x.fire) || uniq(fam.variants.map((x) => x.fire)).length > 1 ? ' (zależnie od płyty – patrz odmiany)' : ''),
+    info,
+    source: { label: `Rigips ${fam.code} – strona systemu i kalkulator zużycia`, url: `https://www.rigips.pl${fam.s.url}` },
+    ...(fam.kind === 'direct' ? { attic: fam.attic } : {}),
+    reference: ceilingReference(fam),
+    variants: fam.variants,
+  });
+}
+
+if (DEBUG) {
+  console.log('\nSufity:');
+  for (const c of ceilings)
+    console.log(
+      `${c.id.padEnd(20)} ${c.kind.padEnd(9)} ${c.hangerType.padEnd(8)} L${c.layers} ${c.defaultBoard.padEnd(11)} ${(c.innerBoard ?? '').padEnd(8)} ${c.mainSpacing}/${c.secondarySpacing}/${c.hangerSpacing} wkr ${c.screwsOuter}/${c.screwsInner} ${String(c.variants.length).padStart(2)}v ${c.fire ?? ''} | ${c.name}`,
+    );
+  console.log(`\nPominięte (${uniq(skipped).length}):\n` + uniq(skipped).join('\n'));
 }
 
 // ---------------------------------------------------------------------------
@@ -347,14 +617,17 @@ const ser = (list) =>
 
 const out = `// PLIK GENEROWANY – nie edytuj ręcznie. Źródło: data/rigips-systemy.json (rigips.pl, pobrano ${data.fetched}).
 // Generator: node scripts/gen-rigips.mjs
-import type { WallSystem } from './rigips';
+import type { CeilingSystem, WallSystem } from './rigips';
 
 /** Ściany, okładziny i obudowy szachtów Rigips z kart systemów (odmiany w \`variants\`) */
 export const RIGIPS_WALLS: WallSystem[] = ${ser(walls)};
+
+/** Sufity podwieszane, okładziny sufitów i poddasza Rigips na profilach CD 60 z kart systemów */
+export const RIGIPS_CEILINGS: CeilingSystem[] = ${ser(ceilings)};
 
 /** Systemy ze strony Rigips, których aplikacja jeszcze nie liczy (inna konstrukcja) */
 export const RIGIPS_SKIPPED: string[] = ${JSON.stringify(uniq(skipped), null, 2)};
 `;
 const file = path.join(root, 'src/catalog/rigips.gen.ts');
 fs.writeFileSync(file, out);
-console.log(`${walls.length} konstrukcji ścian (${walls.reduce((a, w) => a + w.variants.length, 0)} odmian), pominięte: ${uniq(skipped).length}, ${(out.length / 1024).toFixed(0)} kB → ${path.relative(root, file)}`);
+console.log(`${walls.length} konstrukcji ścian (${walls.reduce((a, w) => a + w.variants.length, 0)} odmian), ${ceilings.length} sufitów (${ceilings.reduce((a, w) => a + w.variants.length, 0)} odmian), pominięte: ${uniq(skipped).length}, ${(out.length / 1024).toFixed(0)} kB → ${path.relative(root, file)}`);
