@@ -110,7 +110,7 @@ describe('ściana 3,5 m: CW po 3,5 / 3,0 / 4,0 m', () => {
     const lines = calculateProject(p).total.filter((l) => l.key.startsWith('bar-CW75-'));
     expect(lines).toHaveLength(1);
     expect(lines[0].name).toContain('3,00 m');
-    expect(lines[0].note).toContain(`${studs} na zakład 75 cm`);
+    expect(lines[0].note).toContain(`${studs} przedłużeń na zakład 75 cm`);
     expect(lines[0].profile).toMatchObject({ pid: 'CW75', pref: 3, first: true });
     // metry w sztukach pokrywają elementy + zakłady
     const total = sumPieces(p, 'CW75');
