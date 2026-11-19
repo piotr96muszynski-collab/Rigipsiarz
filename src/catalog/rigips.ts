@@ -864,7 +864,7 @@ const cdRef = (o: {
 const KRZ = { crossProduct: 'LACZNIK_KRZ', crossLabel: 'Łącznik krzyżowy CD 60' };
 const POPR = { crossProduct: 'LACZNIK_JEDNO', crossLabel: 'Łącznik poprzeczny (jednopoziomowy) CD 60' };
 
-export const CEILING_SYSTEMS: CeilingSystem[] = [
+const CEILING_LIST: CeilingSystem[] = [
   {
     id: 'S-CD-2P-1',
     code: '4.05.24',
@@ -1189,6 +1189,16 @@ export const CEILING_SYSTEMS: CeilingSystem[] = [
   ...ATLAS_CEILING_SYSTEMS,
   ...NORGIPS_CEILING_SYSTEMS,
 ];
+
+/** Sufity podstawowe – widoczne od razu; reszta pod „Pozostałe systemy” */
+const BASIC_CEILINGS = new Set(['S-CD-2P-1', 'S-CD-1P-1', 'S-ES-1', 'S-PODD-1', 'S-UA-1', 'S-CW75-1', 'A-S-L100']);
+
+export const CEILING_SYSTEMS: CeilingSystem[] = CEILING_LIST.map((s) =>
+  BASIC_CEILINGS.has(s.id) || s.id.startsWith('S-PODD')
+    ? { ...s, ...(BASIC_CEILINGS.has(s.id) ? { basic: true } : {}), ...(s.id.startsWith('S-PODD') ? { attic: true } : {}) }
+    : s,
+);
+
 
 // ---------------------------------------------------------------------------
 // Systemy własne użytkownika (przechowywane lokalnie, wczytywane przy starcie)

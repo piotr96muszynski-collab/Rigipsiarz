@@ -288,7 +288,7 @@ for (const fam of families.values()) {
     first.thickness ? `Grubość ${first.thickness} mm` : undefined,
     hBase ? `do ${m(hBase)} m przy rozstawie ${studSpacing} cm` : undefined,
     hMax > (hBase ?? 0) ? `do ${m(hMax)} m z gęstszymi lub podwójnymi słupkami` : undefined,
-    codes.length > 1 ? `systemy Rigips ${codes.join(', ')}` : undefined,
+    codes.length > 1 ? `${codes.length} systemów Rigips (${codes[0]}…)` : undefined,
   ]
     .filter(Boolean)
     .join(' · ');

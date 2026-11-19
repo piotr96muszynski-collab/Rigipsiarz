@@ -12,6 +12,7 @@ import {
   wallFrameDepth,
   type CeilingKind,
   type CeilingSystem,
+  type Maker,
   type StudSpacing,
   type SystemVariant,
   type WallSystem,
@@ -50,13 +51,21 @@ export interface WallNeeds {
   maxThickness?: number;
   /** Tylko okładziny mocowane do istniejącej ściany (klej, CD na ES, łączniki) */
   liningOnly?: boolean;
+  /** Tylko systemy tego producenta */
+  maker?: Maker;
 }
+
+/** Producent systemu (systemy bez pola `maker` to Rigips, kategoria „atlas” to ATLAS) */
+export const makerOf = (s: { maker?: Maker; category?: string; kind?: string }): Maker =>
+  s.maker ?? (s.category === 'atlas' || s.kind === 'point-fix' ? 'atlas' : 'rigips');
 
 export interface WallPick {
   system: WallSystem;
   /** Odmiana z karty, z której pochodzą parametry (brak = dane samego systemu) */
   variant?: SystemVariant;
   boardId: string;
+  /** Płyta warstw wewnętrznych (systemy z dwoma rodzajami płyt) */
+  innerBoardId?: string;
   studSpacing: StudSpacing;
   doubleStuds: boolean;
   /** Maksymalna wysokość tej odmiany, cm (brak = bez ograniczeń / nie podano) */
@@ -65,7 +74,7 @@ export interface WallPick {
   ra1?: number;
   /** Grubość ściany, mm */
   thickness: number;
-  /** Cena katalogowa producenta, zł/m² */
+  /** Cena katalogowa producenta, zł/m² (orientacyjna – kalkulator liczy ją dla przykładowej płyty) */
   price?: number;
   /** true = parametry orientacyjne (system bez karty) */
   approx: boolean;
@@ -113,9 +122,8 @@ function candidates(sys: WallSystem): { v?: SystemVariant; boardId: string; spac
 const fmtM = (cm: number) => (cm / 100).toFixed(2).replace('.', ',').replace(/,?0+$/, '');
 
 /**
- * Systemy ścian spełniające wymagania, od najtańszego (wg ceny katalogowej producenta;
- * systemy bez ceny na końcu, cieńsze najpierw). Dla każdej konstrukcji zwracana jest
- * jedna, najlepsza odmiana.
+ * Systemy ścian spełniające wymagania, od najprostszej konstrukcji (patrz `costKey`).
+ * Dla każdej konstrukcji zwracana jest jedna, najlepsza odmiana.
  */
 export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWallSystems()): WallPick[] {
   const minRa1 = ACOUSTIC_MIN_RA1[needs.acoustic];
@@ -123,6 +131,7 @@ export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWall
   for (const sys of systems) {
     if (wallPurposeOf(sys) !== needs.purpose) continue;
     if (needs.liningOnly && !isLiningSystem(sys)) continue;
+    if (needs.maker && makerOf(sys) !== needs.maker) continue;
     let best: WallPick | undefined;
     for (const c of candidates(sys)) {
       if (c.maxHeight && needs.heightCm > c.maxHeight + 0.5) continue;
@@ -143,6 +152,7 @@ export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWall
         system: sys,
         variant: c.v,
         boardId: c.boardId,
+        innerBoardId: innerFor(sys, c.v, needs.room),
         studSpacing: c.spacing,
         doubleStuds: c.double,
         maxHeight: c.maxHeight,
@@ -160,16 +170,49 @@ export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWall
   return picks.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : 0));
 }
 
-/** Kolejność: tańszy → mniej profili (rzadszy rozstaw, pojedyncze słupki) → cieńszy → podstawowy */
+/** Płyta warstw wewnętrznych: pierwsza dopuszczona w odmianie, w pomieszczeniu wilgotnym – impregnowana, jeśli jest */
+function innerFor(sys: WallSystem, v: SystemVariant | undefined, room: Room): string | undefined {
+  if (!sys.innerBoard) return undefined;
+  const options = v?.innerBoards?.length ? v.innerBoards : [sys.innerBoard];
+  return (room !== 'dry' && options.find((id) => boardById(id).moisture)) || options[0];
+}
+
+/**
+ * Rząd kosztu płyty, niezależnie od producenta: zwykła < impregnowana < ogniochronna < ogniochronna
+ * impregnowana; grubsza nieco droższa; płyty specjalne (Habito, Duraline, Aquaroc, X Ocean, Rigidur…) najdroższe.
+ */
+function boardCost(boardId: string): number {
+  const b = boardById(boardId);
+  if (b.hard || b.screws || b.kind === 'cement' || b.moisture === 'wet') return 10;
+  const fire = /F/.test(b.type.replace(/\(.*\)/, '')) ? (/DF/.test(b.type) ? 2.5 : 2) : 0;
+  return fire + (b.moisture ? 1 : 0) + (b.thickness > 12.5 ? 0.5 : 0);
+}
+
+/**
+ * Kolejność „od najprostszej i najtańszej konstrukcji”: mniej warstw płyt → tańsza płyta →
+ * mniej profili (rzadszy rozstaw, pojedyncze słupki, węższy profil) → system podstawowy → cieńsza.
+ * Ceny katalogowej nie używamy do kolejności: kalkulator producenta liczy ją dla przykładowej płyty.
+ */
+const MAKERS: Maker[] = ['rigips', 'norgips', 'knauf', 'atlas'];
+function costKey(p: WallPick): number[] {
+  const s = p.system;
+  const frameCost = s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'cd-lining' ? 2 : s.frame === 'single' ? 3 : 4;
+  return [
+    s.layers * s.sides,
+    boardCost(p.boardId),
+    frameCost,
+    (p.doubleStuds ? 2 : 1) / p.studSpacing,
+    s.frame === 'glued' || s.frame === 'cd-lining' || s.frame === 'point-fix' ? 0 : s.profile,
+    s.basic ? 0 : 1,
+    MAKERS.indexOf(makerOf(s)),
+    p.thickness,
+  ];
+}
 function better(a: WallPick, b: WallPick): boolean {
-  const pa = a.price ?? Infinity;
-  const pb = b.price ?? Infinity;
-  if (pa !== pb) return pa < pb;
-  const da = (a.doubleStuds ? 2 : 1) / a.studSpacing;
-  const db = (b.doubleStuds ? 2 : 1) / b.studSpacing;
-  if (da !== db) return da < db;
-  if (a.thickness !== b.thickness) return a.thickness < b.thickness;
-  return !!a.system.basic && !b.system.basic;
+  const ka = costKey(a);
+  const kb = costKey(b);
+  for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] < kb[i];
+  return false;
 }
 
 /**
@@ -188,6 +231,7 @@ export function variantForHeight(sys: WallSystem, heightCm: number, boardId = sy
     system: sys,
     variant: c.v,
     boardId: c.boardId,
+    innerBoardId: innerFor(sys, c.v, 'dry'),
     studSpacing: c.spacing,
     doubleStuds: c.double,
     maxHeight: c.maxHeight,
@@ -225,6 +269,7 @@ export interface CeilingNeeds {
   mount: CeilingMount;
   room: Room;
   fire: FireNeed;
+  maker?: Maker;
   /** Rozpiętość pomieszczenia (krótszy bok), cm – dla sufitów bez wieszaków */
   spanCm?: number;
 }
@@ -245,6 +290,7 @@ export function recommendCeilings(needs: CeilingNeeds, systems: CeilingSystem[] 
   const picks: CeilingPick[] = [];
   for (const sys of systems) {
     if (!MOUNT_KINDS[needs.mount].includes(sys.kind)) continue;
+    if (needs.maker && makerOf(sys) !== needs.maker) continue;
     if (needs.mount === 'attic' ? !isAtticSystem(sys) : needs.mount === 'direct' && isAtticSystem(sys)) continue;
     const span = ceilingMaxSpan(sys);
     if (needs.mount === 'span' && needs.spanCm && span && needs.spanCm > span + 0.5) continue;

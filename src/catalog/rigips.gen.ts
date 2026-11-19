@@ -74,7 +74,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW50-1+1RIGIDUR","code":"3.39.011","name":"Ściana 2×CW 50, 1×12,5 PRO + 1×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":50,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":450},"insulationDefault":false,"info":"Grubość 150 mm · do 4,5 m przy rozstawie 60 cm · systemy Rigips 3.39.011, 3.39.051, 3.39.041","source":{"label":"Rigips 3.39.011 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_39_011"}},
+    ...{"id":"W-2CW50-1+1RIGIDUR","code":"3.39.011","name":"Ściana 2×CW 50, 1×12,5 PRO + 1×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":50,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":450},"insulationDefault":false,"info":"Grubość 150 mm · do 4,5 m przy rozstawie 60 cm · 3 systemów Rigips (3.39.011…)","source":{"label":"Rigips 3.39.011 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_39_011"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":3.6,"unit":"mb"},
@@ -105,7 +105,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW75-1+1RIGIDUR","code":"3.39.012","name":"Ściana 2×CW 75, 1×12,5 PRO + 1×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":75,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":600},"insulationDefault":false,"info":"Grubość 200 mm · do 6 m przy rozstawie 60 cm · systemy Rigips 3.39.012, 3.39.052, 3.39.042","source":{"label":"Rigips 3.39.012 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_39_012"}},
+    ...{"id":"W-2CW75-1+1RIGIDUR","code":"3.39.012","name":"Ściana 2×CW 75, 1×12,5 PRO + 1×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":75,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":600},"insulationDefault":false,"info":"Grubość 200 mm · do 6 m przy rozstawie 60 cm · 3 systemów Rigips (3.39.012…)","source":{"label":"Rigips 3.39.012 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_39_012"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":3.6,"unit":"mb"},
@@ -136,7 +136,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW100-1+1RIGIDUR","code":"3.39.013","name":"Ściana 2×CW 100, 1×12,5 PRO + 1×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":100,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":650},"insulationDefault":false,"info":"Grubość 250 mm · do 6,5 m przy rozstawie 60 cm · systemy Rigips 3.39.013, 3.39.053, 3.39.043","source":{"label":"Rigips 3.39.013 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_39_013"}},
+    ...{"id":"W-2CW100-1+1RIGIDUR","code":"3.39.013","name":"Ściana 2×CW 100, 1×12,5 PRO + 1×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":100,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":650},"insulationDefault":false,"info":"Grubość 250 mm · do 6,5 m przy rozstawie 60 cm · 3 systemów Rigips (3.39.013…)","source":{"label":"Rigips 3.39.013 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_39_013"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":3.6,"unit":"mb"},
@@ -167,7 +167,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-CW50-1","code":"3.40.01","name":"Ściana CW 50, 1×12,5 (lub 15) obustronnie","category":"działowa","frame":"single","profile":50,"layers":1,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":500,"40":425,"60":325},"insulationDefault":true,"fire":"EI 15–60 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 38–42 dB","info":"Grubość 75 mm · do 3,25 m przy rozstawie 60 cm · do 5,75 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.40.01, 3.40.011, 3.40.012, 3.40.013, 3.40.014, 3.40.015","source":{"label":"Rigips 3.40.01 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_01"}},
+    ...{"id":"W-CW50-1","code":"3.40.01","name":"Ściana CW 50, 1×12,5 (lub 15) obustronnie","category":"działowa","frame":"single","profile":50,"layers":1,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":500,"40":425,"60":325},"insulationDefault":true,"fire":"EI 15–60 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 38–42 dB","info":"Grubość 75 mm · do 3,25 m przy rozstawie 60 cm · do 5,75 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.40.01…)","source":{"label":"Rigips 3.40.01 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_01"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -266,7 +266,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-CW75-1","code":"3.40.02","name":"Ściana CW 75, 1×12,5 (lub 15) obustronnie","category":"działowa","frame":"single","profile":75,"layers":1,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":600,"60":450},"insulationDefault":true,"fire":"EI 15–60 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 42 dB","info":"Grubość 100 mm · do 4,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.40.02, 3.40.021, 3.40.022, 3.40.023, 3.40.024, 3.40.025","source":{"label":"Rigips 3.40.02 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_02"}},
+    ...{"id":"W-CW75-1","code":"3.40.02","name":"Ściana CW 75, 1×12,5 (lub 15) obustronnie","category":"działowa","frame":"single","profile":75,"layers":1,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":600,"60":450},"insulationDefault":true,"fire":"EI 15–60 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 42 dB","info":"Grubość 100 mm · do 4,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.40.02…)","source":{"label":"Rigips 3.40.02 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_02"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -325,7 +325,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-CW100-1","code":"3.40.03","name":"Ściana CW 100, 1×12,5 (lub 15) obustronnie","category":"działowa","frame":"single","profile":100,"layers":1,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":650,"60":500},"insulationDefault":true,"fire":"EI 15–60 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 42–44 dB","info":"Grubość 125 mm · do 5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.40.03, 3.40.031, 3.40.032, 3.40.033, 3.40.034, 3.40.035","source":{"label":"Rigips 3.40.03 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_03"}},
+    ...{"id":"W-CW100-1","code":"3.40.03","name":"Ściana CW 100, 1×12,5 (lub 15) obustronnie","category":"działowa","frame":"single","profile":100,"layers":1,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":650,"60":500},"insulationDefault":true,"fire":"EI 15–60 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 42–44 dB","info":"Grubość 125 mm · do 5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.40.03…)","source":{"label":"Rigips 3.40.03 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_03"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -425,7 +425,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-CW50-2","code":"3.40.04","name":"Ściana CW 50, 2×12,5 obustronnie","category":"działowa","frame":"single","profile":50,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":575,"40":500,"60":450},"insulationDefault":true,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 50 dB","info":"Grubość 100 mm · do 4,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.40.04, 3.40.041, 3.40.042, 3.40.043, 3.40.044, 3.40.045","source":{"label":"Rigips 3.40.04 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_04"}},
+    ...{"id":"W-CW50-2","code":"3.40.04","name":"Ściana CW 50, 2×12,5 obustronnie","category":"działowa","frame":"single","profile":50,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":575,"40":500,"60":450},"insulationDefault":true,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 50 dB","info":"Grubość 100 mm · do 4,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.40.04…)","source":{"label":"Rigips 3.40.04 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_04"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -538,7 +538,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-CW75-2","code":"3.40.05","name":"Ściana CW 75, 2×12,5 obustronnie","category":"działowa","frame":"single","profile":75,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":650,"60":550},"insulationDefault":true,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 52 dB","info":"Grubość 125 mm · do 5,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.40.05, 3.40.05 HYDRO, 3.40.051, 3.40.052, 3.40.053, 3.40.054, 3.40.055","source":{"label":"Rigips 3.40.05 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_05"}},
+    ...{"id":"W-CW75-2","code":"3.40.05","name":"Ściana CW 75, 2×12,5 obustronnie","category":"działowa","frame":"single","profile":75,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":650,"60":550},"insulationDefault":true,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 52 dB","info":"Grubość 125 mm · do 5,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 7 systemów Rigips (3.40.05…)","source":{"label":"Rigips 3.40.05 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_05"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -692,7 +692,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-CW100-2","code":"3.40.06","name":"Ściana CW 100, 2×12,5 obustronnie","category":"działowa","frame":"single","profile":100,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":650,"60":650},"insulationDefault":true,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 52 dB","info":"Grubość 150 mm · do 6,5 m przy rozstawie 60 cm · systemy Rigips 3.40.06, 3.40.061, 3.40.062, 3.40.063, 3.40.064, 3.40.065","source":{"label":"Rigips 3.40.06 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_06"}},
+    ...{"id":"W-CW100-2","code":"3.40.06","name":"Ściana CW 100, 2×12,5 obustronnie","category":"działowa","frame":"single","profile":100,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":650,"60":650},"insulationDefault":true,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 52 dB","info":"Grubość 150 mm · do 6,5 m przy rozstawie 60 cm · 6 systemów Rigips (3.40.06…)","source":{"label":"Rigips 3.40.06 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_40_06"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -842,7 +842,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW50-2","code":"3.41.01","name":"Ściana 2×CW 50, 2×12,5 obustronnie","category":"podwójna","frame":"double","profile":50,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":525,"40":500,"60":450},"insulationDefault":true,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 52–60 dB","info":"Grubość 155 mm · do 4,5 m przy rozstawie 60 cm · do 5,25 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.41.01, 3.41.051, 3.41.041, 3.41.011, 3.41.0511, 3.41.0411, 3.41.012, 3.41.0512, 3.41.0412","source":{"label":"Rigips 3.41.01 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_41_01"}},
+    ...{"id":"W-2CW50-2","code":"3.41.01","name":"Ściana 2×CW 50, 2×12,5 obustronnie","category":"podwójna","frame":"double","profile":50,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":525,"40":500,"60":450},"insulationDefault":true,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 52–60 dB","info":"Grubość 155 mm · do 4,5 m przy rozstawie 60 cm · do 5,25 m z gęstszymi lub podwójnymi słupkami · 9 systemów Rigips (3.41.01…)","source":{"label":"Rigips 3.41.01 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_41_01"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":3.6,"unit":"mb"},
@@ -920,7 +920,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW75-2","code":"3.41.02","name":"Ściana 2×CW 75, 2×12,5 obustronnie","category":"podwójna","frame":"double","profile":75,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":630,"60":600},"insulationDefault":false,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 54–61 dB","info":"Grubość 205 mm · do 6 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.41.02, 3.41.052, 3.41.042, 3.41.021, 3.41.0521, 3.41.0421, 3.41.022, 3.41.0522, 3.41.0422","source":{"label":"Rigips 3.41.02 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_41_02"}},
+    ...{"id":"W-2CW75-2","code":"3.41.02","name":"Ściana 2×CW 75, 2×12,5 obustronnie","category":"podwójna","frame":"double","profile":75,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":630,"60":600},"insulationDefault":false,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 54–61 dB","info":"Grubość 205 mm · do 6 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 9 systemów Rigips (3.41.02…)","source":{"label":"Rigips 3.41.02 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_41_02"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":3.6,"unit":"mb"},
@@ -998,7 +998,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW100-2","code":"3.41.03","name":"Ściana 2×CW 100, 2×12,5 obustronnie","category":"podwójna","frame":"double","profile":100,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":650,"60":650},"insulationDefault":false,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 54–65 dB","info":"Grubość 255 mm · do 6,5 m przy rozstawie 60 cm · systemy Rigips 3.41.03, 3.41.053, 3.41.043, 3.41.031, 3.41.0531, 3.41.0431, 3.41.032, 3.41.0532, 3.41.0432","source":{"label":"Rigips 3.41.03 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_41_03"}},
+    ...{"id":"W-2CW100-2","code":"3.41.03","name":"Ściana 2×CW 100, 2×12,5 obustronnie","category":"podwójna","frame":"double","profile":100,"layers":2,"sides":2,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"30":650,"40":650,"60":650},"insulationDefault":false,"fire":"EI 30–120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 54–65 dB","info":"Grubość 255 mm · do 6,5 m przy rozstawie 60 cm · 9 systemów Rigips (3.41.03…)","source":{"label":"Rigips 3.41.03 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_41_03"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":3.6,"unit":"mb"},
@@ -1193,7 +1193,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW50-2RIGIDUR","code":"3.66.011","name":"Ściana 2×CW 50, 2×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":50,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"info":"Grubość 145 mm · do 4 m przy rozstawie 60 cm · systemy Rigips 3.66.011, 3.66.014","source":{"label":"Rigips 3.66.011 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_66_011"}},
+    ...{"id":"W-2CW50-2RIGIDUR","code":"3.66.011","name":"Ściana 2×CW 50, 2×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":50,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"info":"Grubość 145 mm · do 4 m przy rozstawie 60 cm · 2 systemów Rigips (3.66.011…)","source":{"label":"Rigips 3.66.011 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_66_011"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":3.6,"unit":"mb"},
@@ -1215,7 +1215,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW75-2RIGIDUR","code":"3.66.012","name":"Ściana 2×CW 75, 2×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":75,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"info":"Grubość 195 mm · do 5,5 m przy rozstawie 60 cm · systemy Rigips 3.66.012, 3.66.015","source":{"label":"Rigips 3.66.012 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_66_012"}},
+    ...{"id":"W-2CW75-2RIGIDUR","code":"3.66.012","name":"Ściana 2×CW 75, 2×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":75,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"info":"Grubość 195 mm · do 5,5 m przy rozstawie 60 cm · 2 systemów Rigips (3.66.012…)","source":{"label":"Rigips 3.66.012 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_66_012"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":3.6,"unit":"mb"},
@@ -1237,7 +1237,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"W-2CW100-2RIGIDUR","code":"3.66.013","name":"Ściana 2×CW 100, 2×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":100,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","studSpacing":60,"maxHeight":{"60":600},"insulationDefault":true,"info":"Grubość 245 mm · do 6 m przy rozstawie 60 cm · systemy Rigips 3.66.013, 3.66.016","source":{"label":"Rigips 3.66.013 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_66_013"}},
+    ...{"id":"W-2CW100-2RIGIDUR","code":"3.66.013","name":"Ściana 2×CW 100, 2×10 (lub 12,5) Rigidur H obustronnie","category":"podwójna","frame":"double","profile":100,"layers":2,"sides":2,"defaultBoard":"RIGIDUR10","studSpacing":60,"maxHeight":{"60":600},"insulationDefault":true,"info":"Grubość 245 mm · do 6 m przy rozstawie 60 cm · 2 systemów Rigips (3.66.013…)","source":{"label":"Rigips 3.66.013 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/sciany-dzialowe/3_66_013"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":3.6,"unit":"mb"},
@@ -1431,7 +1431,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW50-2HABITO","code":"3.22.00 HB PLUS","name":"Okładzina wolnostojąca CW 50, 2×12,5 Habito","category":"okładzina","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 75 mm · do 3,5 m przy rozstawie 60 cm · do 4,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00 HB PLUS, 3.22.005 HB PLUS","source":{"label":"Rigips 3.22.00 HB PLUS – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb_plus"}},
+    ...{"id":"O-CW50-2HABITO","code":"3.22.00 HB PLUS","name":"Okładzina wolnostojąca CW 50, 2×12,5 Habito","category":"okładzina","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 75 mm · do 3,5 m przy rozstawie 60 cm · do 4,5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00 HB PLUS…)","source":{"label":"Rigips 3.22.00 HB PLUS – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb_plus"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -1451,7 +1451,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW75-2HABITO","code":"3.22.00 HB PLUS","name":"Okładzina wolnostojąca CW 75, 2×12,5 Habito","category":"okładzina","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 4 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00 HB PLUS, 3.22.005 HB PLUS","source":{"label":"Rigips 3.22.00 HB PLUS – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb_plus"}},
+    ...{"id":"O-CW75-2HABITO","code":"3.22.00 HB PLUS","name":"Okładzina wolnostojąca CW 75, 2×12,5 Habito","category":"okładzina","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 4 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00 HB PLUS…)","source":{"label":"Rigips 3.22.00 HB PLUS – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb_plus"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -1471,7 +1471,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW100-2HABITO","code":"3.22.00 HB PLUS","name":"Okładzina wolnostojąca CW 100, 2×12,5 Habito","category":"okładzina","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"fire":"EI 30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 5,5 m przy rozstawie 60 cm · systemy Rigips 3.22.00 HB PLUS, 3.22.005 HB PLUS","source":{"label":"Rigips 3.22.00 HB PLUS – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb_plus"}},
+    ...{"id":"O-CW100-2HABITO","code":"3.22.00 HB PLUS","name":"Okładzina wolnostojąca CW 100, 2×12,5 Habito","category":"okładzina","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"fire":"EI 30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 5,5 m przy rozstawie 60 cm · 2 systemów Rigips (3.22.00 HB PLUS…)","source":{"label":"Rigips 3.22.00 HB PLUS – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb_plus"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -1491,7 +1491,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW50-1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 50, 1×12,5 Habito","category":"okładzina","frame":"single","profile":50,"layers":1,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":300},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 3 m przy rozstawie 60 cm · do 4 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00 HB, 3.22.005 HB","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
+    ...{"id":"O-CW50-1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 50, 1×12,5 Habito","category":"okładzina","frame":"single","profile":50,"layers":1,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":300},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 3 m przy rozstawie 60 cm · do 4 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00 HB…)","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
     reference: [
       {"label":"Płyty","qty":1,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -1509,7 +1509,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW75-1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 75, 1×12,5 Habito","category":"okładzina","frame":"single","profile":75,"layers":1,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 3,5 m przy rozstawie 60 cm · do 4 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00 HB, 3.22.005 HB","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
+    ...{"id":"O-CW75-1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 75, 1×12,5 Habito","category":"okładzina","frame":"single","profile":75,"layers":1,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 3,5 m przy rozstawie 60 cm · do 4 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00 HB…)","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
     reference: [
       {"label":"Płyty","qty":1,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -1527,7 +1527,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW100-1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 100, 1×12,5 Habito","category":"okładzina","frame":"single","profile":100,"layers":1,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 4 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00 HB, 3.22.005 HB","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
+    ...{"id":"O-CW100-1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 100, 1×12,5 Habito","category":"okładzina","frame":"single","profile":100,"layers":1,"sides":1,"defaultBoard":"HABITO12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 4 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00 HB…)","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
     reference: [
       {"label":"Płyty","qty":1,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -1545,7 +1545,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW50-1+1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 50, 1×12,5 PRO + 1×12,5 Habito","category":"okładzina","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 15–30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 75 mm · do 3,5 m przy rozstawie 60 cm · do 4,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00 HB, 3.22.005 HB","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
+    ...{"id":"O-CW50-1+1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 50, 1×12,5 PRO + 1×12,5 Habito","category":"okładzina","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 15–30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 75 mm · do 3,5 m przy rozstawie 60 cm · do 4,5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00 HB…)","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -1567,7 +1567,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW75-1+1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 75, 1×12,5 PRO + 1×12,5 Habito","category":"okładzina","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 15–30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 4 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00 HB, 3.22.005 HB","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
+    ...{"id":"O-CW75-1+1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 75, 1×12,5 PRO + 1×12,5 Habito","category":"okładzina","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 15–30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 4 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00 HB…)","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -1589,7 +1589,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW100-1+1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 100, 1×12,5 PRO + 1×12,5 Habito","category":"okładzina","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"fire":"EI 15–30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 5,5 m przy rozstawie 60 cm · systemy Rigips 3.22.00 HB, 3.22.005 HB","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
+    ...{"id":"O-CW100-1+1HABITO","code":"3.22.00 HB","name":"Okładzina wolnostojąca CW 100, 1×12,5 PRO + 1×12,5 Habito","category":"okładzina","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"HABITO12.5","innerBoard":"RB12.5","innerLayers":1,"studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"fire":"EI 15–30 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 5,5 m przy rozstawie 60 cm · 2 systemów Rigips (3.22.00 HB…)","source":{"label":"Rigips 3.22.00 HB – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00_hb"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -1773,7 +1773,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW50-1","code":"3.22.00","name":"Okładzina wolnostojąca CW 50, 1×12,5","category":"okładzina","frame":"single","profile":50,"layers":1,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":300},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 3 m przy rozstawie 60 cm · do 4 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW50-1","code":"3.22.00","name":"Okładzina wolnostojąca CW 50, 1×12,5","category":"okładzina","frame":"single","profile":50,"layers":1,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":300},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 3 m przy rozstawie 60 cm · do 4 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":1,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -1804,7 +1804,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW75-1","code":"3.22.00","name":"Okładzina wolnostojąca CW 75, 1×12,5","category":"okładzina","frame":"single","profile":75,"layers":1,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 3,5 m przy rozstawie 60 cm · do 4 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW75-1","code":"3.22.00","name":"Okładzina wolnostojąca CW 75, 1×12,5","category":"okładzina","frame":"single","profile":75,"layers":1,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 3,5 m przy rozstawie 60 cm · do 4 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":1,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -1835,7 +1835,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW100-1","code":"3.22.00","name":"Okładzina wolnostojąca CW 100, 1×12,5","category":"okładzina","frame":"single","profile":100,"layers":1,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 4 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW100-1","code":"3.22.00","name":"Okładzina wolnostojąca CW 100, 1×12,5","category":"okładzina","frame":"single","profile":100,"layers":1,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 15 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 4 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":1,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -1866,7 +1866,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW50-2","code":"3.22.00","name":"Okładzina wolnostojąca CW 50, 2×12,5 (lub 15)","category":"okładzina","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":300},"insulationDefault":true,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 75 mm · do 3 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW50-2","code":"3.22.00","name":"Okładzina wolnostojąca CW 50, 2×12,5 (lub 15)","category":"okładzina","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":300},"insulationDefault":true,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 75 mm · do 3 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -1898,7 +1898,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW75-2","code":"3.22.00","name":"Okładzina wolnostojąca CW 75, 2×12,5 (lub 15)","category":"okładzina","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 3,5 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW75-2","code":"3.22.00","name":"Okładzina wolnostojąca CW 75, 2×12,5 (lub 15)","category":"okładzina","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":350},"insulationDefault":true,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 3,5 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -1930,7 +1930,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW100-2","code":"3.22.00","name":"Okładzina wolnostojąca CW 100, 2×12,5 (lub 15)","category":"okładzina","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 4 m przy rozstawie 60 cm · do 6 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW100-2","code":"3.22.00","name":"Okładzina wolnostojąca CW 100, 2×12,5 (lub 15)","category":"okładzina","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"RB12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 4 m przy rozstawie 60 cm · do 6 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -1960,7 +1960,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW50-3","code":"3.22.00","name":"Okładzina wolnostojąca CW 50, 3×12,5","category":"okładzina","frame":"single","profile":50,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 4 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW50-3","code":"3.22.00","name":"Okładzina wolnostojąca CW 50, 3×12,5","category":"okładzina","frame":"single","profile":50,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 4 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":3,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -1985,7 +1985,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW75-3","code":"3.22.00","name":"Okładzina wolnostojąca CW 75, 3×12,5","category":"okładzina","frame":"single","profile":75,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"60":450},"insulationDefault":true,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 4,5 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW75-3","code":"3.22.00","name":"Okładzina wolnostojąca CW 75, 3×12,5","category":"okładzina","frame":"single","profile":75,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"60":450},"insulationDefault":true,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 4,5 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":3,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -2009,7 +2009,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW100-3","code":"3.22.00","name":"Okładzina wolnostojąca CW 100, 3×12,5","category":"okładzina","frame":"single","profile":100,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 5,5 m przy rozstawie 60 cm · do 6 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW100-3","code":"3.22.00","name":"Okładzina wolnostojąca CW 100, 3×12,5","category":"okładzina","frame":"single","profile":100,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"do 5,5 m przy rozstawie 60 cm · do 6 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":3,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -2034,7 +2034,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW50-2+2","code":"3.22.00","name":"Okładzina wolnostojąca CW 50, 2×15 PRO + 2×12,5 PRO","category":"okładzina","frame":"single","profile":50,"layers":4,"sides":1,"defaultBoard":"RFP12.5","innerBoard":"RFP15","innerLayers":2,"studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 105 mm · do 4 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW50-2+2","code":"3.22.00","name":"Okładzina wolnostojąca CW 50, 2×15 PRO + 2×12,5 PRO","category":"okładzina","frame":"single","profile":50,"layers":4,"sides":1,"defaultBoard":"RFP12.5","innerBoard":"RFP15","innerLayers":2,"studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 105 mm · do 4 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -2060,7 +2060,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW75-2+2","code":"3.22.00","name":"Okładzina wolnostojąca CW 75, 2×15 PRO + 2×12,5 PRO","category":"okładzina","frame":"single","profile":75,"layers":4,"sides":1,"defaultBoard":"RFP12.5","innerBoard":"RFP15","innerLayers":2,"studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 130 mm · do 4 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW75-2+2","code":"3.22.00","name":"Okładzina wolnostojąca CW 75, 2×15 PRO + 2×12,5 PRO","category":"okładzina","frame":"single","profile":75,"layers":4,"sides":1,"defaultBoard":"RFP12.5","innerBoard":"RFP15","innerLayers":2,"studSpacing":60,"maxHeight":{"60":400},"insulationDefault":true,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 130 mm · do 4 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -2086,7 +2086,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"O-CW100-2+2","code":"3.22.00","name":"Okładzina wolnostojąca CW 100, 2×15 PRO + 2×12,5 PRO","category":"okładzina","frame":"single","profile":100,"layers":4,"sides":1,"defaultBoard":"RFP12.5","innerBoard":"RFP15","innerLayers":2,"studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 155 mm · do 5,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.22.00, 3.22.005","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
+    ...{"id":"O-CW100-2+2","code":"3.22.00","name":"Okładzina wolnostojąca CW 100, 2×15 PRO + 2×12,5 PRO","category":"okładzina","frame":"single","profile":100,"layers":4,"sides":1,"defaultBoard":"RFP12.5","innerBoard":"RFP15","innerLayers":2,"studSpacing":60,"maxHeight":{"60":550},"insulationDefault":true,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 155 mm · do 5,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 2 systemów Rigips (3.22.00…)","source":{"label":"Rigips 3.22.00 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/okladziny-scienne/3_22_00"}},
     reference: [
       {"label":"Płyty","qty":4,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -2480,7 +2480,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW50-2","code":"3.50.16","name":"Obudowa szachtu CW 50, 2×12,5 (lub 15) jednostronnie","category":"szacht","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":400,"40":350,"60":300},"insulationDefault":false,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 43 dB","info":"Grubość 75 mm · do 3 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.50.16, 3.50.21, 3.50.161, 3.50.211, 3.50.162, 3.50.212, 3.50.15, 3.50.20, 3.50.151, 3.50.201, 3.50.152, 3.50.202","source":{"label":"Rigips 3.50.16 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_16"}},
+    ...{"id":"SZ-CW50-2","code":"3.50.16","name":"Obudowa szachtu CW 50, 2×12,5 (lub 15) jednostronnie","category":"szacht","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":400,"40":350,"60":300},"insulationDefault":false,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 43 dB","info":"Grubość 75 mm · do 3 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · 12 systemów Rigips (3.50.16…)","source":{"label":"Rigips 3.50.16 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_16"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -2531,7 +2531,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW75-2","code":"3.50.163","name":"Obudowa szachtu CW 75, 2×12,5 (lub 15) jednostronnie","category":"szacht","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":500,"40":450,"60":400},"insulationDefault":false,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 4 m przy rozstawie 60 cm · do 6,25 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.50.163, 3.50.213, 3.50.164, 3.50.214, 3.50.165, 3.50.215, 3.50.153, 3.50.203, 3.50.154, 3.50.204, 3.50.155, 3.50.205","source":{"label":"Rigips 3.50.163 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_163"}},
+    ...{"id":"SZ-CW75-2","code":"3.50.163","name":"Obudowa szachtu CW 75, 2×12,5 (lub 15) jednostronnie","category":"szacht","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":500,"40":450,"60":400},"insulationDefault":false,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 4 m przy rozstawie 60 cm · do 6,25 m z gęstszymi lub podwójnymi słupkami · 12 systemów Rigips (3.50.163…)","source":{"label":"Rigips 3.50.163 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_163"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -2582,7 +2582,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW100-2","code":"3.50.166","name":"Obudowa szachtu CW 100, 2×12,5 (lub 15) jednostronnie","category":"szacht","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":600,"40":550,"60":450},"insulationDefault":false,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 4,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.50.166, 3.50.216, 3.50.167, 3.50.217, 3.50.168, 3.50.218, 3.50.156, 3.50.206, 3.50.157, 3.50.207, 3.50.158, 3.50.208","source":{"label":"Rigips 3.50.166 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_166"}},
+    ...{"id":"SZ-CW100-2","code":"3.50.166","name":"Obudowa szachtu CW 100, 2×12,5 (lub 15) jednostronnie","category":"szacht","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":600,"40":550,"60":450},"insulationDefault":false,"fire":"EI 30–60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 4,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 12 systemów Rigips (3.50.166…)","source":{"label":"Rigips 3.50.166 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_166"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -2654,7 +2654,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW50-3","code":"3.50.18","name":"Obudowa szachtu CW 50, 3×12,5 jednostronnie","category":"szacht","frame":"single","profile":50,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":400,"40":350,"60":300},"insulationDefault":false,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 75 mm · do 3 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.50.18, 3.50.181, 3.50.182, 3.50.17, 3.50.171, 3.50.172","source":{"label":"Rigips 3.50.18 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_18"}},
+    ...{"id":"SZ-CW50-3","code":"3.50.18","name":"Obudowa szachtu CW 50, 3×12,5 jednostronnie","category":"szacht","frame":"single","profile":50,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":400,"40":350,"60":300},"insulationDefault":false,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 75 mm · do 3 m przy rozstawie 60 cm · do 5 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.50.18…)","source":{"label":"Rigips 3.50.18 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_18"}},
     reference: [
       {"label":"Płyty","qty":3,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -2691,7 +2691,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW75-3","code":"3.50.183","name":"Obudowa szachtu CW 75, 3×12,5 jednostronnie","category":"szacht","frame":"single","profile":75,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":550,"40":500,"60":450},"insulationDefault":false,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 4,5 m przy rozstawie 60 cm · do 6,25 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.50.183, 3.50.184, 3.50.185, 3.50.173, 3.50.174, 3.50.175","source":{"label":"Rigips 3.50.183 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_183"}},
+    ...{"id":"SZ-CW75-3","code":"3.50.183","name":"Obudowa szachtu CW 75, 3×12,5 jednostronnie","category":"szacht","frame":"single","profile":75,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":550,"40":500,"60":450},"insulationDefault":false,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 100 mm · do 4,5 m przy rozstawie 60 cm · do 6,25 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.50.183…)","source":{"label":"Rigips 3.50.183 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_183"}},
     reference: [
       {"label":"Płyty","qty":3,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -2728,7 +2728,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW100-3","code":"3.50.186","name":"Obudowa szachtu CW 100, 3×12,5 jednostronnie","category":"szacht","frame":"single","profile":100,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":660,"40":550,"60":500},"insulationDefault":false,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 5 m przy rozstawie 60 cm · do 6,6 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.50.186, 3.50.187, 3.50.188, 3.50.176, 3.50.177, 3.50.178","source":{"label":"Rigips 3.50.186 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_186"}},
+    ...{"id":"SZ-CW100-3","code":"3.50.186","name":"Obudowa szachtu CW 100, 3×12,5 jednostronnie","category":"szacht","frame":"single","profile":100,"layers":3,"sides":1,"defaultBoard":"RF12.5","studSpacing":60,"maxHeight":{"30":660,"40":550,"60":500},"insulationDefault":false,"fire":"EI 60 (zależnie od płyty i wypełnienia – patrz odmiany)","info":"Grubość 125 mm · do 5 m przy rozstawie 60 cm · do 6,6 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.50.186…)","source":{"label":"Rigips 3.50.186 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_50_186"}},
     reference: [
       {"label":"Płyty","qty":3,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
@@ -2765,7 +2765,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW50-2RIDURIT","code":"3.80.10","name":"Obudowa szachtu CW 50, 2×25 Glasroc F Ridurit jednostronnie","category":"szacht","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"RIDURIT25","studSpacing":60,"maxHeight":{"30":550,"40":500,"60":450},"insulationDefault":false,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 38 dB","info":"Grubość 100 mm · do 4,5 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.80.10, 3.80.101, 3.80.102, 3.80.11, 3.80.111, 3.80.112","source":{"label":"Rigips 3.80.10 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_80_10"}},
+    ...{"id":"SZ-CW50-2RIDURIT","code":"3.80.10","name":"Obudowa szachtu CW 50, 2×25 Glasroc F Ridurit jednostronnie","category":"szacht","frame":"single","profile":50,"layers":2,"sides":1,"defaultBoard":"RIDURIT25","studSpacing":60,"maxHeight":{"30":550,"40":500,"60":450},"insulationDefault":false,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 38 dB","info":"Grubość 100 mm · do 4,5 m przy rozstawie 60 cm · do 5,5 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.80.10…)","source":{"label":"Rigips 3.80.10 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_80_10"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW50","label":"Profil CW 50","qty":1.8,"unit":"mb"},
@@ -2789,7 +2789,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW75-2RIDURIT","code":"3.80.103","name":"Obudowa szachtu CW 75, 2×25 Glasroc F Ridurit jednostronnie","category":"szacht","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"RIDURIT25","studSpacing":60,"maxHeight":{"30":600,"40":550,"60":500},"insulationDefault":false,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 38 dB","info":"Grubość 125 mm · do 5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.80.103, 3.80.104, 3.80.105, 3.80.113, 3.80.114, 3.80.115","source":{"label":"Rigips 3.80.103 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_80_103"}},
+    ...{"id":"SZ-CW75-2RIDURIT","code":"3.80.103","name":"Obudowa szachtu CW 75, 2×25 Glasroc F Ridurit jednostronnie","category":"szacht","frame":"single","profile":75,"layers":2,"sides":1,"defaultBoard":"RIDURIT25","studSpacing":60,"maxHeight":{"30":600,"40":550,"60":500},"insulationDefault":false,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 38 dB","info":"Grubość 125 mm · do 5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.80.103…)","source":{"label":"Rigips 3.80.103 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_80_103"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW75","label":"Profil CW 75","qty":1.8,"unit":"mb"},
@@ -2813,7 +2813,7 @@ export const RIGIPS_WALLS: WallSystem[] = [
     ],
   },
   {
-    ...{"id":"SZ-CW100-2RIDURIT","code":"3.80.106","name":"Obudowa szachtu CW 100, 2×25 Glasroc F Ridurit jednostronnie","category":"szacht","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"RIDURIT25","studSpacing":60,"maxHeight":{"30":650,"40":600,"60":550},"insulationDefault":false,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 38 dB","info":"Grubość 150 mm · do 5,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · systemy Rigips 3.80.106, 3.80.107, 3.80.108, 3.80.116, 3.80.117, 3.80.118","source":{"label":"Rigips 3.80.106 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_80_106"}},
+    ...{"id":"SZ-CW100-2RIDURIT","code":"3.80.106","name":"Obudowa szachtu CW 100, 2×25 Glasroc F Ridurit jednostronnie","category":"szacht","frame":"single","profile":100,"layers":2,"sides":1,"defaultBoard":"RIDURIT25","studSpacing":60,"maxHeight":{"30":650,"40":600,"60":550},"insulationDefault":false,"fire":"EI 120 (zależnie od płyty i wypełnienia – patrz odmiany)","acoustic":"RA1 38 dB","info":"Grubość 150 mm · do 5,5 m przy rozstawie 60 cm · do 6,5 m z gęstszymi lub podwójnymi słupkami · 6 systemów Rigips (3.80.106…)","source":{"label":"Rigips 3.80.106 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/obudowy-szybow-instalacyjnych-windowych/3_80_106"}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"CW100","label":"Profil CW 100","qty":1.8,"unit":"mb"},
