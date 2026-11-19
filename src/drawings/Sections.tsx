@@ -211,7 +211,7 @@ export function CeilingSection({ sys, board, wool }: { sys: CeilingSystem; board
     legend.push({
       n: nHang,
       label: direct
-        ? `uchwyt bezpośredni ${sys.hangerType === 'elastic' ? 'elastyczny' : 'ES'} co ${sys.hangerSpacing} cm, kotwa w stropie`
+        ? `uchwyt bezpośredni ${sys.hangerType === 'elastic' ? 'elastyczny' : sys.hangerType === 'attic' ? 'do poddaszy' : 'ES'} co ${sys.hangerSpacing} cm, kotwa w stropie`
         : `wieszak noniuszowy + kotwa stropowa, co ${sys.hangerSpacing} cm wzdłuż profilu nośnego`,
     });
   const nPer = point ? 0 : n();

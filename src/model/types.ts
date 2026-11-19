@@ -42,6 +42,10 @@ export interface Lining {
   systemId: string;
   boardId: string;
   studSpacing: 60 | 40 | 30;
+  /** Słupki podwójne (2×CW zespolone) – większa dopuszczalna wysokość */
+  doubleStuds?: boolean;
+  /** Płyta warstw wewnętrznych w systemach z dwoma rodzajami płyt (brak = wg systemu) */
+  innerBoardId?: string;
   insulation: boolean;
 }
 
@@ -71,6 +75,10 @@ export interface Wall {
   boardId: string;
   /** Rozstaw słupków CW, cm */
   studSpacing: 60 | 40 | 30;
+  /** Słupki podwójne (2×CW zespolone wkrętami) – większa dopuszczalna wysokość wg kart Rigips */
+  doubleStuds?: boolean;
+  /** Płyta warstw wewnętrznych w systemach z dwoma rodzajami płyt (brak = wg systemu) */
+  innerBoardId?: string;
   insulation: boolean;
   /** Grubość wełny, mm (brak = pełna głębokość rusztu) */
   insulationThickness?: number;

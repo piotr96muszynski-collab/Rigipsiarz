@@ -2,7 +2,7 @@ import { findOverlaps, uncoveredParts } from '../geometry/contacts';
 import { dist, existingRooms, isNewWall, masonrySide, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
 import { wallSystemById } from '../catalog/rigips';
 import { createExistingWall, createWall, uid } from './factory';
-import type { Id, Point, Project, Wall } from './types';
+import type { Id, Lining, Point, Project, Wall } from './types';
 
 /** Zmiana systemu ściany: płyta, rozstaw i wełna wracają do wartości systemu */
 export function setWallSystem(w: Wall, systemId: string) {
@@ -12,6 +12,32 @@ export function setWallSystem(w: Wall, systemId: string) {
   w.studSpacing = s.studSpacing;
   w.insulation = s.insulationDefault;
   delete w.insulationThickness;
+  delete w.doubleStuds;
+  delete w.innerBoardId;
+}
+
+/** Odmiana wybrana w doborze: system razem z płytą, rozstawem i słupkami z karty producenta */
+export interface SystemChoice {
+  system: { id: string };
+  boardId: string;
+  innerBoardId?: string;
+  studSpacing: 60 | 40 | 30;
+  doubleStuds: boolean;
+}
+
+export function applyWallChoice(w: Wall | Lining, c: SystemChoice) {
+  const s = wallSystemById(c.system.id);
+  if (w.systemId !== s.id) {
+    w.systemId = s.id;
+    w.insulation = s.insulationDefault;
+    if ('insulationThickness' in w) delete w.insulationThickness;
+  }
+  w.boardId = c.boardId;
+  w.studSpacing = c.studSpacing;
+  if (c.doubleStuds) w.doubleStuds = true;
+  else delete w.doubleStuds;
+  if (c.innerBoardId && c.innerBoardId !== s.innerBoard) w.innerBoardId = c.innerBoardId;
+  else delete w.innerBoardId;
 }
 
 /** System nowych ścian: ustawienia płyty, rozstawu i wełny wracają do wartości systemu */

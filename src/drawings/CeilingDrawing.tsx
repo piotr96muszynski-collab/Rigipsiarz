@@ -57,7 +57,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
   const splices = grid.filter((g) => g.level === 'secondary' || kind === 'two-level' || kind === 'one-level' || kind === 'direct').flatMap((g) => g.segments.flatMap(([a, b]) => splicePositions(a, b).map((s) => ({ g, ...pt(g, s) }))));
   const mainLabel =
     kind === 'direct'
-      ? `CD 60 na uchwytach ${sys.hangerType === 'elastic' ? 'elastycznych' : 'ES'}`
+      ? sys.hangerType === 'attic' ? 'CD 60 na wieszakach do poddaszy' : `CD 60 na uchwytach ${sys.hangerType === 'elastic' ? 'elastycznych' : 'ES'}`
       : cwSpan
         ? `CW ${sys.profile ?? 50} oparty na UW (przęsło)`
         : kind === 'ua-span'

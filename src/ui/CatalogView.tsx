@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useBack } from './back';
 import {
   BOARDS,
@@ -15,8 +15,11 @@ import {
   type CeilingSystem,
   type CustomCatalog,
   type HangerType,
+  type Maker,
   type RefLine,
   type StudSpacing,
+  type SystemVariant,
+  MAKER_LABEL,
   type WallCategory,
   type WallFrame,
   type WallSystem,
@@ -26,6 +29,8 @@ import { REF_CEILING, REF_WALL, ceilingConsumption, wallConsumption, type Consum
 import { uid } from '../model/factory';
 import { Picker, type PickOption } from './Picker';
 import { fmtNum } from './wallStyle';
+import { SourceBadge } from './SystemSelect';
+import { makerOf } from '../calc/recommend';
 
 interface Props {
   onClose: () => void;
@@ -80,7 +85,7 @@ export function CatalogView({ onClose, onSave }: Props) {
             <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <h1 className="topbar-title">{draft ? 'System własny' : 'Katalog systemów Rigips i ATLAS'}</h1>
+        <h1 className="topbar-title">{draft ? 'System własny' : 'Katalog systemów'}</h1>
       </header>
 
       {draft ? (
@@ -132,19 +137,17 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
     ['Systemy własne', all.filter((s) => s.custom)],
   ];
   return (
-    <>
-      {groups
-        .filter(([, l]) => l.length)
-        .map(([g, list]) => (
-          <section key={g} className="catalog-group">
-            <h2>{g}</h2>
-            {list.map((s) => (
+    <GroupedSystems
+      groups={groups}
+      render={(s) => (
               <SystemCard
                 key={s.id}
                 name={s.name}
                 code={s.code}
                 custom={s.custom}
                 info={s.info}
+                variants={s.variants}
+                maker={makerOf(s)}
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
                   ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : `CW ${s.profile} / UW ${s.profile}`]] as [string, string][])),
@@ -177,10 +180,8 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 onEdit={s.custom ? () => onEdit(s) : undefined}
                 onRemove={s.custom ? () => onRemove(s.id) : undefined}
               />
-            ))}
-          </section>
-        ))}
-    </>
+      )}
+    />
   );
 }
 
@@ -195,10 +196,14 @@ const HANGER_LABEL: Record<HangerType, string> = {
   noniusz: 'wieszaki noniuszowe',
   es: 'uchwyty bezpośrednie ES',
   elastic: 'uchwyty elastyczne',
+  attic: 'wieszaki do poddaszy',
 };
 
 function ceilingParams(s: CeilingSystem): [string, string][] {
-  const out: [string, string][] = [['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}`]];
+  const innerN = s.innerBoard ? Math.min(s.layers - 1, s.innerLayers ?? s.layers - 1) : 0;
+  const out: [string, string][] = [
+    ['Płyty', innerN ? `${innerN}× ${boardById(s.innerBoard!).name} (od rusztu) + ${s.layers - innerN}× ${boardById(s.defaultBoard).name}` : `${s.layers}× ${boardById(s.defaultBoard).name}`],
+  ];
   if (s.kind === 'two-level' || s.kind === 'one-level') {
     out.push(['Profile nośne CD 60', `co ${s.mainSpacing} cm`]);
     out.push(['Profile montażowe CD 60', `co ${s.secondarySpacing} cm`]);
@@ -230,19 +235,17 @@ function CeilingList({ onCopy, onEdit, onRemove }: { onCopy: (s: CeilingSystem) 
     ['Systemy własne', all.filter((s) => s.custom)],
   ];
   return (
-    <>
-      {groups
-        .filter(([, l]) => l.length)
-        .map(([g, list]) => (
-          <section key={g} className="catalog-group">
-            <h2>{g}</h2>
-            {list.map((s) => (
+    <GroupedSystems
+      groups={groups}
+      render={(s) => (
               <SystemCard
                 key={s.id}
                 name={s.name}
                 code={s.code}
                 custom={s.custom}
                 info={s.info}
+                variants={s.variants}
+                maker={makerOf(s)}
                 params={ceilingParams(s)}
                 consumption={() => ceilingConsumption(s)}
                 reference={s.reference}
@@ -251,10 +254,8 @@ function CeilingList({ onCopy, onEdit, onRemove }: { onCopy: (s: CeilingSystem) 
                 onEdit={s.custom ? () => onEdit(s) : undefined}
                 onRemove={s.custom ? () => onRemove(s.id) : undefined}
               />
-            ))}
-          </section>
-        ))}
-    </>
+      )}
+    />
   );
 }
 
@@ -281,10 +282,134 @@ function BoardList() {
   );
 }
 
+type Listed = { id: string; name: string; code?: string; basic?: boolean; custom?: boolean; maker?: Maker; variants?: SystemVariant[]; category?: string; kind?: string };
+const fold = (t: string) =>
+  t
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l');
+
+/**
+ * Lista systemów w grupach: najpierw podstawowe, pozostałe po rozwinięciu.
+ * Wyszukiwarka (nazwa albo numer systemu producenta, także numery odmian) i filtr producenta.
+ */
+function GroupedSystems<T extends Listed>({ groups, render }: { groups: [string, T[]][]; render: (s: T) => ReactNode }) {
+  const [query, setQuery] = useState('');
+  const [maker, setMaker] = useState<Maker | 'all'>('all');
+  const [rest, setRest] = useState(false);
+  const all = groups.flatMap(([, l]) => l);
+  const makers = [...new Set(all.filter((s) => !s.custom).map((s) => makerOf(s)))];
+  const q = fold(query.trim());
+  const match = (s: T) =>
+    (maker === 'all' || s.custom || makerOf(s) === maker) &&
+    (!q || fold(`${s.name} ${s.code ?? ''} ${(s.variants ?? []).map((v) => v.code ?? '').join(' ')}`).includes(q));
+  const sections = (pick: (s: T) => boolean) =>
+    groups
+      .map(([g, l]) => [g, l.filter((s) => match(s) && pick(s))] as [string, T[]])
+      .filter(([, l]) => l.length)
+      .map(([g, l]) => (
+        <section key={g} className="catalog-group">
+          <h2>{g}</h2>
+          {l.map(render)}
+        </section>
+      ));
+  const otherCount = all.filter((s) => match(s) && !s.basic && !s.custom).length;
+  return (
+    <>
+      <div className="sys-filter catalog-filter">
+        <input
+          type="search"
+          className="sys-search"
+          placeholder="Szukaj: nazwa, płyta albo numer systemu (np. 3.40.05)"
+          aria-label="Szukaj systemu"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {makers.length > 1 && (
+          <Picker
+            label="Producent"
+            value={maker}
+            mode="segments"
+            options={[{ value: 'all' as Maker | 'all', label: 'Wszyscy' }, ...makers.map((m) => ({ value: m as Maker | 'all', label: MAKER_LABEL[m] }))]}
+            onChange={setMaker}
+          />
+        )}
+      </div>
+      {q ? (
+        sections(() => true)
+      ) : (
+        <>
+          <h2 className="catalog-part">Podstawowe</h2>
+          {sections((s) => !!s.basic || !!s.custom)}
+          {otherCount > 0 && (
+            <button type="button" className="sys-section sys-toggle catalog-part" aria-expanded={rest} onClick={() => setRest(!rest)}>
+              Pozostałe systemy ({otherCount})
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d={rest ? 'M7 14l5-5 5 5' : 'M7 10l5 5 5-5'} />
+              </svg>
+            </button>
+          )}
+          {rest && sections((s) => !s.basic && !s.custom)}
+        </>
+      )}
+    </>
+  );
+}
+
+/** Odmiany z karty producenta: numer systemu, płyta, słupki, wysokość, EI, akustyka */
+function VariantTable({ variants, maker }: { variants: SystemVariant[]; maker: Maker }) {
+  const has = (k: keyof SystemVariant) => variants.some((v) => v[k] !== undefined);
+  return (
+    <details className="variants">
+      <summary>
+        Odmiany z karty ({variants.length}) – {has('studSpacing') ? 'płyta, słupki, wysokość, EI' : 'płyta, EI, akustyka, grubość zabudowy'}
+      </summary>
+      <div className="variants-scroll">
+        <table className="consumption">
+          <thead>
+            <tr>
+              {has('code') && <th scope="col">{MAKER_LABEL[maker]}</th>}
+              <th scope="col">Płyta</th>
+              {has('studSpacing') && <th scope="col">Słupki</th>}
+              {has('maxHeight') && <th scope="col">Maks. wys.</th>}
+              {has('fire') && <th scope="col">EI</th>}
+              {has('ra1') && <th scope="col">RA1</th>}
+              {has('rw') && <th scope="col">Rw</th>}
+              {has('wool') && <th scope="col">Wełna</th>}
+              {has('thickness') && <th scope="col">Grubość</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {variants.map((v, i) => (
+              <tr key={i} title={v.label}>
+                {has('code') && <td>{v.code ?? '–'}</td>}
+                <td>
+                  {v.board ? boardById(v.board).short : v.label}
+                  {v.innerBoards?.length ? ` + ${v.innerBoards.map((b) => boardById(b).short).join(' / ')}` : ''}
+                </td>
+                {has('studSpacing') && <td>{v.studSpacing ? `${v.doubleStuds ? '2× ' : ''}co ${v.studSpacing} cm` : '–'}</td>}
+                {has('maxHeight') && <td>{v.maxHeight ? `${fmtNum(v.maxHeight / 100)} m` : '–'}</td>}
+                {has('fire') && <td>{v.fire ? `EI ${v.fire}` : '–'}</td>}
+                {has('ra1') && <td>{v.ra1 ? `${v.ra1} dB` : '–'}</td>}
+                {has('rw') && <td>{v.rw ? `${v.rw} dB` : '–'}</td>}
+                {has('wool') && <td>{v.wool === undefined ? '–' : v.wool === 0 ? 'bez' : `${v.wool} mm`}</td>}
+                {has('thickness') && <td>{v.thickness ? `${fmtNum(v.thickness)} mm` : '–'}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
 function SystemCard(props: {
   name: string;
   code?: string;
   custom?: boolean;
+  variants?: SystemVariant[];
+  maker?: Maker;
   info: string;
   params: [string, string][];
   consumption: () => ConsumptionLine[];
@@ -301,7 +426,7 @@ function SystemCard(props: {
         <button className="element-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
           <span>
             <h3>
-              {props.name} {props.code && <span className="badge">{props.code}</span>} {props.custom && <span className="badge custom">własny</span>}
+              {props.name} {props.code && <span className="badge">{props.code}</span>} <SourceBadge approx={props.source.approx} custom={props.custom} />
             </h3>
             <span className="muted small">{props.info}</span>
           </span>
@@ -315,7 +440,7 @@ function SystemCard(props: {
 function SystemDetails(props: Parameters<typeof SystemCard>[0]) {
   const lines = useMemo(() => props.consumption(), [props]);
   const refFor = (l: ConsumptionLine) =>
-    props.reference?.find((r) => r.product === l.key || (l.key.startsWith('board:') && /Płyta/.test(r.label)));
+    props.reference?.find((r) => r.product === l.key || (l.key.startsWith('board:') && /^Płyt/.test(r.label)));
   const unmatched = props.reference?.filter((r) => !lines.some((l) => refFor(l) === r)) ?? [];
   return (
     <div className="system-details">
@@ -327,6 +452,7 @@ function SystemDetails(props: Parameters<typeof SystemCard>[0]) {
           </div>
         ))}
       </dl>
+      {props.variants?.length ? <VariantTable variants={props.variants} maker={props.maker ?? 'rigips'} /> : null}
       <table className="consumption">
         <caption>Zużycie materiałów na 1 m²</caption>
         <thead>
@@ -614,6 +740,7 @@ function CeilingEditor({ initial, onSave, onCancel }: { initial: CeilingSystem; 
               options={[
                 { value: 'es' as HangerType, label: 'uchwyty ES', short: 'ES' },
                 { value: 'elastic' as HangerType, label: 'uchwyty elastyczne', short: 'elastyczne' },
+                { value: 'attic' as HangerType, label: 'wieszaki do poddaszy', short: 'do poddaszy' },
               ]}
               onChange={(v) => set({ hangerType: v })}
             />

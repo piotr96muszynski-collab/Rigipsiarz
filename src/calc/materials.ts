@@ -8,6 +8,7 @@ import {
   ceilingSystemById,
   wallMaxHeight,
   wallSystemById,
+  type Board,
   type CeilingSystem,
   type Product,
   type WallSystem,
@@ -94,20 +95,43 @@ export function screwFor(depthMm: number, cement = false): string {
   return `TN${len}`;
 }
 
+/** Długości wkrętów do płyt specjalnych (kalkulator Rigips) */
+const SPECIAL_SCREWS: Record<NonNullable<Board['screws']>, { prefix: string; lengths: number[]; margin?: number }> = {
+  habito: { prefix: 'HABITO', lengths: [26, 41] },
+  hartfix: { prefix: 'HARTFIX', lengths: [25, 35, 45] },
+  rigidur: { prefix: 'RIGIDUR', lengths: [30, 40], margin: 15 },
+  ridurit: { prefix: 'RIDURIT', lengths: [40, 50, 70] },
+  // płyty z matą szklaną do pomieszczeń mokrych kręci się wkrętami Aquaroc (AQ35 = wkręt 3,5×41)
+  aquaroc: { prefix: 'AQ', lengths: [25, 41] },
+};
+
+/** Wkręt dla warstwy z płyty `layer`, gdy poszycie kończy płyta `outer` (jej wkręty obowiązują w całym poszyciu) */
+export function screwForBoard(depthMm: number, layer: Board, outer: Board = layer): string {
+  const kind = outer.screws ?? layer.screws;
+  if (!kind) return screwFor(depthMm, layer.kind === 'cement');
+  const { prefix, lengths, margin = 10 } = SPECIAL_SCREWS[kind];
+  const len = lengths.find((l) => l >= depthMm + margin - 0.01) ?? lengths[lengths.length - 1];
+  return kind === 'aquaroc' ? (len <= 25 ? 'AQ25' : 'AQ35') : `${prefix}${len}`;
+}
+
+/**
+ * Płyty kolejnych warstw jednej strony, od rusztu: `innerLayers` warstw z płyty wewnętrznej
+ * (systemy z dwoma rodzajami płyt, np. PRO pod Habito), reszta z płyty wybranej w elemencie.
+ */
+export function layerBoards(sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): string[] {
+  const inner = sys.innerBoard ? Math.min(sys.layers - 1, sys.innerLayers ?? sys.layers - 1) : 0;
+  return Array.from({ length: sys.layers }, (_, i) => (i < inner ? (innerBoardId ?? sys.innerBoard!) : boardId));
+}
+
 /** Wkręty do kolejnych warstw płyt: wewnętrzne rzadziej, zewnętrzna gęsto */
-function addBoardScrews(
-  req: Requirement,
-  area: number,
-  layers: number,
-  boardId: string,
-  outerPerM2: number,
-  innerPerM2: number,
-) {
-  const b = boardById(boardId);
-  for (let i = 1; i <= layers; i++) {
-    const k = i === layers ? outerPerM2 : innerPerM2;
-    add(req.counts, screwFor(b.thickness * i, b.kind === 'cement'), area * k);
-  }
+function addBoardScrews(req: Requirement, area: number, boards: string[], outerPerM2: number, innerPerM2: number) {
+  const outer = boardById(boards[boards.length - 1]);
+  let depth = 0;
+  boards.forEach((id, i) => {
+    const b = boardById(id);
+    depth += b.thickness;
+    add(req.counts, screwForBoard(depth, b, outer), area * (i === boards.length - 1 ? outerPerM2 : innerPerM2));
+  });
 }
 
 /**
@@ -130,7 +154,7 @@ function addJointing(req: Requirement, area: number, layers: number, boardId: st
 const WALL_SCREWS_OUTER = 12;
 const WALL_SCREWS_INNER = 4.5;
 /** Klej gipsowy pod płytę klejoną (placki), kg/m² – orientacyjnie */
-const GLUE_PER_M2 = 4;
+const GLUE_PER_M2 = 5; // kalkulator Rigips 3.10.00: 500 kg na 100 m²
 
 export interface WallBreakdown {
   lengthM: number;
@@ -191,10 +215,10 @@ export function wallRequirement(
   const s = w.studSpacing / 100;
   const warnings: string[] = [];
 
-  const maxH = wallMaxHeight(sys, w.studSpacing);
+  const maxH = wallMaxHeight(sys, w.studSpacing, { board: w.boardId, doubleStuds: w.doubleStuds });
   if (maxH && w.height > maxH + 0.5)
     warnings.push(
-      `Wysokość ${fmtLen(H)} m przekracza ${fmtLen(maxH / 100)} m dopuszczalne dla tego systemu przy rozstawie ${w.studSpacing} cm – zagęść słupki lub wybierz mocniejszy system.`,
+      `Wysokość ${fmtLen(H)} m przekracza ${fmtLen(maxH / 100)} m dopuszczalne dla tego systemu przy rozstawie ${w.studSpacing} cm${w.doubleStuds ? ' i słupkach podwójnych' : ''} – zagęść słupki${w.doubleStuds ? '' : ', zastosuj słupki podwójne'} lub wybierz mocniejszy system.`,
     );
 
   // Otwory przycięte do ściany, w metrach
@@ -212,7 +236,9 @@ export function wallRequirement(
 
   const isCD = sys.frame === 'cd-lining';
   const rows = sys.frame === 'glued' ? 0 : sys.frame === 'double' || sys.frame === 'separate' ? 2 : 1;
-  const stud = isCD ? 'CD60' : `CW${sys.profile}`;
+  const stud = isCD ? 'CD60' : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`] ? `CW${sys.profile}AKU` : `CW${sys.profile}`;
+  // słupki podwójne: dwa CW zespolone wkrętami (kalkulator Rigips: 8 pchełek/m² przy 1,8 m pary słupków na m²)
+  const doubled = !!w.doubleStuds && !isCD && rows > 0;
   const track = isCD ? 'UD30' : `UW${sys.profile}`;
   const tape = isCD ? 'TASMA_USZ30' : TAPE_FOR_PROFILE[sys.profile];
   const bracketM = (sys.bracketSpacing ?? 100) / 100;
@@ -233,6 +259,15 @@ export function wallRequirement(
     }
   };
 
+  /** Słupek w polu ściany: pojedynczy albo para zespolona pchełkami */
+  const addFieldStud = (len: number) => {
+    addStud(stud, len);
+    if (doubled && len > 0.01) {
+      addStud(stud, len);
+      add(req.counts, 'LN9', Math.ceil(len * 4.4));
+    }
+  };
+
   // --- Ruszt (jeden lub dwa rzędy) ---
   const studPositions: number[] = [];
   const jambPositions: number[] = [];
@@ -245,12 +280,12 @@ export function wallRequirement(
     for (const x of positions) {
       const op = openings.find((o) => x > o.x0 - 0.05 && x < o.x1 + 0.05);
       if (!op) {
-        addStud(stud, H);
+        addFieldStud(H);
         if (row === 0) studPositions.push(x);
       } else if (x > op.x0 + 0.05 && x < op.x1 - 0.05) {
         // słupek w świetle otworu → krótkie odcinki nad i pod otworem
-        addStud(stud, H - op.top);
-        addStud(stud, op.sill);
+        addFieldStud(H - op.top);
+        addFieldStud(op.sill);
         if (row === 0) studPositions.push(x);
       }
       // słupki pokrywające się z ościeżem zastępuje słupek ościeżnicowy
@@ -310,27 +345,30 @@ export function wallRequirement(
   // --- Płyty ---
   const openingArea = openings.reduce((a, o) => a + o.w * o.h, 0);
   const net = Math.max(0, L * H - openingArea);
-  const sheetLen = pickBoardLength(w.boardId, w.height);
-  const sheetKey = `${w.boardId}|${sheetLen}`;
+  const boards = layerBoards(sys, w.boardId, w.innerBoardId);
+  const keyOf = (layer: number) => `${boards[layer] ?? w.boardId}|${pickBoardLength(boards[layer] ?? w.boardId, w.height)}`;
+  const sheetKey = keyOf(sys.layers - 1);
   // każda warstwa na swoją długość z modelu styków: w narożniku płyta zachodzi na czoło sąsiedniej
   // ściany albo dochodzi do jej płyty, w trójniku i przy okładzinie muru kończy się na ich licu
-  let boardsArea = 0;
+  const areaByKey: Record<string, number> = {};
   let cutWaste = 0;
   if (layout) {
     // z rozkładu płyt (ten sam co na rysunku i w 3D): elementy po wycięciu otworów
     // + odpad z wycięć L/U, z którego nie da się już nic przykręcić (pas węższy niż 30 cm)
     for (const face of layout.faces)
       for (const pc of face.pieces) {
-        boardsArea += pieceArea(pc);
+        add(areaByKey, keyOf(face.layer), pieceArea(pc));
         for (const n of pc.notches ?? []) if (Math.min(n.x1 - n.x0, n.y1 - n.y0) < OFFCUT_MIN) cutWaste += (n.x1 - n.x0) * (n.y1 - n.y0);
       }
   } else
     for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1)
       for (let layer = 0; layer < sys.layers; layer++) {
         const [x0, x1] = m ? partRange(m, w, L, { kind: 'board', side, layer }) : [0, L];
-        boardsArea += Math.max(0, (x1 - x0) * H - openingArea);
+        add(areaByKey, keyOf(layer), Math.max(0, (x1 - x0) * H - openingArea));
       }
-  add(req.boardArea, sheetKey, boardsArea + cutWaste);
+  for (const [k, a] of Object.entries(areaByKey)) add(req.boardArea, k, a);
+  // odpad z wycięć liczymy do płyty zewnętrznej
+  if (cutWaste > 0) add(req.boardArea, sheetKey, cutWaste);
   if (cutWaste > 0) add((req.boardCutWaste ??= {}), sheetKey, cutWaste);
   const faceArea = net * sys.sides;
 
@@ -338,8 +376,9 @@ export function wallRequirement(
   if (sys.frame === 'glued') {
     add(req.kg, 'KLEJ', faceArea * GLUE_PER_M2);
   } else {
-    const f = 0.6 / Math.max(0.2, s);
-    addBoardScrews(req, faceArea, sys.layers, w.boardId, WALL_SCREWS_OUTER * f, WALL_SCREWS_INNER * f);
+    // gęstszy ruszt i słupki podwójne = proporcjonalnie więcej wkrętów (płytę kręcimy do obu słupków pary)
+    const f = (0.6 / Math.max(0.2, s)) * (doubled ? 2 : 1);
+    addBoardScrews(req, faceArea, boards, WALL_SCREWS_OUTER * f, WALL_SCREWS_INNER * f);
   }
 
   // --- Spoinowanie ---
@@ -553,7 +592,7 @@ export function ceilingRequirement(
       }
       const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100) - 1e-9));
       if (sys.kind === 'direct') {
-        add(req.counts, sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : 'WIESZAK_ES', hangers);
+        add(req.counts, sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : sys.hangerType === 'attic' ? 'WIESZAK_PODD' : 'WIESZAK_ES', hangers);
         add(req.counts, 'LN9', hangers * 4);
       } else {
         add(req.counts, 'WIESZAK_NONIUSZ', hangers);
@@ -587,8 +626,9 @@ export function ceilingRequirement(
   const bb = bbox(c.points);
   const longSide = Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY);
   const sheetLen = pickBoardLength(c.boardId, Math.min(longSide, 300));
-  add(req.boardArea, `${c.boardId}|${sheetLen}`, A * sys.layers);
-  addBoardScrews(req, A, sys.layers, c.boardId, sys.screwsOuter, sys.screwsInner);
+  const boards = layerBoards(sys, c.boardId);
+  for (const id of boards) add(req.boardArea, `${id}|${id === c.boardId ? sheetLen : pickBoardLength(id, Math.min(longSide, 300))}`, A);
+  addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
   addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin);
   const ins = ceilingInsulation(c);
   if (ins) add(req.area, `WELNA${ins.thickness}`, A * ins.layers);

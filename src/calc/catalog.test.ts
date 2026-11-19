@@ -5,6 +5,7 @@ import {
   PRODUCTS,
   PRODUCT_ALIASES,
   WALL_SYSTEMS,
+  WALL_SYSTEM_ALIASES,
   allWallSystems,
   ceilingSystemById,
   customSystems,
@@ -27,13 +28,41 @@ import type { Project } from '../model/types';
  * pomieszczenia albo karta przyjmuje inny układ niż element wzorcowy).
  */
 const KNOWN_DIFF = new Set([
-  'W-2CW50-2:TASMA_USZ50', // karta liczy taśmę także między rusztami
-  'S-PODD-1:CD60', // karta przyjmuje gęstszy układ CD na poddaszu
+  // kalkulator Rigips powtarza dla 3 warstw liczbę wieszaków sufitu jednowarstwowego (1,2 szt./m²), choć tabela podaje wieszaki co 60 cm
+  'S-4.05.241AKU-3:WIESZAK_NONIUSZ',
+  'S-4.05.241AKU-3:ZAWLECZKA',
+  'S-4.05.23AKU-2:MASA', // kalkulator podaje masę jak dla jednej warstwy
+  'S-CD-2P-2:LACZNIK_KRZ', // kalkulator liczy profile montażowe co 40 cm, tabela systemu dopuszcza 50 cm
+  'S-CD-2P-2:CD60',
   'S-UA-1:UD30', // pas o rozpiętości 2,2 m ma duży obwód na m²
   'S-UA-1:CD60',
   'S-UA-1:KATOWNIK_UA',
   'S-UA-1:LACZNIK_UA_CD',
 ]);
+/** Wkręty do płyt specjalnych (Habito, HartFix, Rigidur, Ridurit, Aquaroc) */
+const SPECIAL_SCREW = /^(HABITO|HARTFIX|RIGIDUR|RIDURIT|AQ)\d/;
+/**
+ * Różnice między kalkulatorem Rigips a aplikacją, które zostają świadomie:
+ * - podwójny ruszt: kalkulator liczy taśmę uszczelniającą także między rusztami (4,7 zamiast 2,2 mb/m²),
+ * - obudowy szachtów: kalkulator podaje 2,29 kołka/m² (ściany działowe 1,5) – aplikacja kotwi UW co 100 cm,
+ * - okładziny na CD 60: kalkulator podaje 0,35 mb UD 30 i 1,5 uchwytu na m² (stąd też mniej kołków i pchełek); aplikacja liczy UD przy posadzce
+ *   i stropie oraz uchwyty co 100 cm na każdym profilu (zaokrąglone w górę),
+ * - poszycia 3- i 4-warstwowe: kalkulator podaje masę jak dla dwóch warstw i inne zagęszczenie wkrętów
+ *   warstw środkowych; aplikacja liczy każdą warstwę wewnętrzną tak samo,
+ * - płyty specjalne w kilku warstwach: kalkulator przyjmuje gęstsze wkręcanie warstw wewnętrznych
+ *   (np. Aquaroc 7,5 szt./m² strony) – aplikacja liczy je jak dla płyt PRO (4,5 szt./m²).
+ */
+function rigipsCalculatorDiff(s: { id: string; layers: number; frame?: string; category?: string; kind?: string; attic?: boolean; hangerType?: string }, product: string): boolean {
+  // poddasza i okładziny na uchwytach elastycznych: kalkulator przyjmuje 3,2 mb CD i 4 uchwyty na m² (krótkie pola skosów),
+  // aplikacja liczy profile i uchwyty z rozstawów podanych w tabeli systemu (40 cm i 100 cm)
+  if (s.kind === 'direct' && (s.attic || s.hangerType === 'elastic') && ['CD60', 'UCHWYT_ELAST', 'WIESZAK_ES', 'WIESZAK_PODD', 'LN9'].includes(product)) return true;
+  if (s.frame === 'double' && product.startsWith('TASMA_USZ')) return true;
+  if (s.category === 'szacht' && product === 'KOLEK') return true;
+  if (s.frame === 'cd-lining' && ['UD30', 'WIESZAK_ES', 'LN9', 'KOLEK', 'TASMA_USZ30'].includes(product)) return true;
+  if (s.layers >= 3 && (product === 'MASA' || /^TN(35|45|55|70)$/.test(product) || SPECIAL_SCREW.test(product))) return true;
+  if (s.layers >= 2 && SPECIAL_SCREW.test(product)) return true;
+  return false;
+}
 /**
  * ATLAS M-System 3G, ściany: karta podaje wydajność opakowania dla dużej powierzchni
  * (sama siatka), a aplikacja dolicza rzędy i kolumny przy krawędziach płyt – na ścianie
@@ -44,10 +73,12 @@ const ATLAS_WALL_EDGE = (id: string) => id.startsWith('A-W-');
 const geometryDependent = (id: string, product?: string) =>
   product === 'LACZNIK_WZDL' || (id.startsWith('S-CW') && (product?.startsWith('UW') || product === 'LN9'));
 
-function compare(id: string, lines: ConsumptionLine[], ref: RefLine[], tolerance = 0.25) {
+function compare(sys: WallSystem | CeilingSystem, lines: ConsumptionLine[], ref: RefLine[], tolerance = 0.25) {
+  const id = sys.id;
   const checked: string[] = [];
   for (const r of ref) {
     if (!r.product || KNOWN_DIFF.has(`${id}:${r.product}`) || geometryDependent(id, r.product) || ATLAS_WALL_EDGE(id)) continue;
+    if (!sys.maker && rigipsCalculatorDiff(sys, r.product)) continue;
     const got = lines.find((l) => l.key === r.product);
     if (!got) continue; // np. wkręty przy innej płycie – sprawdzane osobno
     checked.push(r.product);
@@ -82,12 +113,16 @@ describe('katalog – spójność danych', () => {
 describe('zużycie na m² zgodne z kartami Rigips (±25%)', () => {
   for (const s of WALL_SYSTEMS.filter((x) => x.reference))
     it(`ściana ${s.code ?? ''} ${s.name}`, () => {
-      expect(compare(s.id, wallConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(ATLAS_WALL_EDGE(s.id) ? 0 : 6);
+      // płyta klejona ma tylko klej, masę i taśmę; systemy z płytami specjalnymi mają mniej wspólnych pozycji
+      const min = ATLAS_WALL_EDGE(s.id) ? 0 : /^R[BF]/.test(s.defaultBoard) && !s.innerBoard && s.frame !== 'glued' && s.frame !== 'cd-lining' && s.layers < 3 ? 5 : 3;
+      expect(compare(s, wallConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(min);
     });
   for (const s of CEILING_SYSTEMS.filter((x) => x.reference))
     it(`sufit ${s.code ?? ''} ${s.name}`, () => {
       // masa wykończeniowa z karty (gładź) jest poza zakresem – spoinowanie liczymy do Q1
-      expect(compare(s.id, ceilingConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(s.kind === 'point-fix' ? 1 : 3);
+      // płyty specjalne na uchwytach bezpośrednich mają mało wspólnych pozycji (inne wkręty, masy bez porównania)
+      const special = !s.maker && s.kind === 'direct' && !/^R[BF]/.test(s.defaultBoard);
+      expect(compare(s, ceilingConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(s.kind === 'point-fix' ? 1 : special ? 2 : 3);
     });
 });
 
@@ -103,7 +138,7 @@ describe('ściany – dokładne wartości na m²', () => {
     expect(q(c, 'TASMA_SPOIN')).toBeCloseTo(2.8);
   });
   it('rozstaw 40 cm zwiększa wkręty o 50% (3.40.051: 14 + 36 szt./m²)', () => {
-    const c = wallConsumption(wallSystemById('W-CW75-2-40'));
+    const c = wallConsumption(wallSystemById('W-CW75-2'), 40);
     expect(q(c, 'TN25')).toBeCloseTo(13.5);
     expect(q(c, 'TN35')).toBeCloseTo(36);
   });
@@ -130,10 +165,10 @@ describe('ściany – dokładne wartości na m²', () => {
   it('płyta klejona: tylko płyta, klej i spoinowanie – bez profili i wkrętów', () => {
     const c = wallConsumption(wallSystemById('O-KLEJ'));
     expect(c.map((l) => l.key).sort()).toEqual(['KLEJ', 'MASA', 'TASMA_SPOIN', 'board:RB12.5']);
-    expect(q(c, 'KLEJ')).toBeCloseTo(4);
+    expect(q(c, 'KLEJ')).toBeCloseTo(5); // kalkulator Rigips 3.10.00: 500 kg na 100 m²
   });
   it('Aquaroc: wkręty i masa do płyt cementowych', () => {
-    const c = wallConsumption(wallSystemById('W-CW75-1AQ'));
+    const c = wallConsumption(wallSystemById('W-CW75-1AQUAROC'));
     expect(q(c, 'AQ25')).toBeGreaterThan(0);
     expect(q(c, 'TN25')).toBe(0);
     expect(q(c, 'MASA_AQ')).toBeGreaterThan(0);
@@ -167,8 +202,12 @@ describe('ostrzeżenia o granicach systemu', () => {
     expect(wallRequirement(ok.p, ok.w, analyzeJunctions(ok.p).get(ok.w.id)!).info.warnings).toHaveLength(0);
   });
   it('maks. wysokość dla gęstszego rozstawu bierze wartość z rzadszego', () => {
-    expect(wallMaxHeight(wallSystemById('W-CW75-1'), 40)).toBe(400);
+    // 3.40.02: 4,50 m przy 60 cm; 3.40.021: 6,00 m przy 40 cm; 3.40.05/.051: 5,50 i 6,50 m
+    expect(wallMaxHeight(wallSystemById('W-CW75-1'), 60)).toBe(450);
+    expect(wallMaxHeight(wallSystemById('W-CW75-1'), 40)).toBe(600);
     expect(wallMaxHeight(wallSystemById('W-CW75-2'), 40)).toBe(650);
+    // okładzina wolnostojąca 3.22.00 ma w karcie tylko rozstaw 60 cm – gęstszy nie obniża wysokości
+    expect(wallMaxHeight(wallSystemById('O-CW50-1'), 40)).toBe(300);
   });
   it('rozpiętości sufitu przęsłowego CW wg tabeli 4.05.71', () => {
     expect(cwSpanLimit(75, 40, 1)).toBe(309);
@@ -206,13 +245,13 @@ describe('sufity – rusztowanie i akcesoria', () => {
     p.ceilings = [c];
     return { p, c };
   };
-  it('jednopoziomowy 4.05.25: nośne co 120 cm, montażowe co 40 cm, po 2 łączniki na skrzyżowanie', () => {
+  it('jednopoziomowy 4.05.25: nośne co 120 cm, montażowe co 50 cm, po 2 łączniki na skrzyżowanie', () => {
     const { p, c } = room('S-CD-1P-1');
     const grid = ceilingGrid(c);
     expect(grid.filter((g) => g.level === 'main')).toHaveLength(3); // y = 40, 160, 280
-    expect(grid.filter((g) => g.level === 'secondary')).toHaveLength(9); // x = 40..360
+    expect(grid.filter((g) => g.level === 'secondary')).toHaveLength(7); // x = 50..350
     const t = calculateProject(p).total;
-    expect(t.find((l) => l.key === 'LACZNIK_JEDNO')!.qty).toBe(54);
+    expect(t.find((l) => l.key === 'LACZNIK_JEDNO')!.qty).toBe(42);
   });
   it('sufit przęsłowy UA: bez wieszaków, kątowniki na końcach UA, łączniki UA/CD', () => {
     const { p } = room('S-UA-1');
@@ -229,16 +268,31 @@ describe('sufity – rusztowanie i akcesoria', () => {
     expect(keys.some((k) => k.startsWith('bar-UW75'))).toBe(true);
     expect(keys.some((k) => k.startsWith('bar-CD60') || k.startsWith('bar-UD30'))).toBe(false);
   });
-  it('poddasze: uchwyty elastyczne zamiast wieszaków', () => {
-    const { p } = room('S-PODD-1');
-    const keys = calculateProject(p).total.map((l) => l.key);
-    expect(keys).toContain('UCHWYT_ELAST');
-    expect(keys).not.toContain('WIESZAK_ES');
+  it('poddasze: uchwyty elastyczne, ES albo wieszaki do poddaszy – zależnie od karty', () => {
+    const keys = (id: string) => calculateProject(room(id).p).total.map((l) => l.key);
+    expect(keys('S-PODD-1')).toContain('UCHWYT_ELAST');
+    expect(keys('S-PODD-1')).not.toContain('WIESZAK_ES');
+    expect(keys('S-4.70.04-1')).toContain('WIESZAK_PODD');
+    expect(keys('S-4.70.05-1')).toContain('WIESZAK_ES');
   });
   it('3 warstwy płyt: wkręty 25, 35 i 55 mm', () => {
     const c = ceilingConsumption(ceilingSystemById('S-CD-2P-3F'));
     expect(c.find((l) => l.key === 'TN55')!.qty).toBeCloseTo(17);
-    expect(c.find((l) => l.key === 'board:RF12.5')!.qty).toBeCloseTo(3);
+    expect(c.find((l) => l.key === 'board:RFP12.5')!.qty).toBeCloseTo(3);
+  });
+  it('4.10.25 (EI 120): dwie warstwy 15 mm pod dwiema 12,5 mm – każda grubość liczona osobno', () => {
+    const sys = ceilingSystemById('S-4.10.25-4');
+    expect(sys.variants!.every((v) => v.fire === 120)).toBe(true);
+    const c = ceilingConsumption(sys);
+    expect(c.find((l) => l.key === 'board:RFP15')!.qty).toBeCloseTo(2);
+    expect(c.find((l) => l.key === 'board:RFP12.5')!.qty).toBeCloseTo(2);
+  });
+  it('sufity z kart Rigips: rozstawy z tabeli systemu, dawne identyfikatory zachowane', () => {
+    expect(ceilingSystemById('S-CD-2P-1')).toMatchObject({ code: '4.05.24', mainSpacing: 100, secondarySpacing: 50, hangerSpacing: 90 });
+    expect(ceilingSystemById('S-CD-2P-3F')).toMatchObject({ code: '4.10.19', mainSpacing: 75, secondarySpacing: 40, hangerSpacing: 60 });
+    expect(ceilingSystemById('S-4.10.18-2')).toMatchObject({ kind: 'one-level', mainSpacing: 120, secondarySpacing: 40, hangerSpacing: 65, defaultBoard: 'RFP15' });
+    expect(ceilingSystemById('S-PODD-1')).toMatchObject({ code: '4.70.06', attic: true, hangerType: 'elastic', hangerSpacing: 100 });
+    expect(ceilingSystemById('S-4.05.29-2').attic).toBe(false);
   });
 });
 
@@ -273,8 +327,14 @@ describe('zgodność ze starymi zapisami', () => {
     expect(migrateKeys({ 'bar-UD27-3': 12.5, KOLEK: 30 }, PRODUCT_ALIASES)).toEqual({ 'bar-UD30-3': 12.5, KOLEK: 30 });
   });
   it('wszystkie dawne systemy nadal istnieją', () => {
-    for (const id of ['W-CW50-1', 'W-CW50-2', 'W-CW75-1', 'W-CW75-2', 'W-CW100-1', 'W-CW100-2', 'W-CW75-2RF', 'W-CW75-2RBI', 'O-CW50-1', 'O-CW50-2'])
+    for (const id of ['W-CW50-1', 'W-CW50-2', 'W-CW75-1', 'W-CW75-2', 'W-CW100-1', 'W-CW100-2', 'O-CW50-1', 'O-CW50-2', 'O-CD-1', 'O-KLEJ', 'W-INST-CW50-2'])
       expect(wallSystemById(id).id).toBe(id);
-    for (const id of ['S-CD-2P-1', 'S-CD-2P-2', 'S-CD-1P-1', 'S-ES-1', 'S-ES-2']) expect(ceilingSystemById(id).id).toBe(id);
+    // odmiany, które były osobnymi pozycjami, prowadzą teraz do konstrukcji z odmianami z karty
+    for (const [old, now] of Object.entries(WALL_SYSTEM_ALIASES)) {
+      expect(WALL_SYSTEMS.some((s) => s.id === old), old).toBe(false);
+      expect(wallSystemById(old).id).toBe(now);
+    }
+    for (const id of ['S-CD-2P-1', 'S-CD-2P-2', 'S-CD-2P-1F', 'S-CD-2P-2F', 'S-CD-2P-2x15F', 'S-CD-2P-3F', 'S-CD-1P-1', 'S-CD-1P-2', 'S-CD-1P-1F', 'S-CD-1P-2F', 'S-ES-1', 'S-ES-2', 'S-PODD-1', 'S-PODD-2', 'S-UA-1', 'S-CW75-1'])
+      expect(ceilingSystemById(id).id).toBe(id);
   });
 });

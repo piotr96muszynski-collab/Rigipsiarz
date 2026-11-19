@@ -12,7 +12,8 @@ import {
 } from '../calc/materials';
 import { bbox, dist, interiorSide, isNewWall, wallEnds } from '../geometry/geometry';
 import { createCeiling, createLining, createOpening } from '../model/factory';
-import { addWall, deleteWall, setWallLength, setWallSystem } from '../model/ops';
+import { addWall, applyWallChoice, deleteWall, setWallLength, setWallSystem } from '../model/ops';
+import { WallVariantInfo } from './VariantInfo';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { DimInput } from './DimInput';
 import { Picker, type PickOption } from './Picker';
@@ -182,7 +183,9 @@ export function WallEditor({
           <WallSystemSelect
             id={`sys-${wall.id}`}
             value={wall.systemId}
+            heightCm={wall.height}
             onChange={(id) => edit((w) => setWallSystem(w, id))}
+            onPick={(pick) => edit((w) => applyWallChoice(w, pick))}
           />
           <small className="hint">{sys.info}</small>
         </div>
@@ -191,6 +194,24 @@ export function WallEditor({
           <Picker id={`bd-${wall.id}`} label="Płyta" value={wall.boardId} options={BOARD_OPTIONS()} onChange={(v) => edit((w) => void (w.boardId = v))} />
         </div>
       </div>
+
+      <WallVariantInfo
+        idBase={wall.id}
+        sys={sys}
+        boardId={wall.boardId}
+        studSpacing={wall.studSpacing}
+        doubleStuds={wall.doubleStuds}
+        innerBoardId={wall.innerBoardId}
+        heightCm={wall.height}
+        onApply={(pick) => edit((w) => applyWallChoice(w, pick))}
+        onDouble={(on) =>
+          edit((w) => {
+            if (on) w.doubleStuds = true;
+            else delete w.doubleStuds;
+          })
+        }
+        onInner={(id) => edit((w) => void (w.innerBoardId = id))}
+      />
 
       <Warnings items={info?.warnings} />
 
@@ -399,6 +420,13 @@ export function CeilingEditor({
                 c.boardId = s.defaultBoard;
               })
             }
+            spanCm={Math.min(b.maxX - b.minX, b.maxY - b.minY)}
+            onPick={(pick) =>
+              edit((c) => {
+                c.systemId = pick.system.id;
+                c.boardId = pick.boardId;
+              })
+            }
           />
           <small className="hint">{sys.info}</small>
         </div>
@@ -604,8 +632,11 @@ function LiningEditor({
                     l.systemId = s.id;
                     l.boardId = s.defaultBoard;
                     l.studSpacing = s.studSpacing;
+                    delete l.doubleStuds;
+                    delete l.innerBoardId;
                   })
                 }
+                onPick={(pick) => onEdit((l) => applyWallChoice(l, pick))}
               />
               <small className="hint">{sys.info}</small>
             </div>

@@ -215,7 +215,7 @@ function Home({
           </button>
           <button className="tile" onClick={onOpenCatalog}>
             <strong>Katalog systemów</strong>
-            <span>Ściany i sufity Rigips oraz ATLAS M-System 3G, zużycie na m², systemy własne</span>
+            <span>Ściany i sufity Rigips, Norgips i ATLAS M-System 3G, zużycie na m², systemy własne</span>
           </button>
         </div>
       )}
