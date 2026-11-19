@@ -74,8 +74,22 @@ export function throughPair(center: Point, list: Wall[], far: (w: Wall) => Point
   return best;
 }
 
+/**
+ * Pierwszeństwo ścian w połączeniach: wcześniej narysowana (niższa pozycja na liście ścian projektu)
+ * jest „ciągła”. Nie porównujemy losowych id – inaczej ten sam projekt z innymi id dawał inne ilości.
+ */
+export function wallPrecedes(p: Project, w1: Wall, w2: Wall): boolean {
+  const i1 = p.walls.indexOf(w1);
+  const i2 = p.walls.indexOf(w2);
+  if (i1 !== i2) return i1 >= 0 && (i2 < 0 || i1 < i2);
+  return w1.id < w2.id;
+}
+
+/** Pierwsza wg pierwszeństwa ściana z listy */
+export const firstWall = (p: Project, list: Wall[]) => list.reduce((best, w) => (wallPrecedes(p, w, best) ? w : best));
+
 /** Ściana, która w narożniku L przechodzi do zewnętrznego lica (druga do niej dochodzi) */
-export const cornerThrough = (w1: Wall, w2: Wall) => (w1.id < w2.id ? w1 : w2);
+export const cornerThrough = (p: Project, w1: Wall, w2: Wall) => (wallPrecedes(p, w2, w1) ? w2 : w1);
 
 /**
  * Analiza połączeń ścian. Reguły (uproszczone wg detali Rigips):
@@ -110,7 +124,7 @@ export function analyzeJunctions(p: Project): Map<Id, WallJunctions> {
 
   const other = (w: Wall, nid: Id) => nodes.get(w.a === nid ? w.b : w.a)!;
   const throughOwner = (nid: Id, node: Point, list: Wall[]) =>
-    throughPair(node, list, (x) => other(x, nid)).sort((x, y) => (x.id < y.id ? -1 : 1))[0];
+    firstWall(p, throughPair(node, list, (x) => other(x, nid)));
 
   for (const w of fresh) {
     const info = result.get(w.id)!;
@@ -143,15 +157,15 @@ export function analyzeJunctions(p: Project): Map<Id, WallJunctions> {
           kind = 'inline';
         } else {
           kind = 'corner';
-          // dodatkowy słupek i narożnik liczymy tylko raz – przypisujemy ścianie o „mniejszym” id
-          if (w.id < connected[0].id) {
+          // dodatkowy słupek i narożnik liczymy tylko raz – przypisujemy ścianie ciągłej (wcześniej narysowanej)
+          if (wallPrecedes(p, w, connected[0])) {
             info.extraStuds += 1;
             info.externalEdges += 1;
           }
         }
       } else {
         kind = connected.length === 2 ? 'tee-through' : 'cross';
-        // dodatkowe słupki dostaje ściana ciągła (z pary współliniowej – ta o mniejszym id)
+        // dodatkowe słupki dostaje ściana ciągła (z pary współliniowej – ta wcześniej narysowana)
         if (throughOwner(nid, node, [w, ...connected]).id === w.id) info.extraStuds += kind === 'cross' ? 2 : 1;
       }
       if (end === 'a') info.endA = kind;

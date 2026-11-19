@@ -234,7 +234,7 @@ export function analyzeJoints(p: Project): Joint[] {
       const twoSided = list.some((w) => sysOf(w).sides === 2);
       if (twoSided) j.outer = edges(j, 'outer', 'external', [H], odd);
       j.inner = edges(j, 'inner', 'internal', [H], odd);
-      const A = cornerThrough(list[0], list[1]);
+      const A = cornerThrough(p, list[0], list[1]);
       const B = A === list[0] ? list[1] : list[0];
       const ia = p.walls.indexOf(A) + 1;
       const ib = p.walls.indexOf(B) + 1;
