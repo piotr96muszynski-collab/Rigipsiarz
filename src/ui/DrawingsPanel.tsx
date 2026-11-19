@@ -346,6 +346,12 @@ function SheetBody({ l, sys, name, req }: { l: WallLayout; sys: WallSystem; name
     <>
       {l.frame === 'glued' ? (
         <p className="small">Płyty klejone do ściany na placki z kleju gipsowego – bez rusztu.</p>
+      ) : l.frame === 'panel' ? (
+        <p className="small">
+          Bez słupków: {l.studLabel} {sys.panel?.edgeSides === 'all' ? 'po obwodzie (przy ścianach, posadzce i stropie)' : 'przy ścianach po obu stronach'}, kołki co{' '}
+          {sys.panel?.anchorSpacing} cm. Płyty poziomo, każda w jednym kawałku od ściany do ściany; warstwy skręcone ze sobą, styki poziome warstw
+          przesunięte o pół płyty.
+        </p>
       ) : l.frame === 'point-fix' ? (
         <>
           <h4>Rozstaw łączników talerzykowych</h4>

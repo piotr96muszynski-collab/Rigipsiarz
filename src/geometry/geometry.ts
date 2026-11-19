@@ -323,3 +323,50 @@ export function existingRooms(p: Project): Point[][] {
     }
   return faces;
 }
+
+/**
+ * Przedłużenie muru istniejącej ściany za węzeł w narożniku obrysu, cm (wzdłuż osi ściany).
+ * Linia ściany to lico od strony pomieszczenia, mur leży na zewnątrz, więc:
+ * - narożnik wypukły (mur po zewnętrznej stronie kąta): mur dochodzi do zewnętrznego lica
+ *   drugiej ściany – przedłużenie o jej grubość,
+ * - narożnik wklęsły (druga ściana biegnie w stronę muru, np. wewnętrzny róg pokoju w kształcie L):
+ *   mur kończy się w węźle, na licu drugiej ściany – przedłużenie 0,
+ * - ściany w jednej linii: koniec w węźle.
+ * `null` = w węźle nie ma innej istniejącej ściany (wolny koniec) albo nie wiadomo, gdzie leży mur.
+ */
+export function masonryEndExtension(
+  p: Project,
+  w: Wall,
+  end: 'a' | 'b',
+  inner: 1 | -1 | 0,
+  nodes = nodeMap(p),
+): number | null {
+  if (!inner) return null;
+  const nid = end === 'a' ? w.a : w.b;
+  const A = nodes.get(w.a);
+  const B = nodes.get(w.b);
+  if (!A || !B) return null;
+  const L = dist(A, B);
+  if (L < 1e-6) return null;
+  // kierunek od węzła w głąb ściany i normalna w stronę muru
+  const s = end === 'a' ? 1 : -1;
+  const u = { x: ((B.x - A.x) / L) * s, y: ((B.y - A.y) / L) * s };
+  const nx = -(B.y - A.y) / L;
+  const ny = (B.x - A.x) / L;
+  const m = { x: -inner * nx, y: -inner * ny };
+  let best: { sin: number; ext: number } | null = null;
+  for (const o of p.walls) {
+    if (o.id === w.id || isNewWall(o) || (o.a !== nid && o.b !== nid)) continue;
+    const N = nodes.get(nid);
+    const F = nodes.get(o.a === nid ? o.b : o.a);
+    if (!N || !F) continue;
+    const Lo = dist(N, F);
+    if (Lo < 1e-6) continue;
+    const d = { x: (F.x - N.x) / Lo, y: (F.y - N.y) / Lo };
+    const sin = Math.abs(u.x * d.y - u.y * d.x);
+    // w jednej linii – koniec w węźle
+    const ext = sin < 0.2 ? 0 : d.x * m.x + d.y * m.y > 0 ? 0 : (o.thickness ?? 25) / sin;
+    if (!best || sin > best.sin) best = { sin, ext };
+  }
+  return best ? best.ext : null;
+}

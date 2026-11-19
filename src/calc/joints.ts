@@ -6,7 +6,7 @@
 // Dodatkowe słupki CW w narożnikach i trójnikach dolicza ściana (wallRequirement),
 // tutaj są tylko opisane, żeby było widać, skąd się biorą.
 
-import { HAT_MM, midBoardMm, sideLayers, sideStackMm, wallBoardsMm, wallSystemById, type WallSystem } from '../catalog/rigips';
+import { HAT_MM, panelEdgeLabel, midBoardMm, sideLayers, sideStackMm, wallBoardsMm, wallSystemById, type WallSystem } from '../catalog/rigips';
 import {
   ACRYLIC_M_PER_TUBE,
   compoundById,
@@ -94,7 +94,9 @@ export function wallThicknessMm(sys: WallSystem, boardId: string, innerBoardId?:
             ? 27
             : sys.frame === 'hat-lining'
               ? HAT_MM
-              : 10;
+              : sys.frame === 'panel'
+                ? 0
+                : 10;
   return core + wallBoardsMm(sys, { boardId, innerBoardId, sideBBoards });
 }
 
@@ -210,7 +212,7 @@ export function analyzeJoints(p: Project): Joint[] {
       const Hw = w.height / 100;
       if (free) {
         j.outer = edges(j, 'outer', 'external', Array(sys.sides).fill(Hw), false);
-        if (sys.frame !== 'glued') {
+        if (sys.frame !== 'glued' && sys.frame !== 'panel') {
           const thick = wallThicknessMm(sys, w.boardId, w.innerBoardId, w.sideBBoards) / 1000;
           const key = `${w.boardId}|${pickBoardLength(w.boardId, w.height)}`;
           // pasek na czole: tyle warstw, ile ma grubsza strona
@@ -222,7 +224,11 @@ export function analyzeJoints(p: Project): Joint[] {
         }
       } else {
         j.inner = edges(j, 'inner', 'contact', Array(sys.sides).fill(Hw), false);
-        if (sys.frame !== 'glued')
+        if (sys.frame === 'panel')
+          j.frame.push(
+            `${panelEdgeLabel(sys)} przy ścianie kołkowany co ${sys.panel?.anchorSpacing ?? 100} cm, taśma uszczelniająca ${fmt(Hw)} mb, płyty dochodzą do muru i są przykręcone do profilu (w wyliczeniu ściany)`,
+          );
+        else if (sys.frame !== 'glued')
           j.frame.push(`słupek przyścienny kotwiony do muru kołkami co 100 cm, taśma uszczelniająca ${fmt(Hw)} mb (w wyliczeniu ściany)`);
       }
       finish(j);

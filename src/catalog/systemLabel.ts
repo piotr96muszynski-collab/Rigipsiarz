@@ -9,7 +9,7 @@ const mm = (t: number) => String(t).replace('.', ',');
 function wallFrameLabel(s: WallSystem): string {
   switch (s.frame) {
     case 'single':
-      return `${s.category === 'szacht' ? 'Szacht ' : ''}CW ${s.profile}${s.akuStuds ? ' Aku' : ''}`;
+      return `${s.category === 'szacht' ? 'Szacht ' : ''}CW ${s.profile}${s.akuStuds ? ' Aku' : ''}${s.ls ? ' + łączniki LS' : ''}`;
     case 'double':
       return `2×CW ${s.profile}${s.akuStuds ? ' Aku' : ''}`;
     case 'separate':
@@ -22,6 +22,8 @@ function wallFrameLabel(s: WallSystem): string {
       return 'Okładzina na klej';
     case 'point-fix':
       return 'ATLAS 3G';
+    case 'panel':
+      return 'Szacht bez słupków';
   }
 }
 
