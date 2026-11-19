@@ -70,7 +70,40 @@ NAME = {
 }
 
 
+def split_mix(code, t):
+    """„OP@12.5x2” = 2 warstwy wewnętrzne OP 12,5 mm (poszycie z płyt różnej grubości)."""
+    if '@' in code:
+        base, rest = code.split('@')
+        th, n = rest.split('x')
+        return base, num(th), int(n)
+    return code, t, None
+
+
+def inner_count(codes, nl):
+    """Liczba warstw wewnętrznych (od rusztu) w poszyciu z dwóch rodzajów płyt."""
+    n = split_mix(codes[0], 0)[2] if len(codes) > 1 else None
+    return n if n is not None else nl - 1
+
+
+def mix_key(codes):
+    """
+    Klucz grupy dla poszycia z dwóch rodzajów płyt: hybrydy (Expert+Twarda) – kody płyt wewnętrznych,
+    różne grubości (12,5 pod 15) – układ warstw, np. „12.5x2” (Ogień+, Twarda, Hydro to odmiany jednego systemu).
+    """
+    if len(codes) < 2:
+        return ''
+    if '@' in codes[0]:
+        return codes[0].split('@')[1]
+    return '+'.join(codes[:-1])
+
+
+def mix_id(mixed):
+    """Kod do id systemu: „12.5x2” → „IN12.5x2”, hybrydy bez zmian."""
+    return f'IN{mixed}' if re.match(r'^\d', mixed) else mixed
+
+
 def board_id(code, t):
+    code, t, _ = split_mix(code, t)
     k = (code, t)
     if k not in BOARDS:
         raise KeyError(k)
@@ -78,10 +111,12 @@ def board_id(code, t):
 
 
 def short(code, t):
+    code, t, _ = split_mix(code, t)
     return BOARDS[(code, t)][2]
 
 
 def btype(code, t):
+    code, t, _ = split_mix(code, t)
     return BOARDS[(code, t)][3]
 
 
@@ -117,9 +152,15 @@ def split_code(row):
 CLAD = re.compile(r'(?:(\d)x(\d+(?:,\d)?)(?:\s*\+\s*(\d)x(\d+(?:,\d)?))?)|(?:(\d+,\d)\s*\+\s*(\d+,\d))|^(12,5|15,0|18,0|10,0|15|18)$')
 
 
+def norm_clad(t):
+    """„2x12,5+15,0” → „2x12,5+1x15,0” (karta pomija „1x” przy drugiej grubości)."""
+    return re.sub(r'(\dx\d+(?:,\d)?)\s*\+\s*(\d+,\d)', r'\1+1x\2', t)
+
+
 def find_clad(tokens):
     """(liczba warstw, grubość, indeks) – np. „2x12,5”, „12,5+12,5”, „15,0”."""
     for i, t in enumerate(tokens):
+        t = norm_clad(t)
         for part in [t] + t.split(' '):
             m = CLAD.search(part)
             if not m:
@@ -157,26 +198,28 @@ def is_mass(t):
 MIXED_TH = re.compile(r'(\d)x(\d+(?:,\d)?)\s*\+\s*(\d)x(\d+(?:,\d)?)|(\d+,\d)\s*\+\s*(\d+,\d)')
 
 
-def mixed_thickness(row):
-    """Poszycie z płyt różnej grubości (np. 1x12,5+1x15,0) – silnik liczy jedną grubość w poszyciu."""
-    for t in row:  # pierwsza komórka bywa sklejona z nazwą płyty i poszyciem (102,5AA/UAR75/Ogień+ … 1x12,5+1x15,0)
-        m = MIXED_TH.search(t)
-        if m and ((m[1] and num(m[2]) != num(m[4])) or (m[5] and num(m[5]) != num(m[6]))):
-            return True
-    return False
+def apply_mix(codes, tokens, nl, th):
+    """
+    Poszycie z płyt różnej grubości („1x12,5+1x15,0”, „2x12,5+2x15,0”): pierwsza w zapisie karty = warstwy
+    wewnętrzne (od rusztu, jak w kartach Knauf „2×15 + 2×12,5”), druga = zewnętrzne. Zwraca (kody, grubość zewnętrzna).
+    """
+    for t in tokens:
+        m = MIXED_TH.search(norm_clad(t))
+        if not m:
+            continue
+        if m[1]:
+            n1, t1, n2, t2 = int(m[1]), num(m[2]), int(m[3]), num(m[4])
+        else:
+            n1, t1, n2, t2 = 1, num(m[5]), 1, num(m[6])
+        if t1 == t2 or t2 < 5:  # ta sama grubość albo „12,5+0,5” (powłoka ołowiana RTG)
+            return codes, th
+        assert len(codes) == 1 and n1 + n2 == nl, (codes, t, nl)
+        return [f'{codes[0]}@{t1}x{n1}', codes[0]], t2
+    return codes, th
 
 
 def load(ch):
-    cards = json.load(open(f'{SRC}/{FILES[ch]}.json', encoding='utf-8'))
-    for c in cards:
-        keep = []
-        for r in c['rows']:
-            if mixed_thickness(r):
-                skip(r[0].split(' ')[0], 'odmiany z poszyciem z płyt różnej grubości (12,5 + 15 mm) – aplikacja liczy jedną grubość płyt w poszyciu')
-            else:
-                keep.append(r)
-        c['rows'] = keep
-    return cards
+    return json.load(open(f'{SRC}/{FILES[ch]}.json', encoding='utf-8'))
 
 
 def card_src(ch, page):
@@ -192,6 +235,8 @@ def skip(name, why):
 
 # --- ściany działowe (rozdz. 4) ------------------------------------------------------------------
 WALL_CODE = re.compile(r'^([\d,]+)(AA|BB|A|B|C|D|G|UU)(\d+)(-PWA|-400|-300)?$')
+# ściany wysokie na C100 (rozdz. 4, s. 66–69): SW = pojedyncze słupki, SWSW = zdwojone; liczba = grubość ściany
+SW_CODE = re.compile(r'^(SWSW|SW)([\d,]+)(-400|-300)?$')
 
 
 def wall_rows():
@@ -204,14 +249,24 @@ def wall_rows():
         for r in c['rows']:
             code, rest = split_code(r)
             sysc, _, bname = code.partition('/')
-            if 'DOSZTYWNIAJĄC' in c['title']:
-                skip(sysc + ' (z płytą dosztywniającą)', 'ściany z wewnętrzną płytą dosztywniającą między rzędami (silnik nie liczy płyty między rusztami)')
-                continue
+            # płyta dosztywniająca między rzędami: z tabeli zużycia (1,0 m² Ogień Plus 12,5 na m² ściany)
+            mid = 'SN-OP12.5' if 'DOSZTYWNIAJĄC' in c['title'] else None
+            bs = ' (BS)' in sysc
+            q = '-Q' in bname  # wykończenie Q3/Q4 – ta sama ściana, szpachlowanie całopowierzchniowe
+            bname = bname.replace('-Q', '')
+            # komórka sklejona z kolumną konstrukcji (255BB100 (BS)/Ogień Plus + Cicha 2xC100+2xC100 Ogień Plus 3) + Cicha)
+            bname = re.sub(r'\s+\d+xC\d+\+.*$', '', bname)
+            sw = SW_CODE.match(sysc)
             m = WALL_CODE.match(sysc.replace(' (BS)', ''))
-            if not m or ' (BS)' in sysc or bname.startswith(('LS', 'RTG', 'CC')) or '-Q' in bname or m[2] in ('G', 'UU'):
-                skip(code.split('/')[0], 'ściany specjalne (RTG, LS – niepełne opłytowanie, gięte, kinowe SLA, wysokie SW i BS, wykończenie Q)')
+            if sw:
+                fam, prof, suffix = sw[1], 100, sw[3] or ''
+                thk = num(sw[2])
+            elif not m or bname.startswith(('LS', 'RTG', 'CC')) or m[2] in ('G', 'UU'):
+                skip(code.split('/')[0], SPECIAL_WHY)
                 continue
-            fam, prof, suffix = m[2], int(m[3]), m[4] or ''
+            else:
+                fam, prof, suffix = m[2], int(m[3]), m[4] or ''
+                thk = num(m[1])
             spacing = 60
             if suffix in ('-400', '-300'):
                 spacing = int(suffix[1:]) // 10
@@ -220,20 +275,21 @@ def wall_rows():
             try:
                 codes = board_codes(bname)
             except KeyError:
-                skip(code, 'ściany specjalne (RTG, LS – niepełne opłytowanie, gięte, kinowe SLA, wysokie SW i BS, wykończenie Q)')
+                skip(code, SPECIAL_WHY)
                 continue
             cl = find_clad(rest)
             nl, th, ci = cl
+            codes, th = apply_mix(codes, rest, nl, th)
             # wysokość: pierwsza liczba ≥ 2000 za poszyciem
             hi = next(i for i in range(ci + 1, len(rest)) if (num(rest[i]) or 0) >= 2000)
             wool = num(rest[hi - 2].replace('2x', '')) if hi - 2 > ci else None
             dens = num(rest[hi - 1]) if wool else None
             mi = max(i for i, t in enumerate(rest) if is_mass(t))
             ac = [num(t) for t in rest[hi + 1:mi]]
-            out.append(dict(page=c['page'], code=code, sys=sysc, fam=fam, prof=prof, pwa=suffix == '-PWA', spacing=spacing,
-                            double=fam in ('AA', 'BB'), codes=codes, layers=nl, th=th, maxh=num(rest[hi]) // 10,
+            out.append(dict(page=c['page'], code=code, sys=sysc, fam=fam, prof=prof, pwa=suffix == '-PWA', spacing=spacing, mid=mid, bs=bs, q=q,
+                            double=fam in ('AA', 'BB', 'SWSW'), codes=codes, layers=nl, th=th, maxh=num(rest[hi]) // 10,
                             wool=wool or 0, dens=dens, rw=ac[0] if ac else None, ra1=ac[1] if len(ac) > 1 else None,
-                            mass=num(rest[mi]), ei=ei_of(rest[mi + 1:]), thk=num(re.match(r'[\d,]+', sysc)[0])))
+                            mass=num(rest[mi]), ei=ei_of(rest[mi + 1:]), thk=thk))
     # tablice doboru wysokości (bez wymagań ogniowych): rozstaw 40/30 cm i słupki zdwojone
     tab = []
     for c in tables:
@@ -247,8 +303,12 @@ def wall_rows():
     return out, tab
 
 
+SPECIAL_WHY = ('ściany specjalne: RTG z płytami z ołowiem (rozstaw słupków 62,5 cm, inne poszycie z każdej strony), LS – niepełne opłytowanie, '
+               'gięte, kinowe SLA (inne poszycie z każdej strony, łączniki Phoni SL)')
+
 WALL_FAM = {
     # rodzina: (kategoria, frame, sides, opis)
+    'SW': ('działowa', 'single', 2, 'wysoka ściana działowa'),
     'A': ('działowa', 'single', 2, 'ściana działowa'),
     'B': ('podwójna', 'double', 2, 'ściana na dwurzędowej konstrukcji'),
     'D': ('podwójna', 'double', 2, 'ściana na dwurzędowej konstrukcji z dylatacją 10 mm'),
@@ -259,14 +319,17 @@ WALL_FAM = {
 def layer_desc(codes, nl, th):
     if len(codes) == 1:
         return f'{nl}×{pl(th)} {short(codes[0], th)} ({btype(codes[0], th)})'
-    inner = nl - 1
-    return f'{inner}×{pl(th)} {short(codes[0], th)} + 1×{pl(th)} {short(codes[1], th)}'
+    inner = inner_count(codes, nl)
+    ith = split_mix(codes[0], th)[1]
+    if ith != th:
+        return f'{inner}×{pl(ith)} + {nl - inner}×{pl(th)} {short(codes[1], th)} ({btype(codes[1], th)})'
+    return f'{inner}×{pl(th)} {short(codes[0], th)} + {nl - inner}×{pl(th)} {short(codes[1], th)}'
 
 
 def wall_key(r):
-    fam = {'AA': 'A', 'BB': 'B'}.get(r['fam'], r['fam'])
-    mixed = '+'.join(r['codes'][:-1]) if len(r['codes']) > 1 else ''
-    return (fam, r['pwa'], r['prof'], r['layers'], mixed)
+    fam = {'AA': 'A', 'BB': 'B', 'SWSW': 'SW'}.get(r['fam'], r['fam'])
+    mixed = mix_key(r['codes'])
+    return (fam, r['pwa'], r['prof'], r['layers'], mixed, r['mid'], r['bs'])
 
 
 def make_walls(rows, tab, ch_sources):
@@ -274,10 +337,11 @@ def make_walls(rows, tab, ch_sources):
     for r in rows:
         groups.setdefault(wall_key(r), []).append(r)
     walls = []
-    for (fam, pwa, prof, nl, mixed), vs in groups.items():
+    for (fam, pwa, prof, nl, mixed, mid, bs), vs in groups.items():
         cat, frame, sides, kind = WALL_FAM[fam]
-        sid = f'SN-W-{fam}{prof}' + ('-PWA' if pwa else '') + f'-{nl}' + (f'-{mixed}' if mixed else '')
-        single = [v for v in vs if not v['double'] and v['spacing'] == 60]
+        kind = 'wysoka ściana (BS) na dwurzędowej zdwojonej konstrukcji' if bs else kind + (' z płytą dosztywniającą' if mid else '')
+        sid = f'SN-W-{fam}{prof}' + ('-PWA' if pwa else '') + ('-PD' if mid else '') + ('-BS' if bs else '') + f'-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
+        single = [v for v in vs if not v['double'] and v['spacing'] == 60] or [v for v in vs if not v['double']]
         default = min((v for v in (single or vs)), key=lambda v: (PREF.index(v['codes'][-1]), v['th'], -v['maxh']))
         dcode, dth = default['codes'][-1], default['th']
         variants, seen = [], set()
@@ -286,8 +350,10 @@ def make_walls(rows, tab, ch_sources):
             lab = layer_desc(v['codes'], nl, v['th'])
             lab += f' · słupki{" zdwojone" if v["double"] else ""} co {v["spacing"]} cm'
             lab += (f' · wełna {v["wool"]} mm' + (f' ({pl(v["dens"])} kg/m³)' if v.get('dens') else '')) if v['wool'] else ' · bez wełny'
+            if v['q']:
+                lab += ' · wykończenie Q3/Q4 – szpachlowanie całopowierzchniowe'
             o = OrderedDict()
-            o['code'] = v['code'].split('/')[0]
+            o['code'] = v['code'].split('/')[0] + ('-Q' if v['q'] else '')
             o['label'] = lab
             o['board'] = board_id(outer, v['th'])
             if len(v['codes']) > 1:
@@ -311,9 +377,9 @@ def make_walls(rows, tab, ch_sources):
             seen.add(k)
             variants.append(o)
         # tablice doboru: wyższe ściany przy rozstawie 40/30 cm i na słupkach zdwojonych (bez wymagań ogniowych)
-        tfam = {'A': ('A', 'AA'), 'B': ('B', 'BB'), 'D': ('D',), 'C': ('C',)}[fam]
-        hmax = {60: default['maxh']}
-        if not mixed:
+        tfam = {'A': ('A', 'AA'), 'B': ('B', 'BB'), 'D': ('D',), 'C': ('C',), 'SW': ()}[fam]
+        hmax = {default['spacing']: default['maxh']}
+        if not mixed and not mid and not bs:
             for t in tab:
                 if t['fam'] in tfam and t['prof'] == prof and t['layers'] == nl and t['pwa'] == pwa and (t['spacing'] != 60 or t['double']):
                     lab = f'{nl}×{pl(t["th"])} – dowolna płyta Nida z tabeli · słupki{" zdwojone" if t["double"] else ""} co {t["spacing"]} cm · bez wymagań ogniowych'
@@ -342,10 +408,13 @@ def make_walls(rows, tab, ch_sources):
         w['sides'] = sides
         w['defaultBoard'] = board_id(dcode, dth)
         if mixed:
-            w['innerBoard'] = board_id(mixed.split('+')[0], dth)
-            w['innerLayers'] = nl - 1
-        w['studSpacing'] = 60
-        w['maxHeight'] = {sp: hmax[sp] for sp in (30, 40, 60) if sp in hmax}
+            w['innerBoard'] = board_id(default['codes'][0], dth)
+            w['innerLayers'] = inner_count(default['codes'], nl)
+        if mid:
+            w['midBoard'] = mid
+        w['studSpacing'] = default['spacing']
+        if not default['double']:  # same słupki zdwojone (BS): wysokości tylko w odmianach
+            w['maxHeight'] = {sp: hmax[sp] for sp in (30, 40, 60) if sp in hmax}
         w['insulationDefault'] = bool(default['wool'])
         if eis:
             w['fire'] = f'EI {eis[0]}' if len(eis) == 1 else f'EI {eis[0]} – EI {eis[-1]}'
@@ -353,16 +422,23 @@ def make_walls(rows, tab, ch_sources):
             w['acoustic'] = f'Rw do {max(rws)} dB'
         if frame == 'separate':
             w['gap'] = max(0.5, (default['thk'] - 2 * prof - 2 * nl * dth) / 10)
-        info = [f'Grubość {pl(default["thk"])} mm', f'słupki C{prof} co 60 cm do {pl(default["maxh"] / 100)} m (płyta {short(dcode, dth)})']
-        extra = [f'co {sp} cm do {pl(hmax[sp] / 100)} m' for sp in (40, 30) if sp in hmax]
+        info = [f'Grubość {pl(default["thk"])} mm',
+                f'słupki C{prof}{" zdwojone" if default["double"] else ""} co {default["spacing"]} cm do {pl(default["maxh"] / 100)} m (płyta {short(dcode, dth)})']
+        extra = [f'co {sp} cm do {pl(hmax[sp] / 100)} m' for sp in (40, 30) if sp in hmax and sp != default['spacing']]
         if extra:
             info.append('gęstsze słupki bez wymagań ogniowych: ' + ', '.join(extra) + ' (tablice doboru wysokości)')
         if any(v['double'] for v in vs) or any(o.get('doubleStuds') for o in variants):
-            info.append('wyższe odmiany na słupkach zdwojonych (' + ('AA' if fam == 'A' else 'BB') + ')')
+            info.append('wyższe odmiany na słupkach zdwojonych (' + {'A': 'AA', 'SW': 'SWSW'}.get(fam, 'BB') + ')')
+        if fam == 'SW' or bs:
+            info.append('profil U100 specjalny przy stropie i wkręty FLAT HEAD do blachy 2 mm wg karty – aplikacja liczy zwykłe U100; słupki łączone na długości wg karty')
+        if bs:
+            info.append('przewiązki z blachy stalowej 2 mm między rzędami (1 szt./m² wg karty) – aplikacja ich nie liczy, dolicz wg karty')
+        if mid:
+            info.append(f'płyta dosztywniająca {short("OP", 12.5)} 12,5 mm między rzędami, przykręcona do słupków jednego rzędu (liczona w płytach i wkrętach)')
         if pwa:
             info.append('przewiązki wibroakustyczne Nida PWA co ≤ 100 cm między rzędami – aplikacja ich nie liczy, dolicz wg karty')
         if mixed:
-            info.append(f'warstwa wewnętrzna {short(mixed.split("+")[0], dth)}, zewnętrzna {short(dcode, dth)}')
+            info.append(f'warstwa wewnętrzna {short(default['codes'][0], dth)}, zewnętrzna {short(dcode, dth)}')
         if frame == 'separate':
             info.append('rozstaw rusztów dowolny – podana grubość minimalna')
         w['info'] = ' · '.join(info)
@@ -393,6 +469,7 @@ def lining_rows(ch):
             if not cl:
                 continue
             nl, th, ci = cl
+            codes, th = apply_mix(codes, rest, nl, th)
             out.append(dict(page=c['page'], title=c['title'], code=code, parts=parts, rest=rest, codes=codes, layers=nl, th=th, ci=ci))
     return out
 
@@ -442,14 +519,14 @@ def make_linings():
             hi, h, ac, mass, ei = tail(rest, r['ci'] + 1)
             woolm = [num(t) for t in rest[r['ci'] + 1:hi] if num(t)]
             wool = int(woolm[-2]) if len(woolm) >= 3 else 0
-            groups.setdefault((kind_s, prof, r['layers'], '+'.join(r['codes'][:-1])), []).append(
+            groups.setdefault((kind_s, prof, r['layers'], mix_key(r['codes'])), []).append(
                 dict(r, double=double, spacing=sp, maxh=h, ac=ac, mass=mass, ei=ei, wool=wool))
         for (kind_s, prof, nl, mixed), vs in groups.items():
             single = [v for v in vs if not v['double']]
             default = min(single or vs, key=lambda v: (PREF.index(v['codes'][-1]), v['th'], -(v['maxh'] or 0)))
             dcode, dth = default['codes'][-1], default['th']
             pfx = 'SN-O' if ch == '03' else 'SN-SZ'
-            sid = f'{pfx}-{"C" if kind_s == "C" else kind_s}{prof}-{nl}' + (f'-{mixed}' if mixed else '')
+            sid = f'{pfx}-{"C" if kind_s == "C" else kind_s}{prof}-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
             pname = {'C': f'C{prof}', 'UA': f'UAR{prof}', 'UU': f'UU{prof}'}[kind_s]
             variants = []
             for v in sorted(vs, key=lambda v: (v['double'], PREF.index(v['codes'][-1]), v['th'], v['ei'] or 0)):
@@ -479,6 +556,11 @@ def make_linings():
                     o['wool'] = v['wool']
                 o['mass'] = v['mass']
                 variants.append(o)
+            # dwa wiersze karty z tym samym poszyciem, różniące się klasą EI (np. 105UU75) – EI w opisie
+            labs = [(o.get('board'), o['label']) for o in variants]
+            for o in variants:
+                if labs.count((o.get('board'), o['label'])) > 1 and o.get('fire'):
+                    o['label'] += f' · EI {o["fire"]}'
             eis = sorted({v['ei'] for v in vs if v['ei']})
             pages = sorted({v['page'] for v in vs})
             w = OrderedDict()
@@ -495,10 +577,10 @@ def make_linings():
             w['sides'] = 1
             w['defaultBoard'] = board_id(dcode, dth)
             if mixed:
-                w['innerBoard'] = board_id(mixed.split('+')[0], dth)
-                w['innerLayers'] = nl - 1
+                w['innerBoard'] = board_id(default['codes'][0], dth)
+                w['innerLayers'] = inner_count(default['codes'], nl)
             w['studSpacing'] = default['spacing']
-            if default['maxh']:
+            if default['maxh'] and not default['double']:  # same profile zdwojone: wysokości tylko w odmianach
                 w['maxHeight'] = {default['spacing']: default['maxh']}
             w['insulationDefault'] = bool(default['wool'])
             if eis:
@@ -533,7 +615,7 @@ def make_linings():
             ints = [x for x in nums if isinstance(x, int)]
             bracket, sp = ints[0] // 10, ints[1] // 10
             hi, h, ac, mass, ei = tail(rest, r['ci'] + 1)
-            key = ('CD', 'EL' if el else 'ES', r['layers'], '+'.join(r['codes'][:-1]))
+            key = ('CD', 'EL' if el else 'ES', r['layers'], mix_key(r['codes']))
             groups.setdefault(key, []).append(dict(r, bracket=bracket, spacing=sp, maxh=None, ac=ac, mass=mass, ei=ei, double=False))
         elif re.match(r'^CC?\d+$', sysc) and len(r['parts']) > 2 and r['parts'][1].startswith(('L-', 'PWA-')):
             prof = int(sysc.lstrip('C'))
@@ -545,7 +627,7 @@ def make_linings():
             si = next(i for i in range(r['ci'] + 1, len(rest)) if rest[i] in ('600', '400', '300'))
             hi, h, ac, mass, ei = tail(rest, si + 1)
             double = 'ZDWOJONEJ' in r['title']
-            key = (how, prof, r['layers'], '+'.join(r['codes'][:-1]))
+            key = (how, prof, r['layers'], mix_key(r['codes']))
             groups.setdefault(key, []).append(dict(r, bracket=fix, spacing=sp, maxh=h, ac=ac, mass=mass, ei=ei, double=double))
         else:
             skip(sysc, 'okładziny kotwione na profilach kapeluszowych PK48 (wall), Sonic, RTG')
@@ -584,13 +666,13 @@ def make_linings():
         desc = layer_desc(default['codes'], nl, dth) if mixed else f'{nl}×{pl(dth)}'
         if how == 'CD':
             el = key[1] == 'EL'
-            w['id'] = f'SN-O-CD{"EL" if el else "ES"}-{nl}' + (f'-{mixed}' if mixed else '')
+            w['id'] = f'SN-O-CD{"EL" if el else "ES"}-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
             w['name'] = f'Nida Tynk – okładzina kotwiona na CD 60 i uchwytach {"elastycznych EL60" if el else "ES60"}, {desc}'
             w['frame'] = 'cd-lining'
             w['profile'] = 50
         else:
             prof = key[1]
-            w['id'] = f'SN-O-C{prof}{how}-{nl}' + (f'-{mixed}' if mixed else '')
+            w['id'] = f'SN-O-C{prof}{how}-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
             w['name'] = f'Nida Tynk – okładzina kotwiona na C{prof} ({"kątowniki stalowe" if how == "L" else "przewiązki PWA"}), {desc}'
             w['frame'] = 'single'
             w['profile'] = prof
@@ -600,10 +682,10 @@ def make_linings():
         w['sides'] = 1
         w['defaultBoard'] = board_id(dcode, dth)
         if mixed:
-            w['innerBoard'] = board_id(mixed.split('+')[0], dth)
-            w['innerLayers'] = nl - 1
+            w['innerBoard'] = board_id(default['codes'][0], dth)
+            w['innerLayers'] = inner_count(default['codes'], nl)
         w['studSpacing'] = default['spacing']
-        if default['maxh']:
+        if default['maxh'] and not default['double']:
             w['maxHeight'] = {default['spacing']: default['maxh']}
         w['insulationDefault'] = False
         if eis:
@@ -650,7 +732,7 @@ def make_ceilings():
             continue
         for r in c['rows']:
             code, rest = split_code(r)
-            m = re.match(r'^(DK/ES|DK/WON|DK/WO|JK/WO|ES|WP)/CD60-([\d,]+)/', code)
+            m = re.match(r'^(DK/ES|DK/WON|DK/WO|JK/WO|WON|WO|ES|WP)/CD60-([\d,]+)/', code) or re.match(r'^(DK/MFC)-([\d,]+)/', code)
             if not m:
                 skip(code.rsplit('/', 1)[0], 'sufity na PK48, MF, UA50, gięte, Sonic, RTG, z dodatkowym sufitem akustycznym, jednopoziomowe na wieszakach WO/WON')
                 continue
@@ -661,27 +743,31 @@ def make_ceilings():
                 skip(code, 'sufity na PK48, MF, UA50, gięte, Sonic, RTG, z dodatkowym sufitem akustycznym, jednopoziomowe na wieszakach WO/WON')
                 continue
             nl, th, ci = find_clad(rest)
+            codes, th = apply_mix(codes, rest, nl, th)
             ints = [num(t.split('/')[0]) for t in rest[1:ci]]
             ints = [x for x in ints if isinstance(x, int)]
-            if typ in ('ES', 'WP'):
+            if typ in ('ES', 'WP', 'WO', 'WON'):
                 main, sec, hang = None, ints[0] // 10, ints[1] // 10
             else:
                 main, sec, hang = ints[0] // 10, ints[1] // 10, ints[2] // 10
             mi = max(i for i, t in enumerate(rest) if is_mass(t))
             minh = num(rest[ci + 1])
             ei = ei_of(rest[mi + 1:])
-            groups.setdefault((typ, nl), []).append(dict(page=c['page'], code=code, codes=codes, th=th, main=main, sec=sec, hang=hang,
+            groups.setdefault((typ, nl, mix_key(codes)), []).append(dict(page=c['page'], code=code, codes=codes, th=th, main=main, sec=sec, hang=hang,
                                                          mass=num(rest[mi]), ei=ei, minh=minh))
     out = []
     NAMES = {
         'ES': ('direct', 'es', 'sufit na CD 60 i uchwytach ES60 (jednopoziomowy, równoległy)'),
         'WP': ('direct', 'attic', 'sufit na CD 60 i wieszakach WP60 (jednopoziomowy, równoległy)'),
+        'WO': ('parallel', 'noniusz', 'sufit na CD 60 i wieszakach obrotowych WO60 (jednopoziomowy, równoległy)'),
+        'WON': ('parallel', 'noniusz', 'sufit na CD 60 i wieszakach obrotowych z noniuszem WON60 (jednopoziomowy, równoległy)'),
+        'DK/MFC': ('two-level', 'noniusz', 'sufit krzyżowy dwupoziomowy na profilach Nida MF (MFCP44 + MFCC50) i kątownikach MFC2330'),
         'JK/WO': ('one-level', 'noniusz', 'sufit krzyżowy jednopoziomowy CD 60 na wieszakach obrotowych WO60'),
         'DK/ES': ('two-level', 'es', 'sufit krzyżowy dwupoziomowy CD 60 na uchwytach ES60'),
         'DK/WO': ('two-level', 'noniusz', 'sufit krzyżowy dwupoziomowy CD 60 na wieszakach obrotowych WO60'),
         'DK/WON': ('two-level', 'noniusz', 'sufit krzyżowy dwupoziomowy CD 60 na wieszakach obrotowych z noniuszem WON60'),
     }
-    for (typ, nl), vs in groups.items():
+    for (typ, nl, mixed), vs in groups.items():
         kind, hanger, title = NAMES[typ]
         single = [v for v in vs if len(v['codes']) == 1]
         default = min(single or vs, key=lambda v: (PREF.index(v['codes'][-1]), v['th']))
@@ -692,8 +778,9 @@ def make_ceilings():
             o['code'] = v['code'].rsplit('/', 1)[0]
             lab = layer_desc(v['codes'], nl, v['th'])
             if v['main']:
-                lab += f' · główne CD co {v["main"]} cm'
-            lab += f' · nośne CD co {v["sec"]} cm · {"uchwyty" if hanger == "es" else "wieszaki"} co {v["hang"]} cm · zabudowa min. {pl(v["minh"])} mm'
+                lab += f' · główne {"MFCP44" if typ == "DK/MFC" else "CD"} co {v["main"]} cm'
+            lab += f' · nośne {"MFCC50" if typ == "DK/MFC" else "CD"} co {v["sec"]} cm'
+            lab += f' · {"uchwyty" if hanger == "es" else "zawiesia" if typ == "DK/MFC" else "wieszaki"} co {v["hang"]} cm · zabudowa min. {pl(v["minh"])} mm'
             o['label'] = lab
             o['board'] = board_id(v['codes'][-1], v['th'])
             if len(v['codes']) > 1:
@@ -706,11 +793,14 @@ def make_ceilings():
         eis = sorted({v['ei'] for v in vs if v['ei']})
         pages = sorted({v['page'] for v in vs})
         s = OrderedDict()
-        s['id'] = f'SN-S-{typ.replace("/", "")}-{nl}'
-        s['name'] = f'Nida Sufit {typ}/CD60 – {title}, {nl}×{pl(dth)}'
+        s['id'] = f'SN-S-{typ.replace("/", "")}-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
+        s['name'] = f'Nida Sufit {typ}{"" if typ == "DK/MFC" else "/CD60"} – {title}, ' + (layer_desc(default['codes'], nl, dth) if mixed else f'{nl}×{pl(dth)}')
         s['kind'] = kind
         s['layers'] = nl
         s['defaultBoard'] = board_id(dcode, dth)
+        if mixed:
+            s['innerBoard'] = board_id(default['codes'][0], dth)
+            s['innerLayers'] = inner_count(default['codes'], nl)
         s['mainSpacing'] = default['main'] or default['sec']
         s['secondarySpacing'] = default['sec']
         s['hangerSpacing'] = default['hang']
@@ -719,13 +809,25 @@ def make_ceilings():
         s['screwsInner'] = 10 if default['sec'] >= 50 else 12
         if eis:
             s['fire'] = f'EI {eis[0]}' if len(eis) == 1 else f'EI {eis[0]} – EI {eis[-1]}'
+        if typ == 'DK/MFC':
+            # karta s. 31–33: MFCP44 + MFCC50, przyścienny MFCE26, zawiesia z kątownika MFC2330 (zużycie przy zwieszeniu 500 mm),
+            # wkręty 4,2×13 FLAT HEAD do łączenia profili; wysokość rusztu = min. wysokość podwieszenia – płyta (82,5 – 12,5)
+            s['profiles'] = OrderedDict([('main', 'MFCP44'), ('secondary', 'MFCC50'), ('edge', 'MFCE26'),
+                                         ('label', 'Nida MF: profil główny MFCP44, sufitowy MFCC50, przyścienny MFCE26'),
+                                         ('frameMm', 70), ('hangerAngle', 'MFC2330_MB'), ('hangerOverlap', 0.1),
+                                         ('screw', 'WKRET_FLAT13'), ('crossScrews', 2), ('hangerScrews', 2)])
         info = []
-        if default['main']:
+        if typ == 'DK/MFC':
+            info.append(f'Profile główne MFCP44 co {default["main"]} cm, sufitowe MFCC50 co {default["sec"]} cm wpinane w główne')
+            info.append(f'zawiesia z kątownika MFC2330 co {default["hang"]} cm (płyta {short(dcode, dth)}), przykręcone do stropu i do MFCP44; dla płyt cięższych i ogniowych rozstawy w odmianach')
+            info.append('kątownik liczony w mb: zwieszenie + 10 cm na zawiesie (założenie); wkręty 4,2×13 FLAT HEAD: 2 na skrzyżowanie i 2 na zawiesie (założenie, karta podaje łącznie 9–10 szt./m²)')
+        elif default['main']:
             info.append(f'Profile główne CD 60 co {default["main"]} cm, nośne co {default["sec"]} cm')
         else:
             info.append(f'Profile CD 60 co {default["sec"]} cm')
-        info.append(f'{"uchwyty ES60" if hanger == "es" else "wieszaki WP60" if hanger == "attic" else "wieszaki"} co {default["hang"]} cm (płyta {short(dcode, dth)}); dla płyt cięższych i ogniowych rozstawy w odmianach')
-        if typ in ('JK/WO', 'DK/WO'):
+        if typ != 'DK/MFC':
+            info.append(f'{"uchwyty ES60" if hanger == "es" else "wieszaki WP60" if hanger == "attic" else "wieszaki"} co {default["hang"]} cm (płyta {short(dcode, dth)}); dla płyt cięższych i ogniowych rozstawy w odmianach')
+        if typ in ('WO', 'JK/WO', 'DK/WO'):
             info.append('wieszaki obrotowe WO60 liczone w zestawieniu jak wieszaki noniuszowe (ta sama liczba sztuk)')
         info.append('liczba wkrętów do płyt na m² przyjęta jak w pozostałych sufitach aplikacji, nie z tabeli zużycia karty')
         s['info'] = ' · '.join(info)

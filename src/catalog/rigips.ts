@@ -459,6 +459,20 @@ export const PRODUCTS: Record<string, Product> = {
     unit: 'szt.',
   },
   LACZNIK_WZDL: { id: 'LACZNIK_WZDL', name: 'Łącznik wzdłużny CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
+  MFC2330_MB: {
+    id: 'MFC2330_MB',
+    name: 'Kątownik sufitowy Nida MFC2330 – zawiesia sufitu MF, cięty na długość zwieszenia',
+    group: 'Akcesoria do sufitów',
+    unit: 'mb',
+  },
+  WKRET_FLAT13: {
+    id: 'WKRET_FLAT13',
+    name: 'Wkręt samowiercący 4,2×13 FLAT HEAD do blachy 1 mm',
+    group: 'Mocowanie',
+    unit: 'szt.',
+    pack: 1000,
+    packUnit: 'opak.',
+  },
   // Mocowanie
   KOTWA: { id: 'KOTWA', name: 'Kotwa stropowa metalowa 6 mm', group: 'Mocowanie', unit: 'szt.', pack: 100, packUnit: 'opak.' },
   KOLEK: {
@@ -629,6 +643,13 @@ export interface WallSystem {
   innerLayers?: number;
   /** Słupki z profili akustycznych CW Aku */
   akuStuds?: boolean;
+  /**
+   * Płyta dosztywniająca między rzędami rusztu podwójnego (ściany Siniat 168B50 / 218B75 / 268B100):
+   * przykręcona do słupków jednego rzędu, liczona w płytach i wkrętach
+   */
+  midBoard?: string;
+  /** Liczba warstw płyty dosztywniającej (brak = 1) */
+  midLayers?: number;
   /** Domyślny rozstaw słupków / profili CD, cm */
   studSpacing: StudSpacing;
   /** Maksymalna wysokość, cm, wg rozstawu słupków */
@@ -813,11 +834,12 @@ export const WALL_SYSTEMS: WallSystem[] = [...RIGIPS_WALLS, ...HAND_WALLS]
  * - cw-span: sufit przęsłowy (samonośny) na CW/UW opartych na ścianach
  * - point-fix: płyta na łącznikach ATLAS M-SYSTEM 3G w siatce mainSpacing × secondarySpacing
  */
-export type CeilingKind = 'two-level' | 'one-level' | 'direct' | 'ua-span' | 'cw-span' | 'point-fix';
+export type CeilingKind = 'two-level' | 'one-level' | 'parallel' | 'direct' | 'ua-span' | 'cw-span' | 'point-fix';
 
 export const CEILING_KIND_LABEL: Record<CeilingKind, string> = {
   'two-level': 'Sufity podwieszane CD 60 – ruszt dwupoziomowy',
   'one-level': 'Sufity podwieszane CD 60 – ruszt jednopoziomowy',
+  parallel: 'Sufity podwieszane CD 60 – profile równoległe na wieszakach (bez profili głównych)',
   direct: 'Okładziny sufitów na uchwytach bezpośrednich',
   'ua-span': 'Sufity przęsłowe na UA 50 (bez wieszaków)',
   'cw-span': 'Sufity przęsłowe na CW/UW (bez wieszaków)',
@@ -928,6 +950,31 @@ export interface CeilingSystem {
   attic?: boolean;
   /** Ruszt poddasza inny niż CD 60 na wieszakach – system tylko do zabudowy poddasza */
   atticFrame?: AtticFrame;
+  /** Ruszt dwupoziomowy z profili innych niż CD 60 (Siniat Nida MF) */
+  profiles?: CeilingProfiles;
+}
+
+/**
+ * Ruszt sufitu dwupoziomowego z innych profili niż CD 60 / UD 30 (Siniat Nida MF: MFCP44 + MFCC50 + MFCE26).
+ * Profile dolne wpinane w górne – bez łączników krzyżowych; zawiesia z kątownika ciętego na długość zwieszenia.
+ */
+export interface CeilingProfiles {
+  /** Profil główny (górny), nośny (dolny, do płyt) i przyścienny */
+  main: string;
+  secondary: string;
+  edge: string;
+  /** Nazwy w opisach */
+  label: string;
+  /** Wysokość rusztu (oba poziomy) bez płyt, mm */
+  frameMm: number;
+  /** Zawiesie z kątownika w mb (długość = zwieszenie + zakład), produkt */
+  hangerAngle: string;
+  /** Zakład kątownika na mocowanie do stropu i do profilu, m */
+  hangerOverlap: number;
+  /** Wkręty do blachy: produkt, na skrzyżowanie profili i na zawiesie */
+  screw: string;
+  crossScrews: number;
+  hangerScrews: number;
 }
 
 const ceilingRefCommon = (layers: number): RefLine[] => [
@@ -1042,7 +1089,7 @@ const CEILING_LIST: CeilingSystem[] = [
 /** Sufity podstawowe – widoczne od razu; reszta pod „Pozostałe systemy” */
 const BASIC_CEILINGS = new Set(['S-CD-2P-1', 'S-CD-1P-1', 'S-ES-1', 'S-PODD-1', 'S-UA-1', 'S-CW75-1', 'A-S-L100']);
 
-const CEILING_KIND_ORDER: CeilingKind[] = ['two-level', 'one-level', 'direct', 'ua-span', 'cw-span', 'point-fix'];
+const CEILING_KIND_ORDER: CeilingKind[] = ['two-level', 'one-level', 'parallel', 'direct', 'ua-span', 'cw-span', 'point-fix'];
 const stdBoard = (id: string) => (/^R(B|BI|F|FP|FI)\d/.test(id) ? 0 : 1);
 
 /**
@@ -1125,6 +1172,9 @@ export function ceilingMaxSpan(sys: CeilingSystem): number | undefined {
   return undefined;
 }
 
+/** Sufit zawieszony na wieszakach / uchwytach (rozstaw wieszaków ma znaczenie) */
+export const isHungCeiling = (kind: CeilingKind): boolean => kind === 'two-level' || kind === 'one-level' || kind === 'parallel' || kind === 'direct';
+
 /** Okładzina istniejącej ściany (jednostronna, mocowana do muru): CD na ES, klej gipsowy, ATLAS M-System 3G */
 export const isLiningSystem = (sys: WallSystem): boolean =>
   sys.sides === 1 && (sys.frame === 'cd-lining' || sys.frame === 'glued' || sys.frame === 'point-fix' || sys.frame === 'hat-lining');
@@ -1132,6 +1182,22 @@ export const isLiningSystem = (sys: WallSystem): boolean =>
 /** Ruszt z profili kapeluszowych mocowanych wprost do podłoża (ściana lub strop) */
 export const isHatWall = (sys: WallSystem): boolean => sys.frame === 'hat-lining';
 export const isHatCeiling = (sys: CeilingSystem): boolean => sys.kind === 'direct' && sys.hangerType === 'hat' && !sys.atticFrame;
+
+/**
+ * Płyty kolejnych warstw jednej strony, od rusztu: `innerLayers` warstw z płyty wewnętrznej
+ * (systemy z dwoma rodzajami płyt, np. PRO pod Habito, albo 12,5 pod 15 mm), reszta z płyty wybranej w elemencie.
+ */
+export function layerBoards(sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): string[] {
+  const inner = sys.innerBoard ? Math.min(sys.layers - 1, sys.innerLayers ?? sys.layers - 1) : 0;
+  return Array.from({ length: sys.layers }, (_, i) => (i < inner ? (innerBoardId ?? sys.innerBoard!) : boardId));
+}
+
+/** Grubość wszystkich warstw płyt jednej strony, mm (warstwy mogą mieć różną grubość, np. 12,5 + 15) */
+export const boardStackMm = (sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): number =>
+  layerBoards(sys, boardId, innerBoardId).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
+
+/** Grubość płyty dosztywniającej między rzędami rusztu, mm */
+export const midBoardMm = (sys: WallSystem): number => (sys.midBoard ? (sys.midLayers ?? 1) * boardById(sys.midBoard).thickness : 0);
 
 /** Nazwa słupka ściany do opisów i rysunków, np. „CW 75”, „UA 50”, „2×U 75 (UU)” */
 export function wallStudLabel(sys: WallSystem): string {
@@ -1152,7 +1218,7 @@ export function wallTieCount(tie: WallTie, len: number): number {
 export function wallFrameDepth(sys: WallSystem): number {
   switch (sys.frame) {
     case 'double':
-      return sys.profile * 2 + 5;
+      return sys.profile * 2 + 5 + midBoardMm(sys);
     case 'separate':
       return sys.profile * 2 + (sys.gap ?? 10) * 10;
     case 'cd-lining':

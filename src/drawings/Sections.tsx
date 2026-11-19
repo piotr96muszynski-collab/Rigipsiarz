@@ -193,13 +193,15 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
   const direct = kind === 'direct' && !hat;
   const cw = kind === 'cw-span';
   const ua = kind === 'ua-span';
-  const hung = kind === 'two-level' || kind === 'one-level';
+  const parallel = kind === 'parallel';
+  const hung = kind === 'two-level' || kind === 'one-level' || parallel;
   const point = kind === 'point-fix';
+  const mf = sys.profiles;
   const P = sys.profile ?? 50;
   const mainDepth = cw ? P : ua ? 40 : point ? 4 : hat ? HAT_MM : 27;
   const D = hat ? 0 : direct ? 40 : hung ? 220 : 90; // odległość od stropu (rysunkowa)
   const yMain = D;
-  const hasSecondary = !direct && !cw && !point && !hat;
+  const hasSecondary = !direct && !cw && !point && !parallel && !hat;
   const yLow = kind === 'one-level' ? D : D + mainDepth; // poziom profilu montażowego
   const yBoard = hasSecondary ? yLow + 27 : yMain + mainDepth;
   const bottom = yBoard + nt;
@@ -207,11 +209,11 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
   const span = 520;
   const xs = [first, first + span];
   const x1 = first + span + 160;
-  const singleGrid = direct || cw || point || hat;
+  const singleGrid = direct || cw || point || parallel || hat;
   const firstOff = singleGrid ? sys.secondarySpacing : Math.min(sys.mainSpacing / 2, 40);
   const spacing = singleGrid ? sys.secondarySpacing : sys.mainSpacing;
   const mainName = cw ? `CW ${P}` : ua ? 'UA 50' : point ? 'łącznika' : 'CD 60';
-  const perimeter = cw ? `UW ${P}` : 'UD 30';
+  const perimeter = cw ? `UW ${P}` : mf ? `profil przyścienny ${mf.edge}` : 'UD 30';
   const yPerim = hasSecondary ? yLow : yMain;
   const hPerim = hasSecondary ? 27 : mainDepth;
 
@@ -230,15 +232,21 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
         ? `profil CW ${P} co ${sys.secondarySpacing} cm, oparty na UW przy ścianach (bez wieszaków)`
         : ua
           ? `profil UA 50 co ${sys.mainSpacing} cm, oparty na ścianach na kątownikach (bez wieszaków)`
-          : `profil nośny CD 60 co ${sys.mainSpacing} cm`,
+          : parallel
+            ? `profil CD 60 co ${sys.secondarySpacing} cm, równolegle (bez profili głównych)`
+            : mf
+              ? `profil główny ${mf.main} co ${sys.mainSpacing} cm`
+              : `profil nośny CD 60 co ${sys.mainSpacing} cm`,
   });
   const nSec = hasSecondary ? n() : 0;
   if (hasSecondary)
     legend.push({
       n: nSec,
-      label: `profil montażowy CD 60 co ${sys.secondarySpacing} cm, ${
-        kind === 'one-level' ? 'w jednym poziomie, łączniki jednopoziomowe' : ua ? 'pod UA, łączniki UA–CD' : 'pod nośnym, łącznik krzyżowy'
-      }`,
+      label: mf
+        ? `profil nośny ${mf.secondary} co ${sys.secondarySpacing} cm, wpięty w profil główny i skręcony`
+        : `profil montażowy CD 60 co ${sys.secondarySpacing} cm, ${
+            kind === 'one-level' ? 'w jednym poziomie, łączniki jednopoziomowe' : ua ? 'pod UA, łączniki UA–CD' : 'pod nośnym, łącznik krzyżowy'
+          }`,
     });
   const nHang = direct || hung || hat ? n() : 0;
   if (nHang)
@@ -248,7 +256,9 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
         ? `dybel stalowy 6×40 przez półkę profilu, w dwóch rzędach (na obu półkach na przemian), w rzędzie co ${sys.hangerSpacing} cm`
         : direct
         ? `uchwyt bezpośredni ${sys.hangerType === 'elastic' ? 'elastyczny' : sys.hangerType === 'attic' ? 'do poddaszy' : 'ES'} co ${sys.hangerSpacing} cm, kotwa w stropie`
-        : `wieszak noniuszowy + kotwa stropowa, co ${sys.hangerSpacing} cm wzdłuż profilu nośnego`,
+        : mf
+          ? `zawiesie z kątownika ${mf.hangerAngle} + kotwa stropowa, co ${sys.hangerSpacing} cm wzdłuż profilu głównego`
+          : `wieszak noniuszowy + kotwa stropowa, co ${sys.hangerSpacing} cm wzdłuż profilu nośnego`,
     });
   const nPer = point || hat ? 0 : n();
   if (nPer) legend.push({ n: nPer, label: `${perimeter} na taśmie uszczelniającej, kołki przy ścianie` });

@@ -10,6 +10,7 @@ import {
   ceilingMaxSpan,
   isLiningSystem,
   wallFrameDepth,
+  boardStackMm,
   type CeilingKind,
   type CeilingSystem,
   type Maker,
@@ -130,7 +131,7 @@ function roomOk(boardId: string, room: Room): boolean {
 /** Grubość ściany w danej odmianie, mm */
 function wallThickness(sys: WallSystem, boardId: string, v?: SystemVariant): number {
   if (v?.thickness) return v.thickness;
-  return wallFrameDepth(sys) + boardById(boardId).thickness * sys.layers * sys.sides;
+  return wallFrameDepth(sys) + boardStackMm(sys, boardId) * sys.sides;
 }
 
 /** Odmiany systemu do sprawdzenia: z karty albo – gdy ich brak – po jednej na znany rozstaw słupków */
@@ -292,7 +293,7 @@ export const MOUNT_LABEL: Record<CeilingMount, string> = {
 };
 
 const MOUNT_KINDS: Record<CeilingMount, CeilingKind[]> = {
-  suspended: ['two-level', 'one-level'],
+  suspended: ['two-level', 'one-level', 'parallel'],
   direct: ['direct', 'point-fix'],
   span: ['ua-span', 'cw-span'],
   attic: ['direct'],

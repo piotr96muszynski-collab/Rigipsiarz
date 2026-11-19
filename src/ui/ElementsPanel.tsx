@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BOARDS, ceilingSystemById, wallSystemById } from '../catalog/rigips';
+import { BOARDS, ceilingSystemById, isHungCeiling, wallSystemById } from '../catalog/rigips';
 import { CeilingSystemSelect, LiningSystemSelect, Warnings, WallSystemSelect } from './SystemSelect';
 import {
   CEILING_WOOL_OPTIONS,
@@ -789,7 +789,7 @@ function CeilingHeights({ ceiling, edit }: { ceiling: Ceiling; edit: (fn: (c: Ce
   const lv = ceilingLevels(ceiling, sys);
   const slab = ceilingSlab(ceiling);
   const top = maxCeilingHeight(slab, sys, ceiling.boardId);
-  const hung = sys.kind === 'two-level' || sys.kind === 'one-level' || sys.kind === 'direct';
+  const hung = isHungCeiling(sys.kind);
   return (
     <>
       <div className="grid-2">

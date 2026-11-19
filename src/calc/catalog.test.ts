@@ -119,7 +119,7 @@ describe('katalog – spójność danych', () => {
   it('katalog obejmuje wszystkie rodzaje ścian i sufitów', () => {
     expect(new Set(WALL_SYSTEMS.map((s) => s.frame))).toEqual(new Set(['single', 'double', 'separate', 'cd-lining', 'glued', 'point-fix', 'hat-lining']));
     expect(new Set(WALL_SYSTEMS.map((s) => s.category)).size).toBe(6);
-    expect(new Set(CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'direct', 'ua-span', 'cw-span', 'point-fix']));
+    expect(new Set(CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'parallel', 'direct', 'ua-span', 'cw-span', 'point-fix']));
   });
 });
 
