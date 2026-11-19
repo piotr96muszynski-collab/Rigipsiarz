@@ -3,8 +3,10 @@
 // Pomierzone ściany wchodzą jako obrys (ściany istniejące z grubością muru), otwory 1:1,
 // pomieszczenia ze skosami na prostokątnym rzucie – jako zabudowy poddasza.
 
+import { atticGrid } from '../calc/attic';
+import { defaultRoofWindow } from '../calc/atticWindows';
 import { createAttic, createExistingWall, createOpening, createProject, uid } from '../model/factory';
-import type { Attic, Opening, PlanNode, Project, Wall } from '../model/types';
+import type { Attic, Opening, PlanNode, Project, RoofWindow, Wall } from '../model/types';
 
 export interface PomiarPoint {
   x: number;
@@ -43,7 +45,20 @@ export interface PomiarRoom {
   outline: PomiarPoint[];
   walls: PomiarWall[];
   /** Okna dachowe w skosie nad ścianą `wall`, mm (poddasze nie ma jeszcze okien dachowych – tylko uwaga) */
-  skylights?: { id: string; wall: string; offset: number; width: number; length: number; mount?: number }[];
+  skylights?: PomiarSkylight[];
+}
+
+/**
+ * Okno dachowe w skosie nad ścianą `wall`: `offset` od początku ściany do lewej krawędzi okna, `width` wzdłuż ściany,
+ * `length` po skosie, `mount` – wysokość dolnej krawędzi okna nad posadzką (mm; przyjęte znaczenie pola).
+ */
+export interface PomiarSkylight {
+  id: string;
+  wall: string;
+  offset: number;
+  width: number;
+  length: number;
+  mount?: number;
 }
 
 export interface PomiarFile {
@@ -163,9 +178,11 @@ export function importPomiar(file: PomiarFile): PomiarImport {
 
   // poddasza
   const attics: Attic[] = [];
+  const atticOf = new Map<string, Attic>();
   for (const r of rooms) {
     if (!r.walls.some((w) => w.slope)) continue;
     const a = atticFrom(r);
+    if (a) atticOf.set(r.id, a);
     if (a) attics.push(a);
     else
       warnings.push(
@@ -174,14 +191,20 @@ export function importPomiar(file: PomiarFile): PomiarImport {
   }
   if (attics.length) p.attics = attics;
 
-  // okna dachowe: zabudowa poddasza nie ma jeszcze otworów w skosie – podajemy wymiary do ręcznego uwzględnienia
+  // okna dachowe: przenoszone do zabudowy poddasza; pozostałe (pomieszczenie bez przekroju, okno nad ścianą bez skosu) jako uwaga
   for (const r of rooms) {
     const sk = r.skylights ?? [];
     if (!sk.length) continue;
-    const list = sk.map((s) => `${cm(s.width)}×${cm(s.length)} cm`).join(', ');
-    warnings.push(
-      `„${r.name || 'Pomieszczenie'}”: okna dachowe (${list}) nie są jeszcze przenoszone do zabudowy poddasza – uwzględnij je ręcznie (płyty i ruszt wokół okna).`,
-    );
+    const a = atticOf.get(r.id);
+    const placed = new Set((a?.windows ?? []).map((w) => w.id));
+    const rest = sk.filter((s) => !placed.has(s.id));
+    if (a && placed.size)
+      warnings.push(
+        `„${r.name || 'Pomieszczenie'}”: przeniesiono ${placed.size} ${placed.size === 1 ? 'okno dachowe' : 'okna dachowe'} – sprawdź w formularzu poddasza położenie okna względem krokwi i wysokość dolnej krawędzi.`,
+      );
+    if (!rest.length) continue;
+    const list = rest.map((s) => `${cm(s.width)}×${cm(s.length)} cm`).join(', ');
+    warnings.push(`„${r.name || 'Pomieszczenie'}”: okna dachowe (${list}) nie trafiły do zabudowy poddasza – dodaj je ręcznie w formularzu poddasza.`);
   }
 
   // strop: najwyższe z pomieszczeń bez skosów (nowe ściany i sufity dojdą do tej wysokości)
@@ -226,7 +249,7 @@ export function atticFrom(r: PomiarRoom): Attic | null {
   // wysokość, na której schodzą się skosy (dwuspadowy) albo skos dochodzi do ściany naprzeciw (jednospadowy)
   const top = R ? (kL + kR) / 2 + (width / 2) * tg : kL + width * tg;
   const collar = H < top - 10 ? cm(H) : undefined;
-  return createAttic({
+  const attic = createAttic({
     name: r.name || undefined,
     roof: R ? 'gable' : 'mono',
     width: cm(width),
@@ -236,4 +259,36 @@ export function atticFrom(r: PomiarRoom): Attic | null {
     pitch: Math.round(pitch * 10) / 10,
     collarHeight: collar,
   });
+  const windows = skylightsFor(r, attic, r.walls[left].id, R?.id);
+  if (windows.length) attic.windows = windows;
+  return attic;
+}
+
+/**
+ * Okna dachowe pomieszczenia jako okna zabudowy poddasza. Oś „u” liczona od początku lewej ściany ze skosem;
+ * prawa (przeciwległa) ściana biegnie w drugą stronę, więc jej odległość odwracamy.
+ */
+export function skylightsFor(r: PomiarRoom, a: Attic, leftWall: string, rightWall?: string): RoofWindow[] {
+  const grid = atticGrid(a);
+  const out: RoofWindow[] = [];
+  for (const s of r.skylights ?? []) {
+    const side = s.wall === leftWall ? 'left' : s.wall === rightWall ? 'right' : undefined;
+    if (!side) continue;
+    const mid = cm(s.offset + s.width / 2);
+    const u = side === 'left' ? mid : a.length - mid;
+    const w = cm(s.width);
+    const h = cm(s.length);
+    const base = defaultRoofWindow(a, grid, s.id, side);
+    out.push({
+      ...base,
+      side,
+      width: w,
+      height: h,
+      u: Math.round(u * 10) / 10,
+      sill: s.mount && s.mount >= 200 && s.mount <= 5000 ? cm(s.mount) : base.sill,
+      // producent nieznany – wymiar własny
+      sizeCode: undefined,
+    });
+  }
+  return out;
 }

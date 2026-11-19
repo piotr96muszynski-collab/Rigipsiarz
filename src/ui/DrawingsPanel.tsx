@@ -1,4 +1,6 @@
 import { AtticBoardsDrawing, AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
+import { AtticWindowSection } from '../drawings/AtticWindowDrawing';
+import { windowLabel } from '../calc/atticWindows';
 import { AtticRoofFaceDrawing, AtticRoofPlanDrawing } from '../drawings/AtticRoofDrawing';
 import { AtticWallBoardsDrawing, AtticWallFrameDrawing } from '../drawings/AtticWallDrawing';
 import { useMemo, useState } from 'react';
@@ -256,7 +258,14 @@ export function DrawingsPanel({ project, calc }: Props) {
             {!r.grid.roof && r.grid.surfaces.map((g) => (
               <div key={g.surface.id}>
                 <h4>{g.surface.label} – ruszt i punkty mocowania</h4>
-                <AtticSurfaceDrawing attic={a} g={g} grid={r.grid} title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()}`} />
+                <AtticSurfaceDrawing
+                  attic={a}
+                  g={g}
+                  grid={r.grid}
+                  title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()}`}
+                  windows={r.windows.list}
+                  maxHanger={sys.hangerSpacing || 100}
+                />
                 {(() => {
                   const layers = r.boards.surfaces.find((b) => b.id === g.surface.id)?.layers ?? [];
                   // lico na wierzchu: najpierw warstwa widoczna, potem kolejne w stronę rusztu
@@ -275,6 +284,18 @@ export function DrawingsPanel({ project, calc }: Props) {
                     </div>
                   ));
                 })()}
+              </div>
+            ))}
+            {r.windows.list.map((x, k) => (
+              <div key={x.w.id}>
+                <h4>{windowLabel(x.w, k)} – przekrój glifów</h4>
+                <AtticWindowSection
+                  attic={a}
+                  grid={r.grid}
+                  x={x}
+                  vapor={vaporBarrierOn(a.vaporBarrier, ceilingVaporSpec(sys))}
+                  title={`Poddasze ${i + 1} – ${windowLabel(x.w, k).toLowerCase()}, przekrój`}
+                />
               </div>
             ))}
             {r.walls.map((w, wi) => (

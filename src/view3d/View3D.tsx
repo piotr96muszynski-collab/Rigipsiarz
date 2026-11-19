@@ -30,6 +30,7 @@ const FRAME_COLORS: Record<string, number> = {
   anchor: 0x6b7480,
   vapor: 0xb0399b,
   timber: 0xc89a5b,
+  glass: 0x9ec9e8,
 };
 
 const LAYERS: { id: Layer3D; label: string }[] = [
@@ -80,6 +81,7 @@ function materialFor(key: MatKey, quality: Quality3D): THREE.Material {
   // płyty obustronnie – przekroje przy otworach i wycięciach też mają być widoczne
   const side = isBoard ? THREE.DoubleSide : THREE.FrontSide;
   // folia paroizolacyjna: półprzezroczysta, żeby było widać ruszt i wełnę za nią
+  if (key === 'glass') return new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.4, depthWrite: false });
   if (key === 'vapor') return new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false });
   if (quality === 'low') return new THREE.MeshLambertMaterial({ color, side });
   const look = isBoard ? { metalness: 0, roughness: 0.92 } : (FRAME_LOOK[key] ?? { metalness: 0.4, roughness: 0.5 });

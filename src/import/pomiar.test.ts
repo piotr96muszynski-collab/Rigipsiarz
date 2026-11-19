@@ -114,11 +114,29 @@ describe('poddasze ze skosów', () => {
     expect(warnings[0]).toMatch(/Sypialnia/);
   });
 
+  it('okna dachowe w skosie przechodzą do zabudowy poddasza (lewa i prawa ściana ze skosem)', () => {
+    const r = room({ 0: { knee: 1000, angle: 45 }, 2: { knee: 1000, angle: 45 } });
+    r.skylights = [
+      { id: 'a', wall: 'w0', offset: 1000, width: 780, length: 1180, mount: 1500 },
+      { id: 'b', wall: 'w2', offset: 1000, width: 780, length: 1180 },
+      { id: 'c', wall: 'w1', offset: 500, width: 550, length: 780 },
+    ];
+    const { project, warnings } = importPomiar({ format: 'pomiar', version: 1, units: 'mm', rooms: [r] });
+    const w = project.attics![0].windows!;
+    expect(w).toHaveLength(2);
+    expect(w[0]).toMatchObject({ id: 'a', side: 'left', width: 78, height: 118, u: 139, sill: 150 });
+    // przeciwległa ściana biegnie w drugą stronę: 500 − 139
+    expect(w[1]).toMatchObject({ id: 'b', side: 'right', u: 361 });
+    expect(w[1].sill).toBeGreaterThan(100);
+    expect(warnings.some((t) => /przeniesiono 2 okna dachowe/.test(t))).toBe(true);
+    expect(warnings.some((t) => /okna dachowe \(55×78 cm\) nie trafiły/.test(t))).toBe(true);
+  });
+
   it('okna dachowe zgłasza jako uwagę z wymiarami w cm', () => {
     const f = file();
     f.rooms[0].skylights = [{ id: 's', wall: f.rooms[0].walls[0].id, offset: 1000, width: 780, length: 1180, mount: 1200 }];
     const { warnings } = importPomiar(f);
-    expect(warnings.some((w) => /okna dachowe \(78×118 cm\)/.test(w))).toBe(true);
+    expect(warnings.some((w) => /okna dachowe \(78×118 cm\) nie trafiły/.test(w))).toBe(true);
     expect(importPomiar(file()).warnings.some((w) => /okna dachowe/.test(w))).toBe(false);
   });
 });

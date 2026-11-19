@@ -192,6 +192,24 @@ export interface Attic {
   kneeLining?: Lining;
   /** Okładzina obu ścian szczytowych, do lica skosów i sufitu; brak = bez okładziny. `side` nieużywane */
   gableLining?: Lining;
+  /** Okna dachowe w skosach */
+  windows?: RoofWindow[];
+}
+
+/** Okno dachowe (połaciowe) w skosie poddasza */
+export interface RoofWindow {
+  id: Id;
+  /** Skos z oknem; w dachu jednospadowym zawsze 'left' */
+  side: 'left' | 'right';
+  /** Wymiary zewnętrzne ościeżnicy: szerokość (wzdłuż kalenicy) i wysokość (po skosie), cm */
+  width: number;
+  height: number;
+  /** Oś okna wzdłuż kalenicy, cm od ściany szczytowej */
+  u: number;
+  /** Wysokość dolnej krawędzi ościeżnicy nad posadzką, cm */
+  sill: number;
+  /** Oznaczenie rozmiaru producenta (np. „VELUX MK06”); brak = wymiar wpisany ręcznie */
+  sizeCode?: string;
 }
 
 /** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */

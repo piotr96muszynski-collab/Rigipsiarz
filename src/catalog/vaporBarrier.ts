@@ -37,6 +37,14 @@ export const VAPOR_PRODUCTS: Record<string, Product> = {
     pack: 50,
     packUnit: 'rolka',
   },
+  // okna dachowe: fabryczny kołnierz z folii łączony z ościeżnicą i paroizolacją dachu (VELUX BBX, FAKRO XDS),
+  // dobierany do rozmiaru okna – rozmiar w uwadze pozycji
+  KOLNIERZ_PARO: {
+    id: 'KOLNIERZ_PARO',
+    name: 'Kołnierz paroizolacyjny okna dachowego (np. VELUX BBX, FAKRO XDS) – w rozmiarze okna',
+    group: 'Izolacja',
+    unit: 'szt.',
+  },
 };
 
 /** Zużycie na 1 m² zabudowy wg kart Rigips 4.70.0x (folia z zakładami ok. 10 cm i wywinięciem na ściany) */

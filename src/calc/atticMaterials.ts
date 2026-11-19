@@ -8,6 +8,7 @@ import { boardById, ceilingSystemById, type CeilingSystem } from '../catalog/rig
 import { resolveFinishing, type FinishingSettings } from '../catalog/finishing';
 import type { Attic } from '../model/types';
 import { atticFrameOf, atticGrid, type AtticGrid } from './attic';
+import { addAtticWindows, atticWindowCutouts, atticWindowGeometry, cdLineSegments, cutoutM2, type AtticWindowsResult } from './atticWindows';
 import { atticBoardLayout, type AtticBoards } from './atticBoards';
 import { addAtticWalls, atticWallFaces, atticWallLayout, type AtticWallLayout } from './atticWalls';
 import { layerBoards } from './ceilingLevels';
@@ -33,6 +34,8 @@ export interface AtticResult {
   hangers: number;
   warnings: string[];
   assumptions: string[];
+  /** Okna dachowe: geometria glifów i otworów */
+  windows: AtticWindowsResult;
 }
 
 /** Grubości wełny do wyboru między krokwiami i pod krokwiami, mm */
@@ -66,9 +69,12 @@ export function atticRequirement(
     perimeterM += lenM;
   };
   const boards = layerBoards(sys, a.boardId);
+  // okna dachowe: otwory w płytach i przerwane linie rusztu
+  const wins = atticWindowGeometry(a, grid).list;
 
   for (const g of grid.surfaces) {
-    const A = g.areaM2;
+    // płyty, wełna i folia bez otworów okien (glify liczy addAtticWindows)
+    const A = Math.max(0, g.areaM2 - cutoutM2(wins, g.surface.id));
     const run = g.surface.run / 100;
     areaM2 += A;
     if (between) {
@@ -84,10 +90,12 @@ export function atticRequirement(
       }
     } else {
       // elementy rusztu wzdłuż kalenicy, na całej długości pomieszczenia
-      for (let i = 0; i < g.cd.length; i++) {
-        addPiece(req, grid.profile, L);
-        if (frame.joiner) add(req.counts, frame.joiner, joinsFor(L, profileMaxStock(grid.profile, 4)));
-      }
+      for (const s of g.cd)
+        for (const [p0, p1] of cdLineSegments(a.length, s, g.surface.id, wins)) {
+          const len = (p1 - p0) / 100;
+          addPiece(req, grid.profile, len);
+          if (frame.joiner) add(req.counts, frame.joiner, joinsFor(len, profileMaxStock(grid.profile, 4)));
+        }
       const carrier = grid.carrier;
       if (carrier) {
         // ruszt krzyżowy: profil nośny pod każdą krokwią na całej długości płaszczyzny
@@ -118,7 +126,7 @@ export function atticRequirement(
   }
 
   // płyty z rozkładu (ten sam co na rysunku i w 3D): elementy + resztki, z których nic się już nie wytnie
-  const layout = atticBoardLayout(a, sys, grid);
+  const layout = atticBoardLayout(a, sys, grid, atticWindowCutouts(a, grid));
   for (const u of layout.sheets) {
     const key = `${u.boardId}|${u.sheetLen}`;
     add(req.boardArea, key, u.netM2 + u.wasteM2);
@@ -156,7 +164,14 @@ export function atticRequirement(
 
   // paroizolacja pod płytami na całej zabudowie – wspólne wyliczenie folii i taśm
   const vapor = ceilingVaporSpec(sys);
-  if (vaporBarrierOn(a.vaporBarrier, vapor)) vaporBarrierLines(req, areaM2, vapor);
+  const vaporOn = vaporBarrierOn(a.vaporBarrier, vapor);
+  if (vaporOn) vaporBarrierLines(req, areaM2, vapor);
+
+  // okna dachowe: obramowanie otworu, glify, narożniki, kołnierz paroizolacyjny
+  const windows = addAtticWindows(req, a, grid, { vapor: vaporOn, fin, sys });
+  warnings.push(...windows.warnings);
+  assumptions.push(...windows.assumptions);
+
 
   // okładziny ścianek kolankowych i ścian szczytowych (systemy okładzin muru, profile docięte do skosu)
   const walls = atticWallFaces(a, grid).map(atticWallLayout);
@@ -167,5 +182,5 @@ export function atticRequirement(
       'Okładziny ścian poddasza: profile pionowe co rozstaw, docięte do lica skosu; profil przyścienny UD po obwodzie każdej ściany; płyty pionowo, docinane pod kątem skosu. Okładzina dochodzi do lica zabudowy skosów i sufitu.',
     );
 
-  return { req, grid, boards: layout, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions };
+  return { req, grid, boards: layout, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions, windows };
 }

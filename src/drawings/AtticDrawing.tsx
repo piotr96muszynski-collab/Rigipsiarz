@@ -1,5 +1,6 @@
 import { splicePositions } from '../calc/layout';
 import { atticSection, type AtticGrid, type AtticSurfaceGrid } from '../calc/attic';
+import { cdLineSegments, windowFixPoints, type RoofWindowGeom } from '../calc/atticWindows';
 import type { AtticBoardLayer } from '../calc/atticBoards';
 import { PRODUCTS, boardById } from '../catalog/rigips';
 import type { Attic } from '../model/types';
@@ -12,7 +13,23 @@ const RAFTER_EDGE = '#8a6230';
  * Rozwinięcie jednej płaszczyzny (skosu albo sufitu pod jętkami): krokwie, profile CD w poprzek krokwi
  * i punkty mocowania wieszaków. Poziomo długość wzdłuż kalenicy, pionowo długość po skosie od dolnej krawędzi.
  */
-export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g: AtticSurfaceGrid; grid: AtticGrid; title: string }) {
+export function AtticSurfaceDrawing({
+  attic,
+  g,
+  grid,
+  title,
+  windows = [],
+  maxHanger = 100,
+}: {
+  attic: Attic;
+  g: AtticSurfaceGrid;
+  grid: AtticGrid;
+  title: string;
+  /** Okna dachowe (wszystkie płaszczyzny – rysowane tylko te z tej) */
+  windows?: RoofWindowGeom[];
+  /** Największy rozstaw wieszaków systemu, cm (mocowania obramowania okna) */
+  maxHanger?: number;
+}) {
   const L = attic.length;
   const run = g.surface.run;
   const f = clamp(Math.max(L, run) / 26, 8, 30);
@@ -31,6 +48,12 @@ export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g
   // ruszt krzyżowy: profile nośne pod krokwiami (pionowo), profile pod płyty w poprzek, wieszaki na nośnych
   const carrier = grid.carrier;
   const lineColor = carrier ? C.secondary : C.main;
+  const wins = windows.filter((x) => x.surfaceId === g.surface.id);
+  const sOf = (p: { x: number; z: number }) => {
+    const d = { x: (g.surface.b.x - g.surface.a.x) / run, z: (g.surface.b.z - g.surface.a.z) / run };
+    return (p.x - g.surface.a.x) * d.x + (p.z - g.surface.a.z) * d.z;
+  };
+  const winPts = wins.flatMap((x) => windowFixPoints(x, grid, maxHanger));
   const hangerPts = carrier ? g.hangerU.flatMap((u) => g.fixS.map((s) => [u, s] as const)) : g.cd.flatMap((s) => g.hangerU.map((u) => [u, s] as const));
 
   return (
@@ -46,11 +69,38 @@ export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g
               <line key={`${b.u}-l`} x1={b.u + 1} y1={0} x2={b.u + 1} y2={run} stroke={C.ud} strokeWidth={3} {...nss} />,
               <line key={`${b.u}-r`} x1={b.u + b.w - 1} y1={0} x2={b.u + b.w - 1} y2={run} stroke={C.ud} strokeWidth={3} {...nss} />,
             ])
-          : g.cd.map((s) => <line key={s} x1={0} y1={Y(s)} x2={L} y2={Y(s)} stroke={lineColor} strokeWidth={3} {...nss} />)}
+          : g.cd.flatMap((s) =>
+              cdLineSegments(L, s, g.surface.id, wins).map(([u0, u1]) => <line key={`${s}-${u0}`} x1={u0} y1={Y(s)} x2={u1} y2={Y(s)} stroke={lineColor} strokeWidth={3} {...nss} />),
+            )}
+        {/* okna dachowe: otwór w płytach (krawędzie glifów), rzut ościeżnicy, obramowanie otworu */}
+        {wins.map((x) => {
+          const f0 = sOf(x.frameBottom);
+          const f1 = sOf(x.frameTop);
+          return (
+            <g key={x.w.id}>
+              <rect x={x.u0} y={Y(x.s1)} width={x.u1 - x.u0} height={x.s1 - x.s0} fill="#ffffff" stroke={INK} strokeWidth={1.5} {...nss} />
+              <rect x={x.u0} y={Y(f1)} width={x.u1 - x.u0} height={f1 - f0} fill="#dbeafe" stroke={C.main} strokeWidth={1} strokeDasharray="6 4" {...nss} />
+              <line x1={x.u0} y1={Y(f0)} x2={x.u0 + (x.u1 - x.u0) / 2} y2={Y(f1)} stroke={C.main} strokeWidth={0.6} {...nss} />
+              <line x1={x.u1} y1={Y(f0)} x2={x.u0 + (x.u1 - x.u0) / 2} y2={Y(f1)} stroke={C.main} strokeWidth={0.6} {...nss} />
+              {x.cross.map((c) => (
+                <line key={`c${c.s}`} x1={c.u0} y1={Y(c.s)} x2={c.u1} y2={Y(c.s)} stroke={C.extra} strokeWidth={4} {...nss} />
+              ))}
+              {x.side.map((sd) => (
+                <line key={`s${sd.u}`} x1={sd.u} y1={Y(sd.s0)} x2={sd.u} y2={Y(sd.s1)} stroke={C.extra} strokeWidth={4} {...nss} />
+              ))}
+              <text x={(x.u0 + x.u1) / 2} y={Y((f0 + f1) / 2)} fontSize={Math.min(f * 0.8, (x.u1 - x.u0) / 6)} textAnchor="middle" fill={INK}>
+                {x.w.sizeCode ?? `${cm(x.w.width)}×${cm(x.w.height)}`}
+              </text>
+              <ChainH xs={[0, x.u0, x.u1, L]} y={run} off={f * 1.6 + f * 1.4} f={f * 0.7} color={C.extra} />
+              <ChainV ys={[run, Y(x.s0), Y(x.s1), 0].sort((p, q) => p - q)} x={x.u1} off={f * 1.2} f={f * 0.7} color={C.extra} />
+            </g>
+          );
+        })}
         {carrier && g.hangerU.map((u) => <line key={`n${u}`} x1={u} y1={0} x2={u} y2={run} stroke={C.main} strokeWidth={4} {...nss} />)}
         {carrier?.cross && g.cd.flatMap((s) => g.hangerU.map((u) => <rect key={`x${s}-${u}`} x={u - f * 0.25} y={Y(s) - f * 0.25} width={f * 0.5} height={f * 0.5} fill="none" stroke={INK} strokeWidth={1} {...nss} />))}
         {g.cd.flatMap((s) => splices.map((u) => <rect key={`${s}-${u}`} x={u - f * 0.5} y={Y(s) - f * 0.15} width={f} height={f * 0.3} fill={INK} />))}
         {hangerPts.map(([u, s]) => <circle key={`${s}-${u}`} cx={u} cy={Y(s)} r={f * 0.3} fill={C.hanger} />)}
+        {winPts.map(([u, s], i) => <circle key={`w${i}`} cx={u} cy={Y(s)} r={f * 0.3} fill={C.hanger} stroke="#fff" strokeWidth={1} {...nss} />)}
         {/* profil przyścienny na ścianach szczytowych */}
         {fr.edge && !between && (
           <>
@@ -96,6 +146,15 @@ export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g
               ]),
           ...(fr.edge && !between ? [{ color: C.ud, label: `${edgeName} na ścianach szczytowych` }] : []),
           ...(splices.length ? [{ color: INK, label: 'łącznik wzdłużny' }] : []),
+          ...(wins.length
+            ? [
+                {
+                  color: C.extra,
+                  label: `okno dachowe: obramowanie otworu (${profName}) ${grid.frame.mount === 'between' ? 'w polu okna' : 'nad, pod i po bokach otworu'}${winPts.length ? ` + ${winPts.length} dodatkowych mocowań do krokwi` : ''}`,
+                },
+                { color: C.main, dashed: true, label: 'rzut ościeżnicy okna; biały prostokąt = otwór w płytach na krawędziach glifów' },
+              ]
+            : []),
         ]}
       />
     </figure>

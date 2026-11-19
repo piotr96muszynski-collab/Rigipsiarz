@@ -13,6 +13,7 @@ import { AtticSystemSelect, Warnings } from './SystemSelect';
 import { VaporField } from './WoolField';
 import { ceilingVaporSpec, vaporBarrierOn } from '../calc/vaporBarrier';
 import { fmtNum } from './wallStyle';
+import { AtticWindowsField } from './AtticWindows';
 
 const ROOF_OPTIONS: PickOption<Attic['roof']>[] = [
   { value: 'gable', label: 'dwuspadowy', hint: 'skosy z obu stron' },
@@ -279,6 +280,8 @@ export function AtticEditor({ attic, edit, result }: Props) {
           </div>
         )}
       </div>
+
+      <AtticWindowsField attic={attic} grid={grid} edit={edit} />
 
       <VaporField spec={ceilingVaporSpec(sys)} enabled={vaporBarrierOn(attic.vaporBarrier, ceilingVaporSpec(sys))} areaM2={area} onToggle={(on) => edit((a) => void (a.vaporBarrier = on))} />
 

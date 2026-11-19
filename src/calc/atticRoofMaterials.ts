@@ -15,6 +15,7 @@ import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarr
 import { boardById } from '../catalog/rigips';
 import { addAtticWalls, atticWallLayout } from './atticWalls';
 import { atticRoofWallFaces } from './atticRoofWalls';
+import { atticWindowGeometry } from './atticWindows';
 
 export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: FinishingSettings, grid: AtticGrid & { roof: AtticRoofGrid }): AtticResult {
   const req = emptyReq();
@@ -105,5 +106,9 @@ export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: Finishin
     assumptions.push(
       'Okładziny ścian poddasza: profile pionowe co rozstaw, docięte do lica skosu; profil przyścienny UD po obwodzie każdej ściany; płyty pionowo, docinane pod kątem skosu. Przy dachu z narożnikami i koszami okładziny są w zestawieniu i na rysunkach, w widoku 3D jeszcze ich nie ma.',
     );
-  return { req, grid, boards: { surfaces: [], sheets: [], warnings: [] }, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions };
+  // okna dachowe w połaciach z narożnikami i koszami jeszcze nie są liczone – tylko ostrzeżenie
+  const win = atticWindowGeometry(a, grid);
+  warnings.push(...win.warnings);
+  const windows = { list: win.list, cutM2: 0, revealM2: 0, warnings: win.warnings, assumptions: [] };
+  return { req, grid, boards: { surfaces: [], sheets: [], warnings: [] }, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions, windows };
 }
