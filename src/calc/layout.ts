@@ -384,8 +384,11 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     }));
     // styki drugiej strony (ta sama warstwa) – lepiej się z nimi nie pokrywać
     const soft = (layer: number) => faces.filter((f) => f.side !== side && f.layer === layer).flatMap(faceJoints);
-    const others = (layer: number) => layers.filter((q) => q.layer !== layer && q.joints.length).flatMap((q) => q.joints.filter((x) => inside(x, q.range)));
-    // warstwy tej strony nie mogą mieć wspólnych styków: kilka przebiegów, każda warstwa
+    // sąsiednie warstwy (przy trzech i czterech warstwach styk 3. warstwy może wypaść nad stykiem 1. –
+    // przy słupkach co 60 cm są tylko dwa możliwe położenia styku płyty 120 cm)
+    const others = (layer: number) =>
+      layers.filter((q) => Math.abs(q.layer - layer) === 1 && q.joints.length).flatMap((q) => q.joints.filter((x) => inside(x, q.range)));
+    // sąsiednie warstwy tej strony nie mogą mieć wspólnych styków: kilka przebiegów, każda warstwa
     // dopasowuje się do pozostałych (przy otworach pierwsza warstwa też może ustąpić drugiej)
     // najpierw tylko na istniejących słupkach; dodatkowy słupek dopiero, gdy styki dalej się pokrywają
     // albo styk zostaje w linii ościeża
@@ -420,7 +423,7 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
       // styki liczone od węzła a (jak ruszt), płyta przycięta do zakresu z modelu styków
       const pieces = cutOpenings(clipPieces(boardFace(L, H, sheetLen, q.offset, boardW, q.joints, bottomFirst), x0, x1), openings);
       const inRange = q.joints.filter((x) => inside(x, q.range));
-      const lower = layers.filter((o) => o.layer < q.layer).flatMap((o) => o.joints.filter((x) => inside(x, o.range)));
+      const lower = layers.filter((o) => o.layer === q.layer - 1).flatMap((o) => o.joints.filter((x) => inside(x, o.range)));
       const layerJoints = inRange.filter((x) => lower.some((y) => Math.abs(y - x) < 0.05));
       faces.push({ side, layer: q.layer, x0, x1, offset: q.offset, joints: inRange, pieces, jambJoints: q.bad, layerJoints });
     }
@@ -472,6 +475,8 @@ export function liningAsWall(w: Wall, l: Lining): Wall {
     systemId: sys.id,
     boardId: l.boardId,
     studSpacing: l.studSpacing,
+    doubleStuds: l.doubleStuds,
+    innerBoardId: l.innerBoardId,
     insulation: l.insulation,
     endA: 'existing-wall',
     endB: 'existing-wall',

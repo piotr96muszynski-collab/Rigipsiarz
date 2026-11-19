@@ -55,7 +55,7 @@ describe('obrys istniejącej przestrzeni', () => {
     expect(calc.stats.liningAreaM2).toBeCloseTo(net);
     const boards = Object.values(r.req.boardArea).reduce((a, b) => a + b, 0);
     expect(boards).toBeCloseTo(net);
-    expect(r.req.kg.KLEJ).toBeCloseTo(net * 4);
+    expect(r.req.kg.KLEJ).toBeCloseTo(net * 5); // kalkulator Rigips 3.10.00: 5 kg/m²
     // bez rusztu – żadnych profili ani kołków
     expect(Object.keys(r.req.pieces).filter((k) => k !== 'NAROZNIK')).toHaveLength(0);
     expect(r.req.counts.KOLEK ?? 0).toBe(0);

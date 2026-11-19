@@ -8,6 +8,7 @@
 // z wymaganiami ogniowymi lub akustycznymi zawsze sprawdź aktualną kartę systemu.
 
 import { CORNER_STOCK_LENGTHS, FINISHING_PRODUCTS } from './finishing';
+import { RIGIPS_WALLS } from './rigips.gen';
 import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
 import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
 
@@ -109,6 +110,10 @@ export interface Board {
   maker?: Maker;
   /** Odporność na wilgoć: humid = pomieszczenia wilgotne (łazienka, kuchnia), wet = strefy mokre */
   moisture?: 'humid' | 'wet';
+  /** Płyta o podwyższonej twardości – szafki i półki na samych wkrętach (Habito, Duraline) */
+  hard?: boolean;
+  /** Wkręty inne niż TN (wg kalkulatora Rigips): Habito, HartFix (Duraline, Aku), Rigidur, Glasroc F Ridurit, Aquaroc (X Ocean) */
+  screws?: 'habito' | 'hartfix' | 'rigidur' | 'ridurit' | 'aquaroc';
 }
 
 export const BOARDS: Board[] = [
@@ -144,6 +149,7 @@ export const BOARDS: Board[] = [
     lengths: [200, 260, 300],
     description: 'Płyta impregnowana do łazienek i kuchni (wilgotność okresowo do 85%)',
     color: '#b9d8b0',
+    moisture: 'humid',
   },
   {
     id: 'RF12.5',
@@ -188,6 +194,7 @@ export const BOARDS: Board[] = [
     lengths: [200, 260, 300],
     description: 'Płyta ogniochronna i impregnowana',
     color: '#e6c9a8',
+    moisture: 'humid',
   },
   {
     id: 'AKU12.5',
@@ -199,6 +206,7 @@ export const BOARDS: Board[] = [
     lengths: [200, 260, 300],
     description: 'Płyta o podwyższonej izolacyjności akustycznej',
     color: '#d8d0e8',
+    screws: 'hartfix',
   },
   {
     id: 'HABITO12.5',
@@ -210,6 +218,8 @@ export const BOARDS: Board[] = [
     lengths: [260, 300],
     description: 'Płyta o podwyższonej twardości, można wieszać szafki bez kołków',
     color: '#c9d4e6',
+    hard: true,
+    screws: 'habito',
   },
   {
     id: 'HABITOH12.5',
@@ -221,6 +231,9 @@ export const BOARDS: Board[] = [
     lengths: [260, 300],
     description: 'Habito impregnowana – twarda płyta do łazienek i kuchni',
     color: '#a9c6d8',
+    hard: true,
+    screws: 'habito',
+    moisture: 'humid',
   },
   {
     id: 'AQUAROC12.5',
@@ -233,6 +246,109 @@ export const BOARDS: Board[] = [
     description: 'Płyta cementowa do stref mokrych (prysznice, pralnie). Format sprawdź w sklepie',
     color: '#bfc3c7',
     kind: 'cement',
+    moisture: 'wet',
+  },
+  // --- płyty dodane z kalkulatora Rigips (formaty z nazw produktów na rigips.pl) ---
+  {
+    id: 'RFP15',
+    name: 'Rigips PRO Fire+ 15 (typ DF)',
+    short: 'Fire+ 15',
+    type: 'DF',
+    thickness: 15,
+    width: 120,
+    lengths: [200, 260],
+    description: 'Płyta ogniochronna 15 mm – wyższe klasy EI przy jednej warstwie',
+    color: '#ef8f8f',
+  },
+  {
+    id: 'RFI15',
+    name: 'Rigips PRO Fire+ Hydro 15 (GKFI, typ DFH2)',
+    short: 'GKFI 15',
+    type: 'DFH2 (GKFI)',
+    thickness: 15,
+    width: 120,
+    lengths: [260],
+    description: 'Płyta ogniochronna i impregnowana 15 mm',
+    color: '#dcb890',
+    moisture: 'humid',
+  },
+  {
+    id: 'AKUF12.5',
+    name: 'Rigips PRO Aku Fire+ Hydro 12,5 (typ DFH2)',
+    short: 'Aku Fire+ H',
+    type: 'DFH2',
+    thickness: 12.5,
+    width: 120,
+    lengths: [200],
+    description: 'Płyta akustyczna, ogniochronna i impregnowana',
+    color: '#c4b8e0',
+    moisture: 'humid',
+    screws: 'hartfix',
+  },
+  {
+    id: 'DURA12.5',
+    name: 'Rigips PRO Duraline 12,5 (typ DFIREH1)',
+    short: 'Duraline',
+    type: 'DFIREH1',
+    thickness: 12.5,
+    width: 120,
+    lengths: [200, 260],
+    description: 'Płyta o podwyższonej twardości i odporności na uderzenia, impregnowana, ogniochronna',
+    color: '#b9c7a8',
+    moisture: 'humid',
+    hard: true,
+    screws: 'hartfix',
+  },
+  {
+    id: 'XOCEAN12.5',
+    name: 'Rigips Glasroc X Ocean 12,5 (typ GM-FH1)',
+    short: 'X Ocean',
+    type: 'GM-FH1',
+    thickness: 12.5,
+    width: 120,
+    lengths: [200, 260],
+    description: 'Płyta gipsowa z matą szklaną do pomieszczeń mokrych (prysznice, pralnie, baseny)',
+    color: '#8fc4d6',
+    moisture: 'wet',
+    screws: 'aquaroc',
+  },
+  {
+    id: 'RIGIDUR10',
+    name: 'Rigips Rigidur H 10 (płyta gipsowo-włóknowa)',
+    short: 'Rigidur 10',
+    type: 'GF-C1-I-W2',
+    thickness: 10,
+    width: 120,
+    lengths: [250, 300],
+    description: 'Płyta gipsowo-włóknowa o dużej twardości (arkusz 1195 mm szerokości)',
+    color: '#cfc8b8',
+    hard: true,
+    screws: 'rigidur',
+  },
+  {
+    id: 'RIGIDUR12.5',
+    name: 'Rigips Rigidur H 12,5 (płyta gipsowo-włóknowa)',
+    short: 'Rigidur',
+    type: 'GF-C1-I-W2',
+    thickness: 12.5,
+    width: 120,
+    lengths: [250, 260, 300],
+    description: 'Płyta gipsowo-włóknowa o dużej twardości (arkusz 1195 mm szerokości)',
+    color: '#c4bca8',
+    hard: true,
+    screws: 'rigidur',
+  },
+  {
+    id: 'RIDURIT25',
+    name: 'Rigips Glasroc F Ridurit 25 (typ GM-F)',
+    short: 'Ridurit 25',
+    type: 'GM-F',
+    thickness: 25,
+    width: 120,
+    lengths: [200],
+    description: 'Płyta ogniochronna z matą szklaną do obudów szachtów EI 120',
+    color: '#e6d9c2',
+    screws: 'ridurit',
   },
   ...NORGIPS_BOARDS,
 ];
@@ -246,6 +362,8 @@ export const PRODUCTS: Record<string, Product> = {
   CW50: { id: 'CW50', name: 'Profil Rigips CW 50', group: 'Profile', unit: 'szt.', length: 3 },
   CW75: { id: 'CW75', name: 'Profil Rigips CW 75', group: 'Profile', unit: 'szt.', length: 3 },
   CW100: { id: 'CW100', name: 'Profil Rigips CW 100', group: 'Profile', unit: 'szt.', length: 3 },
+  CW75AKU: { id: 'CW75AKU', name: 'Profil Rigips CW 75 Aku (akustyczny)', group: 'Profile', unit: 'szt.', length: 3 },
+  CW100AKU: { id: 'CW100AKU', name: 'Profil Rigips CW 100 Aku (akustyczny)', group: 'Profile', unit: 'szt.', length: 3 },
   UW50: { id: 'UW50', name: 'Profil Rigips UW 50', group: 'Profile', unit: 'szt.', length: 4 },
   UW75: { id: 'UW75', name: 'Profil Rigips UW 75', group: 'Profile', unit: 'szt.', length: 4 },
   UW100: { id: 'UW100', name: 'Profil Rigips UW 100', group: 'Profile', unit: 'szt.', length: 4 },
@@ -311,8 +429,19 @@ export const PRODUCTS: Record<string, Product> = {
   TN45: { id: 'TN45', name: 'Wkręt do płyt TN 3,5×45', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
   TN55: { id: 'TN55', name: 'Wkręt do płyt TN 3,5×55', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
   TN70: { id: 'TN70', name: 'Wkręt do płyt TN 3,9×70', group: 'Mocowanie', unit: 'szt.', pack: 250, packUnit: 'opak.' },
-  AQ25: { id: 'AQ25', name: 'Wkręt do płyt cementowych Aquaroc 25 mm', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
-  AQ35: { id: 'AQ35', name: 'Wkręt do płyt cementowych Aquaroc 35 mm', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
+  AQ25: { id: 'AQ25', name: 'Wkręt Aquaroc Interior HB 25 mm', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
+  AQ35: { id: 'AQ35', name: 'Wkręt Aquaroc Interior HB 3,5×41', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
+  // wkręty do płyt specjalnych (nazwy i opakowania z kalkulatora Rigips)
+  HABITO26: { id: 'HABITO26', name: 'Wkręt Habito 4,2×26', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  HABITO41: { id: 'HABITO41', name: 'Wkręt Habito 4,2×41', group: 'Mocowanie', unit: 'szt.', pack: 800, packUnit: 'opak.' },
+  HARTFIX25: { id: 'HARTFIX25', name: 'Wkręt HartFix 3,9×25 (Duraline)', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  HARTFIX35: { id: 'HARTFIX35', name: 'Wkręt HartFix 3,8×35 (Duraline)', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  HARTFIX45: { id: 'HARTFIX45', name: 'Wkręt HartFix 3,8×45 (Duraline)', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  RIGIDUR30: { id: 'RIGIDUR30', name: 'Wkręt Rigidur 3,5×30', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  RIGIDUR40: { id: 'RIGIDUR40', name: 'Wkręt Rigidur 3,5×40', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  RIDURIT40: { id: 'RIDURIT40', name: 'Wkręt Glasroc F (Ridurit) 3,5×40', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  RIDURIT50: { id: 'RIDURIT50', name: 'Wkręt Glasroc F (Ridurit) 3,5×50', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  RIDURIT70: { id: 'RIDURIT70', name: 'Wkręt Glasroc F (Ridurit) 3,5×70', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
   LN9: { id: 'LN9', name: 'Wkręt do profili LN 3,5×9 (pchełka)', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
   // Wykończenie
   TASMA_USZ50: { id: 'TASMA_USZ50', name: 'Taśma uszczelniająca 50 mm', group: 'Wykończenie', unit: 'mb', pack: 30, packUnit: 'rolka' },
@@ -391,6 +520,8 @@ export interface SystemVariant {
   label: string;
   /** Id płyty z BOARDS (warstwa zewnętrzna); brak = odmiana dotyczy każdej płyty systemu */
   board?: string;
+  /** Płyty dopuszczone na warstwy wewnętrzne (systemy z dwoma rodzajami płyt), od najtańszej */
+  innerBoards?: string[];
   /** Rozstaw słupków / profili, cm; brak = jak w systemie */
   studSpacing?: StudSpacing;
   /** Słupki podwójne (2×CW zespolone) */
@@ -426,6 +557,11 @@ export interface WallSystem {
   /** 2 = ściana działowa, 1 = obudowa / okładzina jednostronna */
   sides: 1 | 2;
   defaultBoard: string;
+  /** Inna płyta na warstwach wewnętrznych (np. PRO pod Habito); liczba tych warstw w `innerLayers` */
+  innerBoard?: string;
+  innerLayers?: number;
+  /** Słupki z profili akustycznych CW Aku */
+  akuStuds?: boolean;
   /** Domyślny rozstaw słupków / profili CD, cm */
   studSpacing: StudSpacing;
   /** Maksymalna wysokość, cm, wg rozstawu słupków */
@@ -454,179 +590,9 @@ export interface WallSystem {
   variants?: SystemVariant[];
 }
 
-const boardsRef = (m2: number): RefLine => ({ label: 'Płyta g-k', qty: m2, unit: 'm²' });
-
-export const WALL_SYSTEMS: WallSystem[] = [
+/** Systemy opisane ręcznie: bez karty Rigips (wartości orientacyjne) oraz ATLAS M-System */
+const HAND_WALLS: WallSystem[] = [
   // --- pojedynczy ruszt ---
-  {
-    id: 'W-CW50-1',
-    code: '3.40.01',
-    name: 'Ściana CW 50, 1×12,5 obustronnie',
-    category: 'działowa',
-    frame: 'single',
-    profile: 50,
-    layers: 1,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 300, 30: 425 },
-    insulationDefault: true,
-    fire: 'EI 30 (EI 60 z płytą Fire+ 15 mm)',
-    info: 'Grubość 75 mm · do 3,0 m przy rozstawie 60 cm, do 4,25 m przy rozstawie zagęszczonym (wariant 3.40.013)',
-    source: SOURCES.W_34001,
-    reference: [
-      boardsRef(2),
-      { label: 'Profil CW 50 (przy rozstawie zagęszczonym)', qty: 3.6, unit: 'mb' },
-      { product: 'UW50', label: 'Profil UW 50', qty: 0.7, unit: 'mb' },
-      { product: 'TN25', label: 'Wkręt TN 25 co 250 mm', qty: 24, unit: 'szt.' },
-      { label: 'Wkręt „pchełka” 3,9×11', qty: 8, unit: 'szt.' },
-      { product: 'KOLEK', label: 'Kołki min. ø6 co max 1000 mm', qty: 1.5, unit: 'szt.' },
-      { product: 'TASMA_USZ50', label: 'Taśma uszczelniająca 50 mm', qty: 1.1, unit: 'mb' },
-      { product: 'MASA', label: 'Masa konstrukcyjna', qty: 0.5, unit: 'kg' },
-      { product: 'TASMA_SPOIN', label: 'Taśma spoinowa', qty: 2.8, unit: 'mb' },
-      { product: 'MASA_WYK', label: 'Masa wykończeniowa', qty: 0.2, unit: 'kg' },
-      { label: 'Wełna mineralna', qty: 1, unit: 'm²' },
-    ],
-  },
-  {
-    id: 'W-CW50-1F',
-    code: '3.40.01',
-    name: 'Ściana ogniochronna CW 50, 1×Fire+ 12,5 obustronnie',
-    category: 'działowa',
-    frame: 'single',
-    profile: 50,
-    layers: 1,
-    sides: 2,
-    defaultBoard: 'RFP12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 300, 30: 425 },
-    insulationDefault: true,
-    fire: 'EI 30 (EI 60 przy płycie Fire+ 15 mm, grubość 80 mm)',
-    info: 'Grubość 75 mm · wariant ogniochronny ściany 3.40.01',
-    source: SOURCES.W_34001,
-  },
-  {
-    id: 'W-CW50-2',
-    name: 'Ściana CW 50, 2×12,5 obustronnie',
-    category: 'działowa',
-    frame: 'single',
-    profile: 50,
-    layers: 2,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 400 },
-    insulationDefault: true,
-    info: 'Grubość 100 mm · do ok. 4,0 m wysokości',
-    source: APPROX,
-  },
-  {
-    id: 'W-CW75-1',
-    name: 'Ściana CW 75, 1×12,5 obustronnie',
-    category: 'działowa',
-    frame: 'single',
-    profile: 75,
-    layers: 1,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 400 },
-    insulationDefault: true,
-    info: 'Grubość 100 mm · do ok. 4,0 m wysokości · najczęstsza ścianka w mieszkaniu',
-    source: APPROX,
-  },
-  {
-    id: 'W-CW75-2',
-    code: '3.40.05',
-    name: 'Ściana CW 75, 2×12,5 obustronnie',
-    category: 'działowa',
-    frame: 'single',
-    profile: 75,
-    layers: 2,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 550, 40: 650 },
-    insulationDefault: true,
-    fire: 'EI 30 – EI 120 (zależnie od płyt i wełny)',
-    info: 'Grubość 125 mm · do 5,5 m przy rozstawie 60 cm, do 6,5 m przy 40 cm (3.40.051)',
-    source: SOURCES.W_34005,
-    reference: [
-      boardsRef(4),
-      { product: 'CW75', label: 'Profil CW 75', qty: 1.8, unit: 'mb' },
-      { product: 'UW75', label: 'Profil UW 75', qty: 0.7, unit: 'mb' },
-      { product: 'TN25', label: 'Wkręt TN 25 co 750 mm (1. warstwa)', qty: 9, unit: 'szt.' },
-      { product: 'TN35', label: 'Wkręt TN 35 co 250 mm (2. warstwa)', qty: 24, unit: 'szt.' },
-      { product: 'KOLEK', label: 'Kołki min. ø6 co max 1000 mm', qty: 1.5, unit: 'szt.' },
-      { product: 'TASMA_USZ70', label: 'Taśma uszczelniająca 70 mm', qty: 1.1, unit: 'mb' },
-      { product: 'MASA', label: 'Masa konstrukcyjna', qty: 1, unit: 'kg' },
-      { product: 'TASMA_SPOIN', label: 'Taśma spoinowa', qty: 2.8, unit: 'mb' },
-      { product: 'MASA_WYK', label: 'Masa wykończeniowa', qty: 0.2, unit: 'kg' },
-      { product: 'WELNA75', label: 'Wełna mineralna 50 mm (75 mm dla EI 120)', qty: 1, unit: 'm²' },
-    ],
-  },
-  {
-    id: 'W-CW75-2-40',
-    code: '3.40.051',
-    name: 'Ściana wysoka CW 75, 2×12,5, słupki co 40 cm',
-    category: 'działowa',
-    frame: 'single',
-    profile: 75,
-    layers: 2,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 40,
-    maxHeight: { 40: 650 },
-    insulationDefault: true,
-    fire: 'EI 30 – EI 120',
-    info: 'Grubość 125 mm · do 6,5 m wysokości',
-    source: SOURCES.W_340051,
-    reference: [
-      boardsRef(4),
-      { product: 'CW75', label: 'Profil CW 75', qty: 2.7, unit: 'mb' },
-      { product: 'UW75', label: 'Profil UW 75', qty: 0.7, unit: 'mb' },
-      { product: 'TN25', label: 'Wkręt TN 25 co 750 mm (1. warstwa)', qty: 14, unit: 'szt.' },
-      { product: 'TN35', label: 'Wkręt TN 35 co 250 mm (2. warstwa)', qty: 36, unit: 'szt.' },
-      { product: 'KOLEK', label: 'Kołki co max 1000 mm', qty: 1.5, unit: 'szt.' },
-      { product: 'TASMA_USZ70', label: 'Taśma uszczelniająca 70 mm', qty: 1.1, unit: 'mb' },
-      { product: 'MASA', label: 'Masa konstrukcyjna', qty: 1, unit: 'kg' },
-      { product: 'TASMA_SPOIN', label: 'Taśma spoinowa', qty: 2.8, unit: 'mb' },
-      { product: 'MASA_WYK', label: 'Masa wykończeniowa', qty: 0.2, unit: 'kg' },
-      { product: 'WELNA75', label: 'Wełna mineralna', qty: 1, unit: 'm²' },
-    ],
-  },
-  {
-    id: 'W-CW75-2RF',
-    code: '3.40.05',
-    name: 'Ściana ogniochronna CW 75, 2×GKF 12,5',
-    category: 'działowa',
-    frame: 'single',
-    profile: 75,
-    layers: 2,
-    sides: 2,
-    defaultBoard: 'RF12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 550, 40: 650 },
-    insulationDefault: true,
-    fire: 'EI 60 – EI 120 (wełna 50–75 mm wg karty)',
-    info: 'Grubość 125 mm · wariant ogniowy ściany 3.40.05',
-    source: SOURCES.W_34005,
-  },
-  {
-    id: 'W-CW75-2RBI',
-    name: 'Ściana do łazienki CW 75, 2×GKBI 12,5',
-    category: 'działowa',
-    frame: 'single',
-    profile: 75,
-    layers: 2,
-    sides: 2,
-    defaultBoard: 'RBI12.5',
-    studSpacing: 40,
-    maxHeight: { 60: 550, 40: 650 },
-    insulationDefault: true,
-    info: 'Pod płytki ceramiczne · rozstaw 40 cm · hydroizolacja w strefie mokrej',
-    source: SOURCES.W_34005,
-  },
   {
     id: 'W-CW75-1HAB',
     name: 'Ściana CW 75, 1×Habito 12,5 obustronnie',
@@ -642,98 +608,7 @@ export const WALL_SYSTEMS: WallSystem[] = [
     info: 'Twarda płyta – szafki i półki wiesza się wkrętami bez kołków',
     source: APPROX,
   },
-  {
-    id: 'W-CW75-1AQ',
-    name: 'Ściana do strefy mokrej CW 75, 1×Aquaroc 12,5',
-    category: 'działowa',
-    frame: 'single',
-    profile: 75,
-    layers: 1,
-    sides: 2,
-    defaultBoard: 'AQUAROC12.5',
-    studSpacing: 40,
-    maxHeight: { 40: 400 },
-    insulationDefault: true,
-    info: 'Płyta cementowa · rozstaw 40 cm · wkręty i masa systemu Aquaroc',
-    source: APPROX,
-  },
-  {
-    id: 'W-CW100-1',
-    name: 'Ściana CW 100, 1×12,5 obustronnie',
-    category: 'działowa',
-    frame: 'single',
-    profile: 100,
-    layers: 1,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 500 },
-    insulationDefault: true,
-    info: 'Grubość 125 mm · do ok. 5,0 m wysokości',
-    source: APPROX,
-  },
-  {
-    id: 'W-CW100-2',
-    name: 'Ściana CW 100, 2×12,5 obustronnie',
-    category: 'działowa',
-    frame: 'single',
-    profile: 100,
-    layers: 2,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 650 },
-    insulationDefault: true,
-    info: 'Grubość 150 mm · do ok. 6,5 m · wysoka izolacyjność',
-    source: APPROX,
-  },
   // --- podwójny ruszt ---
-  {
-    id: 'W-2CW50-2',
-    code: '3.41.01',
-    name: 'Ściana międzylokalowa 2×CW 50, 2×12,5 obustronnie',
-    category: 'podwójna',
-    frame: 'double',
-    profile: 50,
-    layers: 2,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 450, 40: 475 },
-    insulationDefault: true,
-    fire: 'EI 30 – EI 120',
-    acoustic: 'RA1 do 60 dB',
-    info: 'Grubość 155 mm · dwa niezależne rzędy CW · do 4,5 m (4,75 m przy 40 cm, 3.41.011)',
-    source: SOURCES.W_34101,
-    reference: [
-      boardsRef(4),
-      { product: 'CW50', label: 'Profil CW 50', qty: 3.6, unit: 'mb' },
-      { product: 'UW50', label: 'Profil UW 50', qty: 1.4, unit: 'mb' },
-      { product: 'TN25', label: 'Wkręt TN 25 co 750 mm', qty: 9, unit: 'szt.' },
-      { product: 'TN35', label: 'Wkręt TN 35 co 250 mm', qty: 24, unit: 'szt.' },
-      { product: 'KOLEK', label: 'Kołki co max 1000 mm', qty: 3, unit: 'szt.' },
-      { product: 'TASMA_USZ50', label: 'Taśma uszczelniająca 50 mm', qty: 4.7, unit: 'mb' },
-      { product: 'MASA', label: 'Masa konstrukcyjna', qty: 1, unit: 'kg' },
-      { product: 'TASMA_SPOIN', label: 'Taśma spoinowa', qty: 2.8, unit: 'mb' },
-      { product: 'MASA_WYK', label: 'Masa wykończeniowa', qty: 0.2, unit: 'kg' },
-      { product: 'WELNA50', label: 'Wełna mineralna', qty: 2, unit: 'm²' },
-    ],
-  },
-  {
-    id: 'W-2CW75-2',
-    name: 'Ściana akustyczna 2×CW 75, 2×12,5 obustronnie',
-    category: 'podwójna',
-    frame: 'double',
-    profile: 75,
-    layers: 2,
-    sides: 2,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 550 },
-    insulationDefault: true,
-    info: 'Grubość 205 mm · bardzo dobra izolacyjność akustyczna',
-    source: APPROX,
-  },
   // --- instalacyjne ---
   {
     id: 'W-INST-CW50-2',
@@ -768,128 +643,7 @@ export const WALL_SYSTEMS: WallSystem[] = [
     source: APPROX,
   },
   // --- okładziny ---
-  {
-    id: 'O-CW50-1',
-    name: 'Okładzina wolnostojąca CW 50, 1×12,5',
-    category: 'okładzina',
-    frame: 'single',
-    profile: 50,
-    layers: 1,
-    sides: 1,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 260 },
-    insulationDefault: false,
-    info: 'Ruszt CW w UW niezależny od ściany · wyrównuje krzywe ściany, miejsce na wełnę i instalacje',
-    source: APPROX,
-  },
-  {
-    id: 'O-CW50-2',
-    name: 'Okładzina wolnostojąca CW 50, 2×12,5',
-    category: 'okładzina',
-    frame: 'single',
-    profile: 50,
-    layers: 2,
-    sides: 1,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 300 },
-    insulationDefault: false,
-    info: 'Okładzina wolnostojąca, dwie warstwy płyt',
-    source: APPROX,
-  },
-  {
-    id: 'O-CW75-1',
-    name: 'Okładzina wolnostojąca CW 75, 1×12,5',
-    category: 'okładzina',
-    frame: 'single',
-    profile: 75,
-    layers: 1,
-    sides: 1,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 330 },
-    insulationDefault: true,
-    info: 'Wyższa okładzina wolnostojąca, wełna 75 mm (docieplenie od wewnątrz)',
-    source: APPROX,
-  },
-  {
-    id: 'O-CD-1',
-    name: 'Okładzina na CD 60 i uchwytach ES, 1×12,5',
-    category: 'okładzina',
-    frame: 'cd-lining',
-    profile: 50,
-    layers: 1,
-    sides: 1,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    bracketSpacing: 100,
-    insulationDefault: false,
-    info: 'Profile CD pionowo co 60 cm, uchwyty ES do ściany co max 100 cm, UD 30 góra i dół',
-    source: APPROX,
-  },
-  {
-    id: 'O-CD-2',
-    name: 'Okładzina na CD 60 i uchwytach ES, 2×12,5',
-    category: 'okładzina',
-    frame: 'cd-lining',
-    profile: 50,
-    layers: 2,
-    sides: 1,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    bracketSpacing: 100,
-    insulationDefault: false,
-    info: 'Jak wyżej, dwie warstwy płyt (np. ogniowa lub pod płytki)',
-    source: APPROX,
-  },
-  {
-    id: 'O-KLEJ',
-    name: 'Suchy tynk – płyta klejona do ściany, 1×12,5',
-    category: 'okładzina',
-    frame: 'glued',
-    profile: 50,
-    layers: 1,
-    sides: 1,
-    defaultBoard: 'RB12.5',
-    studSpacing: 60,
-    insulationDefault: false,
-    info: 'Płyta na placki z kleju gipsowego (ok. 4 kg/m²) · tylko na równe i nośne podłoże',
-    source: APPROX,
-  },
   // --- szachty ---
-  {
-    id: 'SZ-CW50-2F',
-    name: 'Obudowa szachtu CW 50, 2×GKF 12,5 (jednostronna)',
-    category: 'szacht',
-    frame: 'single',
-    profile: 50,
-    layers: 2,
-    sides: 1,
-    defaultBoard: 'RF12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 300 },
-    insulationDefault: false,
-    fire: 'Klasę EI sprawdź w karcie systemu obudowy szybów',
-    info: 'Obudowa pionów instalacyjnych płytą ogniochronną od strony pomieszczenia',
-    source: APPROX,
-  },
-  {
-    id: 'SZ-CW75-2F',
-    name: 'Obudowa szachtu CW 75, 2×GKF 12,5 (jednostronna)',
-    category: 'szacht',
-    frame: 'single',
-    profile: 75,
-    layers: 2,
-    sides: 1,
-    defaultBoard: 'RF12.5',
-    studSpacing: 60,
-    maxHeight: { 60: 400 },
-    insulationDefault: false,
-    fire: 'Klasę EI sprawdź w karcie systemu obudowy szybów',
-    info: 'Wyższe szachty, obudowa jednostronna płytą ogniochronną',
-    source: APPROX,
-  },
   {
     id: 'SZ-CD-2F',
     name: 'Obudowa pionu na CD 60, 2×GKF 12,5',
@@ -908,6 +662,62 @@ export const WALL_SYSTEMS: WallSystem[] = [
   ...ATLAS_WALL_SYSTEMS,
   ...NORGIPS_WALL_SYSTEMS,
 ];
+
+/** Systemy podstawowe – widoczne od razu; reszta katalogu jest pod „Pozostałe systemy” i w wyszukiwarce */
+const BASIC_WALLS = new Set([
+  'W-CW50-1',
+  'W-CW75-1',
+  'W-CW75-2',
+  'W-CW100-1',
+  'W-CW100-2',
+  'W-2CW50-2',
+  'W-INST-CW50-2',
+  'O-CW50-1',
+  'O-CD-1',
+  'O-KLEJ',
+  'SZ-CW50-2',
+  'A-W-L100',
+]);
+
+/** Identyfikatory z wcześniejszych wersji katalogu (zapisane projekty) → obecne systemy */
+export const WALL_SYSTEM_ALIASES: Record<string, string> = {
+  'W-CW50-1F': 'W-CW50-1',
+  'W-CW75-2-40': 'W-CW75-2',
+  'W-CW75-2RF': 'W-CW75-2',
+  'W-CW75-2RBI': 'W-CW75-2',
+  'W-CW75-1AQ': 'W-CW75-1AQUAROC',
+  'SZ-CW50-2F': 'SZ-CW50-2',
+  'SZ-CW75-2F': 'SZ-CW75-2',
+};
+
+const CATEGORY_ORDER: WallCategory[] = ['działowa', 'podwójna', 'instalacyjna', 'okładzina', 'szacht', 'atlas'];
+/** Płyty standardowe PRO (A, Hydro, Fire, Fire+) – systemy z nimi stoją w katalogu przed specjalnymi */
+const isStandardBoard = (id: string) => /^R(B|BI|F|FP|FI)\d/.test(id);
+const MAKER_ORDER: Maker[] = ['rigips', 'norgips', 'knauf', 'atlas'];
+/** Klucz kolejności: kategoria, producent, podstawowe, płyty standardowe, rodzaj rusztu, profil, liczba warstw */
+const wallOrder = (s: WallSystem): number[] => [
+  CATEGORY_ORDER.indexOf(s.category),
+  MAKER_ORDER.indexOf(s.maker ?? 'rigips'),
+  s.basic ? 0 : 1,
+  isStandardBoard(s.defaultBoard) && !s.innerBoard && !s.akuStuds ? 0 : 1,
+  s.frame === 'glued' ? 0 : s.frame === 'cd-lining' ? 1 : 2,
+  s.profile,
+  s.layers,
+];
+const byKey = (a: number[], b: number[]) => {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return 0;
+};
+
+/**
+ * Katalog ścian: konstrukcje z kart Rigips (src/catalog/rigips.gen.ts – generowane z danych rigips.pl)
+ * oraz systemy opisane ręcznie. Kolejność: kategoria, podstawowe, płyty standardowe, profil, liczba warstw.
+ */
+export const WALL_SYSTEMS: WallSystem[] = [...RIGIPS_WALLS, ...HAND_WALLS]
+  .map((s) => (BASIC_WALLS.has(s.id) ? { ...s, basic: true } : s))
+  .map((s, i) => ({ s, k: [...(s.maker && s.maker !== 'rigips' ? [CATEGORY_ORDER.indexOf(s.category), MAKER_ORDER.indexOf(s.maker)] : wallOrder(s)), i] }))
+  .sort((a, b) => byKey(a.k, b.k))
+  .map((x) => x.s);
 
 // ---------------------------------------------------------------------------
 // Systemy sufitów
@@ -968,6 +778,8 @@ export interface CeilingSystem {
   basic?: boolean;
   /** Odmiany z karty producenta (płyta, EI, akustyka) */
   variants?: SystemVariant[];
+  /** Zabudowa poddasza (skosy, jętki) – mocowanie do krokwi */
+  attic?: boolean;
 }
 
 const ceilingRefCommon = (layers: number): RefLine[] => [
@@ -1402,13 +1214,27 @@ export const allWallSystems = (): WallSystem[] => [...WALL_SYSTEMS, ...custom.wa
 export const allCeilingSystems = (): CeilingSystem[] => [...CEILING_SYSTEMS, ...custom.ceilings];
 
 export const boardById = (id: string): Board => BOARDS.find((b) => b.id === id) ?? BOARDS[0];
+const WALL_BY_ID = new Map(WALL_SYSTEMS.map((s) => [s.id, s]));
 export const wallSystemById = (id: string): WallSystem =>
-  WALL_SYSTEMS.find((s) => s.id === id) ?? custom.walls.find((s) => s.id === id) ?? WALL_SYSTEMS[3];
+  WALL_BY_ID.get(id) ?? custom.walls.find((s) => s.id === id) ?? WALL_BY_ID.get(WALL_SYSTEM_ALIASES[id]) ?? WALL_BY_ID.get('W-CW75-1')!;
 export const ceilingSystemById = (id: string): CeilingSystem =>
   CEILING_SYSTEMS.find((s) => s.id === id) ?? custom.ceilings.find((s) => s.id === id) ?? CEILING_SYSTEMS[0];
 
-/** Maksymalna wysokość ściany dla danego rozstawu (cm) lub undefined, gdy brak danych */
-export function wallMaxHeight(sys: WallSystem, spacing: number): number | undefined {
+/**
+ * Maksymalna wysokość ściany (cm) dla danego rozstawu słupków lub undefined, gdy brak danych.
+ * Bez `opts`: wartość z tabeli systemu (płyta domyślna). Z płytą lub słupkami podwójnymi: największa
+ * wysokość wśród odmian z karty z tą płytą, o rozstawie nie gęstszym niż wybrany.
+ */
+export function wallMaxHeight(sys: WallSystem, spacing: number, opts: { board?: string; doubleStuds?: boolean } = {}): number | undefined {
+  if (sys.variants?.length && (opts.board || opts.doubleStuds)) {
+    const board = opts.board ?? sys.defaultBoard;
+    const forBoard = sys.variants.filter((v) => v.board === board);
+    const pool = forBoard.length ? forBoard : sys.variants.filter((v) => !v.board || v.board === sys.defaultBoard);
+    const ok = pool.filter((v) => v.maxHeight && (v.studSpacing ?? sys.studSpacing) >= spacing && !!v.doubleStuds === !!opts.doubleStuds);
+    if (ok.length) return Math.max(...ok.map((v) => v.maxHeight!));
+    // słupki podwójne bez osobnej odmiany w karcie → co najmniej tyle, co pojedyncze
+    if (opts.doubleStuds) return wallMaxHeight(sys, spacing, { board: opts.board });
+  }
   const mh = sys.maxHeight;
   if (!mh) return undefined;
   const exact = mh[spacing as StudSpacing];
