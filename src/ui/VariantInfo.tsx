@@ -1,4 +1,4 @@
-import { MAKER_LABEL, boardById, wallMaxHeight, type WallSystem } from '../catalog/rigips';
+import { MAKER_LABEL, boardById, wallMaxHeight, type StudSpacing, type WallSystem } from '../catalog/rigips';
 import { makerOf, variantForHeight, type WallPick } from '../calc/recommend';
 import { Picker } from './Picker';
 import { SourceBadge } from './SystemSelect';
@@ -8,15 +8,19 @@ interface Props {
   idBase: string;
   sys: WallSystem;
   boardId: string;
-  studSpacing: 60 | 40 | 30;
+  studSpacing: StudSpacing;
   doubleStuds?: boolean;
   innerBoardId?: string;
+  /** Płyty strony 2 (systemy z innym poszyciem stron) */
+  sideBBoards?: string[];
   /** Wysokość ściany, cm */
   heightCm: number;
   /** Zastosuj odmianę z karty (rozstaw, słupki podwójne) */
   onApply: (pick: WallPick) => void;
   onDouble: (on: boolean) => void;
   onInner: (boardId: string) => void;
+  /** Zmiana płyt strony 2 (brak = bez wyboru) */
+  onSideB?: (boards: string[]) => void;
   /** line: tylko linia z karty i podpowiedź przy za wysokiej ścianie; options: tylko słupki podwójne i płyta wewnętrzna */
   part?: 'line' | 'options';
 }
@@ -31,10 +35,22 @@ const range = (vals: (number | undefined)[]) => {
  * dopuszczalna wysokość, EI i akustyka. Gdy ściana jest za wysoka, podpowiada odmianę z gęstszymi
  * albo podwójnymi słupkami. Tu też przełącznik słupków podwójnych i płyta warstw wewnętrznych.
  */
-export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds, innerBoardId, heightCm, onApply, onDouble, onInner, part }: Props) {
+export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds, innerBoardId, sideBBoards, heightCm, onApply, onDouble, onInner, onSideB, part }: Props) {
   const cw = sys.frame === 'single' || sys.frame === 'double' || sys.frame === 'separate';
   const maker = MAKER_LABEL[makerOf(sys)];
-  const match = (sys.variants ?? []).filter((v) => v.board === boardId && (v.studSpacing ?? sys.studSpacing) === studSpacing && !!v.doubleStuds === !!doubleStuds);
+  // strona 2 z innym poszyciem: odmiana z karty musi mieć te same płyty strony 2
+  const sideB = (sideBBoards?.length ? sideBBoards : sys.sideB ?? []).join('+');
+  const match = (sys.variants ?? []).filter(
+    (v) =>
+      v.board === boardId &&
+      (v.studSpacing ?? sys.studSpacing) === studSpacing &&
+      !!v.doubleStuds === !!doubleStuds &&
+      (!v.sideB || v.sideB.join('+') === sideB),
+  );
+  const sideBOptions = sys.sideB?.length
+    ? [...new Set([sys.sideB.join('+'), ...(sys.variants ?? []).flatMap((v) => (v.sideB ? [v.sideB.join('+')] : []))])]
+    : [];
+  const sideBLabel = (key: string) => key.split('+').map((id) => boardById(id).name).join(' + ');
   const limit = wallMaxHeight(sys, studSpacing, { board: boardId, doubleStuds });
   const tooHigh = !!limit && heightCm > limit + 0.5;
   const better = tooHigh ? variantForHeight(sys, heightCm, boardId) : undefined;
@@ -87,7 +103,7 @@ export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds
             <span>Żadna odmiana tego systemu nie sięga {fmtNum(heightCm / 100)} m – wybierz mocniejszy system w „Dobierz po wymaganiach”.</span>
           </p>
         ))}
-      {opts && (cw || innerOptions.length > 0) && (
+      {opts && (cw || innerOptions.length > 0 || sideBOptions.length > 1) && (
         <div className="variant-opts">
           {cw && (
             <label className="check">
@@ -104,6 +120,19 @@ export function WallVariantInfo({ idBase, sys, boardId, studSpacing, doubleStuds
                 value={innerBoardId ?? sys.innerBoard!}
                 options={innerOptions.map((id) => ({ value: id, label: boardById(id).name, short: boardById(id).short }))}
                 onChange={onInner}
+                mode="sheet"
+              />
+            </div>
+          )}
+          {sideBOptions.length > 1 && onSideB && (
+            <div className="field">
+              <label htmlFor={`sb-${idBase}`}>Płyty strony B (od rusztu)</label>
+              <Picker
+                id={`sb-${idBase}`}
+                label="Płyty strony B"
+                value={sideB}
+                options={sideBOptions.map((key) => ({ value: key, label: sideBLabel(key), short: key.split('+').map((id) => boardById(id).short).join(' + ') }))}
+                onChange={(key) => onSideB(key.split('+'))}
                 mode="sheet"
               />
             </div>

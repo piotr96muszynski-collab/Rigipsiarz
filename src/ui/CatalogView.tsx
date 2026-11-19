@@ -8,6 +8,7 @@ import {
   allCeilingSystems,
   allWallSystems,
   boardById,
+  layerBoards,
   ceilingMaxSpan,
   PRODUCTS,
   customSystems,
@@ -153,7 +154,12 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
                   ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : s.frame === 'hat-lining' ? 'kapeluszowy 15/48, bez UD' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
-                  ['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
+                  ...(s.sideB?.length && s.sides === 2
+                    ? ([
+                        ['Płyty strony A', layerBoards(s, s.defaultBoard).map((id) => boardById(id).name).join(' + ') + ' (od rusztu)'],
+                        ['Płyty strony B', s.sideB.map((id) => boardById(id).name).join(' + ') + ' (od rusztu)'],
+                      ] as [string, string][])
+                    : ([['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`]] as [string, string][])),
                   ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
                   ...(s.frame === 'point-fix'
                     ? ([

@@ -7,6 +7,7 @@ import {
   ceilingMaxSpan,
   ceilingSystemById,
   wallMaxHeight,
+  sideBoards,
   wallSystemById,
   wallTieCount,
   type Board,
@@ -414,50 +415,66 @@ export function wallRequirement(
   // --- Płyty ---
   const openingArea = openings.reduce((a, o) => a + o.w * o.h, 0);
   const net = Math.max(0, L * H - openingArea);
-  const boards = layerBoards(sys, w.boardId, w.innerBoardId);
-  const keyOf = (layer: number) => `${boards[layer] ?? w.boardId}|${pickBoardLength(boards[layer] ?? w.boardId, w.height)}`;
-  const sheetKey = keyOf(sys.layers - 1);
+  // płyty każdej strony od rusztu – strona 2 może mieć inne (RTG, ściany kinowe, płyta cementowa z jednej strony)
+  const sideB = [sideBoards(sys, w, 0), sideBoards(sys, w, 1)] as const;
+  const keyFor = (id: string) => `${id}|${pickBoardLength(id, w.height)}`;
+  const keyOf = (side: 0 | 1, layer: number) => keyFor(sideB[side][layer] ?? w.boardId);
   // każda warstwa na swoją długość z modelu styków: w narożniku płyta zachodzi na czoło sąsiedniej
   // ściany albo dochodzi do jej płyty, w trójniku i przy okładzinie muru kończy się na ich licu
   const areaByKey: Record<string, number> = {};
+  const wasteByKey: Record<string, number> = {};
   let cutWaste = 0;
   if (layout) {
     // z rozkładu płyt (ten sam co na rysunku i w 3D): elementy po wycięciu otworów
     // + odpad z wycięć L/U, z którego nie da się już nic przykręcić (pas węższy niż 30 cm)
     for (const face of layout.faces)
       for (const pc of face.pieces) {
-        add(areaByKey, keyOf(face.layer), pieceArea(pc));
-        for (const n of pc.notches ?? []) if (Math.min(n.x1 - n.x0, n.y1 - n.y0) < OFFCUT_MIN) cutWaste += (n.x1 - n.x0) * (n.y1 - n.y0);
+        add(areaByKey, keyOf(face.side, face.layer), pieceArea(pc));
+        for (const n of pc.notches ?? [])
+          if (Math.min(n.x1 - n.x0, n.y1 - n.y0) < OFFCUT_MIN) {
+            const a = (n.x1 - n.x0) * (n.y1 - n.y0);
+            cutWaste += a;
+            // odpad do płyty zewnętrznej tej strony
+            add(wasteByKey, keyOf(face.side, sideB[face.side].length - 1), a);
+          }
       }
   } else
-    for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1)
-      for (let layer = 0; layer < sys.layers; layer++) {
+    for (const side of [0, 1] as const)
+      for (let layer = 0; layer < sideB[side].length; layer++) {
         const [x0, x1] = m ? partRange(m, w, L, { kind: 'board', side, layer }) : [0, L];
-        add(areaByKey, keyOf(layer), Math.max(0, (x1 - x0) * H - openingArea));
+        add(areaByKey, keyOf(side, layer), Math.max(0, (x1 - x0) * H - openingArea));
       }
   for (const [k, a] of Object.entries(areaByKey)) add(req.boardArea, k, a);
   // płyta dosztywniająca między rzędami rusztu (Siniat 168B50…): pełna powierzchnia netto, przykręcona do jednego rzędu
   if (sys.midBoard) {
     const n = sys.midLayers ?? 1;
-    add(req.boardArea, `${sys.midBoard}|${pickBoardLength(sys.midBoard, w.height)}`, net * n);
+    add(req.boardArea, keyFor(sys.midBoard), net * n);
     addBoardScrews(req, net, Array(n).fill(sys.midBoard), WALL_SCREWS_OUTER * (0.6 / Math.max(0.2, w.studSpacing / 100)), WALL_SCREWS_INNER);
   }
-  // odpad z wycięć liczymy do płyty zewnętrznej
-  if (cutWaste > 0) add(req.boardArea, sheetKey, cutWaste);
-  if (cutWaste > 0) add((req.boardCutWaste ??= {}), sheetKey, cutWaste);
-  const faceArea = net * sys.sides;
-
-  // --- Wkręty lub klej ---
-  if (sys.frame === 'glued') {
-    add(req.kg, 'KLEJ', faceArea * GLUE_PER_M2);
-  } else {
-    // gęstszy ruszt i słupki podwójne = proporcjonalnie więcej wkrętów (płytę kręcimy do obu słupków pary)
-    const f = (0.6 / Math.max(0.2, s)) * (doubled ? 2 : 1);
-    addBoardScrews(req, faceArea, boards, WALL_SCREWS_OUTER * f, WALL_SCREWS_INNER * f);
+  for (const [k, a] of Object.entries(wasteByKey)) {
+    add(req.boardArea, k, a);
+    add((req.boardCutWaste ??= {}), k, a);
   }
+  const fin = resolveFinishing(p.settings.finishing);
 
-  // --- Spoinowanie ---
-  addJointing(req, faceArea, sys.layers, w.boardId, 1.4, resolveFinishing(p.settings.finishing));
+  for (const side of [0, 1] as const) {
+    const boards = sideB[side];
+    if (!boards.length) continue;
+    // --- Wkręty lub klej ---
+    if (sys.frame === 'glued') {
+      add(req.kg, 'KLEJ', net * GLUE_PER_M2);
+    } else {
+      // gęstszy ruszt i słupki podwójne = proporcjonalnie więcej wkrętów (płytę kręcimy do obu słupków pary)
+      const f = (0.6 / Math.max(0.2, s)) * (doubled ? 2 : 1);
+      addBoardScrews(req, net, boards, WALL_SCREWS_OUTER * f, WALL_SCREWS_INNER * f);
+    }
+    // --- Spoinowanie: wg płyty zewnętrznej strony (płyta cementowa – taśma i masa do Aquaroc) ---
+    addJointing(req, net, boards.length, boards[boards.length - 1], 1.4, fin);
+    // --- Płyty z ołowiem (Siniat RTG): samoprzylepna taśma z ołowiem na słupkach pod płytą ---
+    // karta Siniat 75A50/RTG: 2,4 mb/m² przy słupkach co 625 mm (4,8 przy 312,5) – na każdą warstwę RTG
+    const lead = boards.filter((id) => boardById(id).leadMm).length;
+    if (lead) add(req.meters, 'TASMA_OLOW', net * lead * 2.4 * (0.625 / Math.max(0.2, s)));
+  }
 
   // Narożniki, kąty wewnętrzne i styki liczy analyzeJoints (src/calc/joints.ts)
 

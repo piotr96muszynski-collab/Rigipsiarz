@@ -1,7 +1,7 @@
 // Przekroje systemowe (schematy, wymiary w mm). Rozpiętości są skrócone (linie urwania),
 // żeby profile i płyty były czytelne na telefonie – wymiary podane są rzeczywiste.
 
-import { HAT_MM, PRODUCTS, type Board, type CeilingSystem, type WallSystem } from '../catalog/rigips';
+import { HAT_MM, PRODUCTS, boardById, midBoardMm, sideBoards, type Board, type CeilingSystem, type WallBoarding, type WallSystem } from '../catalog/rigips';
 import { C, Callout, Dim, INK, Legend, Paper, cm, nss } from './svg';
 import type { CeilingLevels } from '../calc/ceilingLevels';
 
@@ -32,10 +32,30 @@ function BreakLine({ x, y0, y1 }: { x: number; y0: number; y1: number }) {
 /** Przekrój poziomy ściany: płyty, ruszt (CW / podwójny / instalacyjny / CD na uchwytach / klejenie), wełna */
 export type Wool = { thickness: number; layers: number } | null;
 
-export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys: WallSystem; board: Board; spacing: number; wool: Wool; vapor?: boolean }) {
+export function WallSection({
+  sys,
+  board,
+  spacing,
+  wool,
+  vapor = false,
+  boarding,
+}: {
+  sys: WallSystem;
+  board: Board;
+  spacing: number;
+  wool: Wool;
+  vapor?: boolean;
+  /** płyty ściany (różna grubość warstw, inne poszycie strony 2); brak = `board` na każdej warstwie */
+  boarding?: WallBoarding;
+}) {
   const P = sys.profile;
-  const tb = board.thickness || T_BOARD;
-  const nt = sys.layers * tb;
+  // płyty kolejnych warstw każdej strony, od rusztu
+  const sideB: [Board[], Board[]] = [0, 1].map((side) =>
+    boarding ? sideBoards(sys, boarding, side as 0 | 1).map(boardById) : side < sys.sides ? Array.from({ length: sys.layers }, () => board) : [],
+  ) as [Board[], Board[]];
+  const tbOf = (b: Board) => b.thickness || T_BOARD;
+  const stack = (side: 0 | 1) => sideB[side].reduce((a, b) => a + tbOf(b), 0);
+  const nt = stack(0);
   const frame = sys.frame;
   const isCD = frame === 'cd-lining';
   const hat = frame === 'hat-lining';
@@ -43,10 +63,10 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
   const glued = frame === 'glued' || point;
   const onWall = isCD || glued || hat; // okładzina na istniejącej ścianie
   // głębokość rusztu i rzędy słupków (y względem lica rdzenia)
-  const core = point ? 100 : glued ? 10 : isCD ? 40 : hat ? HAT_MM : frame === 'double' ? 2 * P + 5 : frame === 'separate' ? 2 * P + (sys.gap ?? 10) * 10 : P;
+  const core = point ? 100 : glued ? 10 : isCD ? 40 : hat ? HAT_MM : frame === 'double' ? 2 * P + 5 + midBoardMm(sys) : frame === 'separate' ? 2 * P + (sys.gap ?? 10) * 10 : P;
   const rows: [number, number][] = glued || isCD || hat ? [] : frame === 'single' ? [[0, P]] : [[0, P], [core - P, core]];
   const sides = onWall ? 1 : sys.sides;
-  const T = core + nt * sides;
+  const T = core + nt + (sides > 1 ? stack(1) : 0);
   const s = 420; // rysunkowa odległość słupków (rzeczywista w opisie)
   const x0 = -40;
   const x1 = s * 2 + 40;
@@ -54,13 +74,36 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
   const yCore0 = nt;
   const yCore1 = nt + core;
   const studs = [0, s, 2 * s];
-  const layers = (side: 0 | 1) =>
-    Array.from({ length: sys.layers }, (_, k) => {
-      const y = side === 0 ? nt - (k + 1) * tb : yCore1 + k * tb;
-      return { y, k };
+  const layers = (side: 0 | 1) => {
+    let acc = 0;
+    return sideB[side].map((b, k) => {
+      const tb = tbOf(b);
+      const y = side === 0 ? nt - acc - tb : yCore1 + acc;
+      acc += tb;
+      return { y, k, tb, b };
     });
+  };
+  /** Opis poszycia jednej strony od rusztu: „2×Ogień Plus 12,5 + 1×RTG 12,5+1,0” */
+  const describe = (list: Board[]) => {
+    const groups: { b: Board; n: number }[] = [];
+    for (const b of list) {
+      const last = groups[groups.length - 1];
+      if (last && last.b.id === b.id) last.n++;
+      else groups.push({ b, n: 1 });
+    }
+    return groups.map((g) => `${g.n}×${g.b.name}`).join(' + ');
+  };
+  const sameSides = sides < 2 || sideB[0].map((b) => b.id).join() === sideB[1].map((b) => b.id).join();
+  const uniform = sideB[0].every((b) => b.id === sideB[0][0]?.id);
   const legend: { n: number; label: string }[] = [
-    { n: 1, label: `${board.name}, ${sys.layers}×${cm(tb)} mm${sides > 1 ? ' z każdej strony' : ''}` },
+    {
+      n: 1,
+      label: sameSides
+        ? uniform
+          ? `${sideB[0][0]?.name ?? board.name}, ${sideB[0].length}×${cm(tbOf(sideB[0][0] ?? board))} mm${sides > 1 ? ' z każdej strony' : ''}`
+          : `${describe(sideB[0])} (od rusztu)${sides > 1 ? ' z każdej strony' : ''}`
+        : `strona A (u góry): ${describe(sideB[0])}; strona B (u dołu): ${describe(sideB[1])} – warstwy od rusztu`,
+    },
   ];
   if (point) legend.push({ n: 2, label: `łączniki ATLAS M-System 3G kotwione w ścianie, siatka ${cm(spacing)}×${sys.pointSpacing ?? 50} cm` });
   else if (glued) legend.push({ n: 2, label: 'placki kleju gipsowego, ok. 10 mm, na istniejącej ścianie' });
@@ -104,15 +147,15 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
         {([0, 1] as const)
           .filter((side) => side < sides)
           .flatMap((side) =>
-            layers(side).map(({ y, k }) => {
+            layers(side).map(({ y, k, tb, b }) => {
               // styki płyt na słupkach, w kolejnych warstwach i po drugiej stronie przesunięte
               const joint = (side + k) % 2 === 0 ? s : 2 * s;
               return glued ? (
-                <rect key={`${side}-${k}`} x={x0} y={y} width={x1 - x0} height={tb} fill={board.color} stroke={INK} strokeWidth={0.9} {...nss} />
+                <rect key={`${side}-${k}`} x={x0} y={y} width={x1 - x0} height={tb} fill={b.color} stroke={INK} strokeWidth={0.9} {...nss} />
               ) : (
                 <g key={`${side}-${k}`}>
-                  <rect x={x0} y={y} width={joint - 1.5 - x0} height={tb} fill={board.color} stroke={INK} strokeWidth={0.9} {...nss} />
-                  <rect x={joint + 1.5} y={y} width={x1 - joint - 1.5} height={tb} fill={board.color} stroke={INK} strokeWidth={0.9} {...nss} />
+                  <rect x={x0} y={y} width={joint - 1.5 - x0} height={tb} fill={b.color} stroke={INK} strokeWidth={0.9} {...nss} />
+                  <rect x={joint + 1.5} y={y} width={x1 - joint - 1.5} height={tb} fill={b.color} stroke={INK} strokeWidth={0.9} {...nss} />
                 </g>
               );
             }),

@@ -38,5 +38,12 @@ export function wallSystemShort(s: WallSystem, boardId?: string): string {
     innerN > 0 && inner !== outer
       ? `${innerN}×${mm(inner)} + ${s.layers - innerN}×${mm(outer)}`
       : `${s.layers}×${mm(outer)}`;
-  return `${wallFrameLabel(s)}, ${boards}`;
+  return `${wallFrameLabel(s)}, ${boards}${sideBShort(s)}`;
+}
+
+/** Inne poszycie strony B: „ / 1×12,5” (strona A / strona B) */
+function sideBShort(s: WallSystem): string {
+  if (!s.sideB?.length || s.sides < 2) return '';
+  const t = s.sideB.map((id) => boardById(id).thickness);
+  return t.every((x) => x === t[0]) ? ` / ${t.length}×${mm(t[0])}` : ` / ${t.map(mm).join(' + ')}`;
 }

@@ -119,6 +119,8 @@ export interface Board {
   hard?: boolean;
   /** Wkręty inne niż TN (wg kalkulatora Rigips): Habito, HartFix (Duraline, Aku), Rigidur, Glasroc F Ridurit, Aquaroc (X Ocean) */
   screws?: 'habito' | 'hartfix' | 'rigidur' | 'ridurit' | 'aquaroc';
+  /** Grubość okładziny ołowianej, mm (płyty osłonowe RTG – ochrona przed promieniowaniem) */
+  leadMm?: number;
 }
 
 export const BOARDS: Board[] = [
@@ -380,6 +382,8 @@ export const PRODUCTS: Record<string, Product> = {
   KATUA: { id: 'KATUA', name: 'Kątownik przyłączeniowy do UA', group: 'Mocowanie', unit: 'szt.' },
   SRUBA_M8: { id: 'SRUBA_M8', name: 'Śruba M8 z nakrętką (do profili UA)', group: 'Mocowanie', unit: 'szt.' },
   PWA: { id: 'PWA', name: 'Przewiązka wibroakustyczna (Nida PWA) do kotwienia słupków do ściany', group: 'Mocowanie', unit: 'szt.' },
+  // ściany kinowe Siniat SLA: rzędy rusztu połączone łącznikami akustycznymi
+  PHONI_SL: { id: 'PHONI_SL', name: 'Łącznik akustyczny Phoni SL (do łączenia rzędów rusztu)', group: 'Mocowanie', unit: 'szt.' },
   // Profile sufitowe
   CD60: { id: 'CD60', name: 'Profil Rigips CD 60', group: 'Profile', unit: 'szt.', length: 4 },
   UD30: { id: 'UD30', name: 'Profil Rigips UD 30', group: 'Profile', unit: 'szt.', length: 3 },
@@ -511,6 +515,7 @@ export const PRODUCTS: Record<string, Product> = {
   // gładź (Q2+) – poza zakresem wyliczeń (spoinowanie liczone do Q1), zostaje dla porównań z kartami
   MASA_WYK: { id: 'MASA_WYK', name: 'Masa szpachlowa wykończeniowa (gotowa)', group: 'Wykończenie', unit: 'kg', pack: 20, packUnit: 'opak.' },
   MASA_AQ: { id: 'MASA_AQ', name: 'Masa do spoinowania płyt Aquaroc', group: 'Wykończenie', unit: 'kg', pack: 20, packUnit: 'worek' },
+  TASMA_OLOW: { id: 'TASMA_OLOW', name: 'Taśma z ołowiem Nida RTG, samoprzylepna (grubość jak ołów w płycie)', group: 'Izolacja', unit: 'mb' },
   TASMA_AQ: { id: 'TASMA_AQ', name: 'Taśma z siatki do płyt Aquaroc', group: 'Wykończenie', unit: 'mb', pack: 50, packUnit: 'rolka' },
   KLEJ: { id: 'KLEJ', name: 'Klej gipsowy do płyt g-k', group: 'Mocowanie', unit: 'kg', pack: 25, packUnit: 'worek' },
   // Izolacja
@@ -570,7 +575,8 @@ export const HAT_MM = 15;
 /** Szerokość profilu kapeluszowego z półkami, m (na rysunkach i w 3D) */
 export const HAT_W = 0.08;
 
-export type StudSpacing = 60 | 40 | 30;
+/** Rozstaw słupków, cm (62,5 – pod płyty szer. 625 mm, np. Siniat RTG) */
+export type StudSpacing = 62.5 | 60 | 40 | 30;
 
 /** Producent systemu (brak pola = Rigips; systemy ATLAS mają kategorię „atlas”) */
 export type Maker = 'rigips' | 'norgips' | 'knauf' | 'siniat' | 'atlas';
@@ -591,6 +597,8 @@ export interface SystemVariant {
   board?: string;
   /** Płyty dopuszczone na warstwy wewnętrzne (systemy z dwoma rodzajami płyt), od najtańszej */
   innerBoards?: string[];
+  /** Płyty strony 2 od rusztu, gdy ta odmiana ma inne niż system (np. RTG z inną grubością ołowiu) */
+  sideB?: string[];
   /** Rozstaw słupków / profili, cm; brak = jak w systemie */
   studSpacing?: StudSpacing;
   /** Słupki podwójne (2×CW zespolone) */
@@ -638,6 +646,12 @@ export interface WallSystem {
   /** 2 = ściana działowa, 1 = obudowa / okładzina jednostronna */
   sides: 1 | 2;
   defaultBoard: string;
+  /**
+   * Inne poszycie strony 2 niż strony 1: płyty kolejnych warstw od rusztu (ściany RTG z płytą
+   * ołowianą z jednej strony, ściany kinowe 15+15+18 / 15+18+18, płyta cementowa z jednej strony).
+   * Strona 1 to `layers` / `defaultBoard` / `innerBoard`. Brak = obie strony jednakowe.
+   */
+  sideB?: string[];
   /** Inna płyta na warstwach wewnętrznych (np. PRO pod Habito); liczba tych warstw w `innerLayers` */
   innerBoard?: string;
   innerLayers?: number;
@@ -1195,6 +1209,36 @@ export function layerBoards(sys: { layers: number; innerBoard?: string; innerLay
 /** Grubość wszystkich warstw płyt jednej strony, mm (warstwy mogą mieć różną grubość, np. 12,5 + 15) */
 export const boardStackMm = (sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): number =>
   layerBoards(sys, boardId, innerBoardId).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
+
+/** Płyty ściany potrzebne do wyliczeń poszycia (ściana albo okładzina) */
+export interface WallBoarding {
+  boardId: string;
+  innerBoardId?: string;
+  /** Płyty strony 2 od rusztu (systemy z innym poszyciem stron; brak = wg odmiany / systemu) */
+  sideBBoards?: string[];
+}
+
+/**
+ * Płyty kolejnych warstw strony `side` (0 = strona 1, 1 = strona 2), od rusztu. Strona 2 ma własne
+ * płyty w systemach z `sideB`, w pozostałych jest taka jak strona 1; okładzina jednostronna nie ma strony 2.
+ */
+export function sideBoards(sys: WallSystem, w: WallBoarding, side: 0 | 1): string[] {
+  if (side === 1) {
+    if (sys.sides < 2) return [];
+    if (sys.sideB?.length) return w.sideBBoards?.length ? w.sideBBoards : sys.sideB;
+  }
+  return layerBoards(sys, w.boardId, w.innerBoardId);
+}
+
+/** Grubość płyt jednej strony ściany, mm */
+export const sideStackMm = (sys: WallSystem, w: WallBoarding, side: 0 | 1): number =>
+  sideBoards(sys, w, side).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
+
+/** Grubość płyt obu stron ściany razem, mm */
+export const wallBoardsMm = (sys: WallSystem, w: WallBoarding): number => sideStackMm(sys, w, 0) + sideStackMm(sys, w, 1);
+
+/** Liczba warstw płyt na stronie 0 i 1 */
+export const sideLayers = (sys: WallSystem): [number, number] => [sys.layers, sys.sides < 2 ? 0 : sys.sideB?.length || sys.layers];
 
 /** Grubość płyty dosztywniającej między rzędami rusztu, mm */
 export const midBoardMm = (sys: WallSystem): number => (sys.midBoard ? (sys.midLayers ?? 1) * boardById(sys.midBoard).thickness : 0);
