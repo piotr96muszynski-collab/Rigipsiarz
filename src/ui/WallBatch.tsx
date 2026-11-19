@@ -28,7 +28,7 @@ export function WallDefaultsEditor({ project, update }: { project: Project; upda
       d.settings.wallDefaults = { ...(d.settings.wallDefaults ?? {}) };
       fn(d.settings.wallDefaults);
     });
-  const spacingLabel = sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW';
+  const spacingLabel = sys.frame === 'point-fix' ? 'Rozstaw łączników' : sys.frame === 'cd-lining' || sys.frame === 'hat-lining' ? 'Rozstaw profili' : 'Rozstaw CW';
   return (
     <div className="editor wall-defaults">
       <div className="field">

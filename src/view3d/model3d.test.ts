@@ -180,7 +180,7 @@ describe('narożniki w 3D z modelu styków', () => {
       for (const a of w1) for (const b of w2) expect(overlapArea(plan(a), plan(b))).toBeLessThan(1e-6);
       // punkt tuż przy zewnętrznym rogu (x > 3, y < 0) leży w płycie
       const sec = wallSection(p.walls[0]);
-      const t = sec.core + sec.bt * sec.layers[0];
+      const t = sec.core + sec.bt[0] * sec.layers[0];
       const outer = { x: 3 + t - 0.002, y: -t + 0.002 };
       const inside = (poly: { x: number; y: number }[], q: { x: number; y: number }) =>
         poly.every((A, i) => {
@@ -214,6 +214,18 @@ describe('poddasze w 3D', () => {
     // krokwie po obu stronach przy każdej osi + jętki
     expect(boxes.filter((x) => x.mat === 'timber')).toHaveLength(r.grid.rafters.length * 3);
     expect(boxes.filter((x) => x.mat === 'vapor')).toHaveLength(r.grid.surfaces.length);
+  });
+
+  it('ruszt krzyżowy: nośne pod krokwiami, montażowe w poprzek, wieszaki na nośnych', () => {
+    const p = project();
+    p.attics![0].systemId = 'SN-P-ESDK-1';
+    p.attics![0].boardId = 'SN-EXP12.5';
+    const r = atticRequirement(p.attics![0]);
+    const boxes = buildModel3D(p).parts.filter((x) => x.type === 'box');
+    const lines = r.grid.surfaces.reduce((n, g) => n + g.cd.length, 0);
+    expect(boxes.filter((x) => x.mat === 'cdSec')).toHaveLength(lines);
+    expect(boxes.filter((x) => x.mat === 'cdMain')).toHaveLength(r.grid.rafters.length * r.grid.surfaces.length);
+    expect(boxes.filter((x) => x.mat === 'hanger')).toHaveLength(r.hangers);
   });
 
   it('skosy są pochylone o kąt dachu, sufit poziomy na wysokości jętek', () => {

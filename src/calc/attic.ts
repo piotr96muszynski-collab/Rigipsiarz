@@ -4,7 +4,7 @@
 // Układ przekroju: x w poprzek kalenicy od lica lewej ściany okapowej, z w górę od posadzki (cm).
 // Oś „u” biegnie wzdłuż kalenicy od lica ściany szczytowej (cm).
 
-import { ceilingSystemById, type AtticFrame, type CeilingSystem } from '../catalog/rigips';
+import { ceilingSystemById, type AtticCarrier, type AtticFrame, type CeilingSystem } from '../catalog/rigips';
 import { ceilingBoardsMm, ceilingDepth } from './ceilingLevels';
 import type { Attic } from '../model/types';
 
@@ -167,6 +167,24 @@ export const ATTIC_MAX_UNDER_MM: Record<string, { mm: number; why: string }> = {
   attic: { mm: 150, why: 'wieszak do poddaszy (karta 4.70.04: do 150 mm pod krokwiami)' },
 };
 
+/**
+ * Długości uchwytów Rigips z wytycznych montażu zabudowy poddaszy: ES 75 / 125 mm, elastyczne 30 / 45 / 60 / 90 mm.
+ * Zasięg uchwytu ES liczony 5 mm krócej niż długość (zagięcie ramion na profilu).
+ */
+const RIGIPS_HANGER_SIZES: Record<string, { sizes: { name: string; reachMm: number }[]; note: string }> = {
+  es: {
+    sizes: [
+      { name: 'ES 75 mm', reachMm: 70 },
+      { name: 'ES 125 mm', reachMm: 120 },
+    ],
+    note: 'Długość uchwytu ES (75 lub 125 mm wg wytycznych Rigips) dobrana do zabudowy pod krokwią; zasięg liczony 5 mm krócej niż długość uchwytu.',
+  },
+  elastic: {
+    sizes: [30, 45, 60, 90].map((mm) => ({ name: `${mm} mm`, reachMm: mm })),
+    note: 'Długość uchwytu elastycznego (30, 45, 60 lub 90 mm wg wytycznych Rigips) dobrana do zabudowy pod krokwią.',
+  },
+};
+
 const CD_HANGER: Record<string, { product: string; label: string; ln9: number }> = {
   es: { product: 'WIESZAK_ES', label: 'uchwyt ES', ln9: 4 },
   elastic: { product: 'UCHWYT_ELAST', label: 'uchwyt elastyczny', ln9: 4 },
@@ -180,6 +198,7 @@ export function atticFrameOf(sys: CeilingSystem): AtticFrame {
   const type = sys.hangerType && CD_HANGER[sys.hangerType] ? sys.hangerType : 'es';
   const h = CD_HANGER[type];
   const limit = ATTIC_MAX_UNDER_MM[type];
+  const sized = !sys.maker || sys.maker === 'rigips' ? RIGIPS_HANGER_SIZES[type] : undefined;
   return {
     mount: 'hanger',
     profile: 'CD60',
@@ -194,7 +213,13 @@ export function atticFrameOf(sys: CeilingSystem): AtticFrame {
     woodScrews: 2,
     maxUnderMm: limit.mm,
     maxUnderWhy: limit.why,
+    ...(sized ? { hangerSizes: sized.sizes, hangerSizesNote: sized.note } : {}),
   };
+}
+
+/** Najkrótszy wieszak z listy systemu, który sięga na potrzebny odstęp; brak listy albo żaden nie sięga = undefined */
+export function atticHangerSize(frame: AtticFrame, needMm: number) {
+  return frame.hangerSizes?.find((s) => s.reachMm + 0.5 >= needMm);
 }
 
 /** Widoczna część krokwi w systemach z więźbą widoczną, cm – założenie, karty jej nie podają */
@@ -206,6 +231,8 @@ export interface AtticSurfaceGrid {
   cd: number[];
   /** Osie krokwi (jętek) z mocowaniem rusztu, cm od ściany szczytowej; puste przy ruszcie między krokwiami */
   hangerU: number[];
+  /** Ruszt krzyżowy: mocowania profili nośnych (pod każdą krokwią) – odległość od dolnej / lewej krawędzi, cm; inaczej puste */
+  fixS: number[];
   /** Powierzchnia płyt, m² */
   areaM2: number;
 }
@@ -218,10 +245,18 @@ export interface AtticGrid {
   surfaces: AtticSurfaceGrid[];
   /** Grubość zabudowy: spód krokwi – lico płyt, mm (ujemna, gdy płyty są między krokwiami) */
   depthMm: number;
+  /** Łączna grubość płyt, mm */
+  boardsMm: number;
   /** Rozstaw elementów rusztu pod płyty, cm */
   cdSpacing: number;
   /** Ruszt systemu */
   frame: AtticFrame;
+  /** Profile nośne rusztu krzyżowego (pod krokwiami); brak = ruszt jednopoziomowy */
+  carrier?: AtticCarrier;
+  /** Odstęp, na który musi sięgnąć wieszak: spód krokwi – płyty (ruszt krzyżowy: – profil nośny), mm */
+  hangerNeedMm: number;
+  /** Dobrana długość wieszaka (gdy system ma kilka długości i któraś wystarcza) */
+  hangerSize?: { name: string; reachMm: number };
   /** Produkt elementu rusztu (dobrany przekrój łaty) i jego wysokość, mm */
   profile: string;
   profileMm: number;
@@ -273,15 +308,21 @@ export function atticGrid(a: Attic, sys: CeilingSystem = ceilingSystemById(a.sys
   const section = atticSection(a, depthMm / 10);
   const warnings = [...structure.warnings];
   const rafters = rafterPositions(a);
-  const cdSpacing = sys.mainSpacing;
+  const carrier = frame.carrier;
+  // ruszt krzyżowy: pod płytami profile co rozstaw montażowych, nośne pod każdą krokwią
+  const cdSpacing = carrier ? sys.secondarySpacing : sys.mainSpacing;
   const maxHanger = batten?.maxFix ?? (sys.hangerSpacing || 100);
   const between = frame.mount === 'between';
-  const hangerU = between ? [] : frame.mount === 'direct' ? [...rafters] : hangerRafters(rafters, maxHanger);
+  const hangerU = between ? [] : frame.mount === 'direct' || carrier ? [...rafters] : hangerRafters(rafters, maxHanger);
   const bays = between ? atticBays(a, rafters) : [];
   const boardsMm = ceilingBoardsMm(sys, a.boardId);
 
   if (rafters.length < 2) warnings.push('Na tej długości mieści się mniej niż 2 krokwie – sprawdź rozstaw i położenie pierwszej krokwi.');
-  if (!between && a.rafterSpacing > maxHanger + 0.5)
+  if (carrier && a.rafterSpacing > carrier.maxSpacing + 0.5)
+    warnings.push(
+      `Rozstaw krokwi ${fmtM(a.rafterSpacing)} m jest większy niż dopuszczalny rozstaw profili nośnych ${fmtM(carrier.maxSpacing)} m (${carrier.label} biegnie pod każdą krokwią) – dodaj krokiew pośrednią albo wybierz inny system.`,
+    );
+  if (!between && !carrier && a.rafterSpacing > maxHanger + 0.5)
     warnings.push(
       frame.mount === 'direct'
         ? `Rozstaw krokwi ${fmtM(a.rafterSpacing)} m jest większy niż dopuszczalny rozstaw mocowania ${fmtM(maxHanger)} m (${label}${batten ? ` ${batten.size}` : ''}) – wybierz system na wieszakach albo dodaj podparcie między krokwiami.`
@@ -297,7 +338,14 @@ export function atticGrid(a: Attic, sys: CeilingSystem = ceilingSystemById(a.sys
         ? `Skrajna krokiew jest ${fmtM(Math.max(firstGap, lastGap))} m od ściany szczytowej, a pierwsze mocowanie powinno być nie dalej niż ${fmtM(ATTIC_FIRST_HANGER)} m – koniec profilu oprzyj w profilu przyściennym na ścianie szczytowej i dodaj mocowanie przy ścianie.`
         : `Skrajna krokiew jest ${fmtM(Math.max(firstGap, lastGap))} m od ściany szczytowej, a pierwsze mocowanie powinno być nie dalej niż ${fmtM(ATTIC_FIRST_HANGER)} m – dodaj przy ścianie szczytowej krokiew, łatę lub inne podparcie końców rusztu.`,
     );
-  if (frame.mount === 'hanger' && frame.maxUnderMm && a.woolUnder > frame.maxUnderMm)
+  const hangerNeedMm = frame.mount === 'hanger' ? Math.max(0, depthMm - boardsMm - (carrier?.mm ?? 0)) : 0;
+  const hangerSize = frame.mount === 'hanger' ? atticHangerSize(frame, hangerNeedMm) : undefined;
+  const longest = frame.hangerSizes?.[frame.hangerSizes.length - 1];
+  if (frame.mount === 'hanger' && longest && !hangerSize)
+    warnings.push(
+      `Wełna ${a.woolUnder} mm pod krokwiami nie zmieści się: żaden ${frame.hangerLabel ?? 'wieszak'} tego systemu nie sięgnie na ${Math.floor(hangerNeedMm)} mm pod krokwią (najdłuższy ${longest.name}: do ${longest.reachMm} mm) – zmniejsz grubość albo wybierz system na dłuższych wieszakach.`,
+    );
+  else if (frame.mount === 'hanger' && frame.maxUnderMm && a.woolUnder > frame.maxUnderMm)
     warnings.push(`Wełna ${a.woolUnder} mm pod krokwiami nie zmieści się na tym wieszaku (${frame.maxUnderWhy ?? `do ${frame.maxUnderMm} mm`}) – zmniejsz grubość albo wybierz system na innych wieszakach.`);
   if (frame.mount === 'direct' && a.woolUnder > profileMm)
     warnings.push(
@@ -317,11 +365,21 @@ export function atticGrid(a: Attic, sys: CeilingSystem = ceilingSystemById(a.sys
     surface: s,
     cd: cdLinePositions(s.run, cdSpacing),
     hangerU,
+    // mocowania profilu nośnego wzdłuż krokwi: skrajne przy krawędziach płaszczyzny, pośrednie co max rozstaw wieszaków
+    fixS: carrier ? cdLinePositions(s.run, maxHanger) : [],
     areaM2: (s.run * clear) / 10000,
   }));
 
   const Label = label.charAt(0).toUpperCase() + label.slice(1);
   const assumptions = [
+    ...(carrier
+      ? [
+          `Ruszt krzyżowy: ${carrier.label} pod każdą krokwią${section.hasCollar ? ' i jętką' : ''}, na całej długości płaszczyzny; ${frame.hangerLabel} skrajne ${ATTIC_CD_EDGE} cm od krawędzi, pośrednie co max ${maxHanger} cm.`,
+          carrier.cross
+            ? `${carrier.crossLabel ?? 'Łącznik krzyżowy'} na każdym skrzyżowaniu profilu nośnego z profilem pod płyty.`
+            : `Profil pod płyty przykręcony do każdego profilu nośnego (${carrier.crossLn9 ?? 2} wkręty na skrzyżowanie) – karta podaje tylko zużycie na m².`,
+        ]
+      : []),
     between
       ? `${Label}: elementy poprzeczne między krokwiami, skrajne ${ATTIC_CD_EDGE} cm od ścian i od załamań skos/sufit; elementy wzdłuż krokwi po obu stronach każdego pola.`
       : `${Label}: elementy biegną w poprzek krokwi, skrajne ${ATTIC_CD_EDGE} cm od ścian i od załamań skos/sufit (karty podają tylko rozstaw; wytyczne Rigips dla sufitów: do 15 cm od ściany).`,
@@ -332,5 +390,6 @@ export function atticGrid(a: Attic, sys: CeilingSystem = ceilingSystemById(a.sys
     ...(section.hasCollar ? [`Sufit poziomy: jętka przy każdej parze krokwi, ${between ? 'ruszt między jętkami' : 'ruszt mocowany do jętek'}.`] : []),
     'Płyty i wełna liczone po licu zabudowy, bez okien dachowych i ścian szczytowych.',
   ];
-  return { section, structure, rafters, surfaces, depthMm, cdSpacing, frame, profile, profileMm, bays, warnings, assumptions };
+  if (hangerSize && frame.hangerSizesNote) assumptions.push(frame.hangerSizesNote);
+  return { section, structure, rafters, surfaces, depthMm, boardsMm, cdSpacing, frame, carrier, hangerNeedMm, hangerSize, profile, profileMm, bays, warnings, assumptions };
 }

@@ -37,7 +37,8 @@ describe('dobór ściany po wymaganiach', () => {
     for (const p of humid) expect(boardById(p.boardId).moisture).toBeDefined();
     const wet = recommendWalls({ ...base, room: 'wet' });
     expect(wet.length).toBeGreaterThan(0);
-    for (const p of wet) expect(boardById(p.boardId).moisture).toBe('wet');
+    // strefa mokra po jednej stronie: płyta do stref mokrych na stronie A albo B (Rigips 3.37.02x – Aquaroc na stronie B)
+    for (const p of wet) expect([p.boardId, ...(p.sideBBoards ?? p.system.sideB ?? [])].some((id) => boardById(id).moisture === 'wet')).toBe(true);
   });
   it('szafki bez kołków → płyty o podwyższonej twardości; warstwa wewnętrzna z odmiany', () => {
     const picks = recommendWalls({ ...base, hang: true });

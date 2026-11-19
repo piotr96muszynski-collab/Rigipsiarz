@@ -3206,7 +3206,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
     ],
   },
   {
-    ...{"id":"S-4.70.07-1","code":"4.70.07","name":"Poddasze: C RIGISTIL na wieszakach do konstrukcji drewnianej, 1×12,5 (lub 15)","kind":"direct","layers":1,"defaultBoard":"RB12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":6.5,"fire":"EI 15–30 (zależnie od płyty – patrz odmiany)","info":"Profile C RIGISTIL co 40 cm, wieszak RIGISTIL co max 100 cm · przy płytach w poprzek profili z płytą typ A profile co 50 cm · zabudowa od 31 mm","source":{"label":"Rigips 4.70.07 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_07"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"WIESZAK_RIGISTIL","hangerLabel":"wieszak RIGISTIL","hangerLn9":0,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":150,"maxUnderWhy":"karta 4.70.07: do 150 mm wełny pod krokwiami"}},
+    ...{"id":"S-4.70.07-1","code":"4.70.07","name":"Poddasze: C RIGISTIL na wieszakach do konstrukcji drewnianej, 1×12,5 (lub 15)","kind":"direct","layers":1,"defaultBoard":"RB12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":6.5,"fire":"EI 15–30 (zależnie od płyty – patrz odmiany)","info":"Profile C RIGISTIL co 40 cm, wieszak RIGISTIL co max 100 cm · przy płytach w poprzek profili z płytą typ A profile co 50 cm · zabudowa od 31 mm","source":{"label":"Rigips 4.70.07 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_07"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"WIESZAK_RIGISTIL","hangerLabel":"wieszak RIGISTIL","hangerLn9":0,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":150,"maxUnderWhy":"karta 4.70.07: do 150 mm wełny pod krokwiami","hangerSizes":[{"name":"170 mm","reachMm":100},{"name":"300 mm","reachMm":150}],"hangerSizesNote":"Długość wieszaka RIGISTIL (170 lub 300 mm wg karty) dobrana do zabudowy pod krokwią; przyjęto ok. 7 cm zakładu wieszaka na bok krokwi – karta nie podaje zasięgu."}},
     reference: [
       {"label":"Płyty","qty":1,"unit":"m²"},
       {"product":"C_RIGISTIL","label":"Profil C RIGISTIL","qty":3.2,"unit":"mb"},
@@ -3233,7 +3233,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
     ],
   },
   {
-    ...{"id":"S-4.70.07-2","code":"4.70.07","name":"Poddasze: C RIGISTIL na wieszakach do konstrukcji drewnianej, 2×12,5 (lub 15)","kind":"direct","layers":2,"defaultBoard":"RF12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":10,"fire":"EI 30–60 (zależnie od płyty – patrz odmiany)","info":"Profile C RIGISTIL co 40 cm, wieszak RIGISTIL co max 100 cm · zabudowa od 44 mm","source":{"label":"Rigips 4.70.07 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_07"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"WIESZAK_RIGISTIL","hangerLabel":"wieszak RIGISTIL","hangerLn9":0,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":150,"maxUnderWhy":"karta 4.70.07: do 150 mm wełny pod krokwiami"}},
+    ...{"id":"S-4.70.07-2","code":"4.70.07","name":"Poddasze: C RIGISTIL na wieszakach do konstrukcji drewnianej, 2×12,5 (lub 15)","kind":"direct","layers":2,"defaultBoard":"RF12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":10,"fire":"EI 30–60 (zależnie od płyty – patrz odmiany)","info":"Profile C RIGISTIL co 40 cm, wieszak RIGISTIL co max 100 cm · zabudowa od 44 mm","source":{"label":"Rigips 4.70.07 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_07"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"WIESZAK_RIGISTIL","hangerLabel":"wieszak RIGISTIL","hangerLn9":0,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":150,"maxUnderWhy":"karta 4.70.07: do 150 mm wełny pod krokwiami","hangerSizes":[{"name":"170 mm","reachMm":100},{"name":"300 mm","reachMm":150}],"hangerSizesNote":"Długość wieszaka RIGISTIL (170 lub 300 mm wg karty) dobrana do zabudowy pod krokwią; przyjęto ok. 7 cm zakładu wieszaka na bok krokwi – karta nie podaje zasięgu."}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"C_RIGISTIL","label":"Profil C RIGISTIL","qty":3.2,"unit":"mb"},
@@ -3258,7 +3258,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
     ],
   },
   {
-    ...{"id":"S-4.70.07-3","code":"4.70.07","name":"Poddasze: C RIGISTIL na wieszakach do konstrukcji drewnianej, 3×12,5","kind":"direct","layers":3,"defaultBoard":"RF12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":10,"fire":"EI 60","info":"Profile C RIGISTIL co 40 cm, wieszak RIGISTIL co max 100 cm · zabudowa od 57 mm","source":{"label":"Rigips 4.70.07 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_07"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"WIESZAK_RIGISTIL","hangerLabel":"wieszak RIGISTIL","hangerLn9":0,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":150,"maxUnderWhy":"karta 4.70.07: do 150 mm wełny pod krokwiami"}},
+    ...{"id":"S-4.70.07-3","code":"4.70.07","name":"Poddasze: C RIGISTIL na wieszakach do konstrukcji drewnianej, 3×12,5","kind":"direct","layers":3,"defaultBoard":"RF12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":10,"fire":"EI 60","info":"Profile C RIGISTIL co 40 cm, wieszak RIGISTIL co max 100 cm · zabudowa od 57 mm","source":{"label":"Rigips 4.70.07 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_07"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"WIESZAK_RIGISTIL","hangerLabel":"wieszak RIGISTIL","hangerLn9":0,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":150,"maxUnderWhy":"karta 4.70.07: do 150 mm wełny pod krokwiami","hangerSizes":[{"name":"170 mm","reachMm":100},{"name":"300 mm","reachMm":150}],"hangerSizesNote":"Długość wieszaka RIGISTIL (170 lub 300 mm wg karty) dobrana do zabudowy pod krokwią; przyjęto ok. 7 cm zakładu wieszaka na bok krokwi – karta nie podaje zasięgu."}},
     reference: [
       {"label":"Płyty","qty":3,"unit":"m²"},
       {"product":"C_RIGISTIL","label":"Profil C RIGISTIL","qty":3.2,"unit":"mb"},
@@ -3381,7 +3381,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
     ],
   },
   {
-    ...{"id":"S-4.70.08-1","code":"4.70.08","name":"Poddasze: C RIGISTIL na uchwytach GL 2 / GL 9, 1×12,5 (lub 15)","kind":"direct","layers":1,"defaultBoard":"RB12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":6.5,"fire":"EI 15–30 (zależnie od płyty – patrz odmiany)","info":"Profile C RIGISTIL co 40 cm, uchwyt GL 2 / GL 9 co max 100 cm · przy płytach w poprzek profili z płytą typ A profile co 50 cm · zabudowa od 33 mm","source":{"label":"Rigips 4.70.08 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_08"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"UCHWYT_GL","hangerLabel":"uchwyt GL 2 / GL 9","hangerLn9":4,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":120,"maxUnderWhy":"uchwyt GL 9 o długości 125 mm"}},
+    ...{"id":"S-4.70.08-1","code":"4.70.08","name":"Poddasze: C RIGISTIL na uchwytach GL 2 / GL 9, 1×12,5 (lub 15)","kind":"direct","layers":1,"defaultBoard":"RB12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":6.5,"fire":"EI 15–30 (zależnie od płyty – patrz odmiany)","info":"Profile C RIGISTIL co 40 cm, uchwyt GL 2 / GL 9 co max 100 cm · przy płytach w poprzek profili z płytą typ A profile co 50 cm · zabudowa od 33 mm","source":{"label":"Rigips 4.70.08 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_08"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"UCHWYT_GL","hangerLabel":"uchwyt GL 2 / GL 9","hangerLn9":4,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":120,"maxUnderWhy":"uchwyt GL 9 o długości 125 mm","hangerSizes":[{"name":"GL 2 (75 mm)","reachMm":70},{"name":"GL 9 (125 mm)","reachMm":120}],"hangerSizesNote":"Uchwyt GL 2 (75 mm) albo GL 9 (125 mm) dobrany do zabudowy pod krokwią; zasięg liczony 5 mm krócej niż długość uchwytu."}},
     reference: [
       {"label":"Płyty","qty":1,"unit":"m²"},
       {"product":"C_RIGISTIL","label":"Profil C RIGISTIL","qty":3.2,"unit":"mb"},
@@ -3409,7 +3409,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
     ],
   },
   {
-    ...{"id":"S-4.70.08-2","code":"4.70.08","name":"Poddasze: C RIGISTIL na uchwytach GL 2 / GL 9, 2×12,5 (lub 15)","kind":"direct","layers":2,"defaultBoard":"RF12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":10,"fire":"EI 30–60 (zależnie od płyty – patrz odmiany)","info":"Profile C RIGISTIL co 40 cm, uchwyt GL 2 / GL 9 co max 100 cm · zabudowa od 46 mm","source":{"label":"Rigips 4.70.08 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_08"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"UCHWYT_GL","hangerLabel":"uchwyt GL 2 / GL 9","hangerLn9":4,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":120,"maxUnderWhy":"uchwyt GL 9 o długości 125 mm"}},
+    ...{"id":"S-4.70.08-2","code":"4.70.08","name":"Poddasze: C RIGISTIL na uchwytach GL 2 / GL 9, 2×12,5 (lub 15)","kind":"direct","layers":2,"defaultBoard":"RF12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":10,"fire":"EI 30–60 (zależnie od płyty – patrz odmiany)","info":"Profile C RIGISTIL co 40 cm, uchwyt GL 2 / GL 9 co max 100 cm · zabudowa od 46 mm","source":{"label":"Rigips 4.70.08 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_08"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"UCHWYT_GL","hangerLabel":"uchwyt GL 2 / GL 9","hangerLn9":4,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":120,"maxUnderWhy":"uchwyt GL 9 o długości 125 mm","hangerSizes":[{"name":"GL 2 (75 mm)","reachMm":70},{"name":"GL 9 (125 mm)","reachMm":120}],"hangerSizesNote":"Uchwyt GL 2 (75 mm) albo GL 9 (125 mm) dobrany do zabudowy pod krokwią; zasięg liczony 5 mm krócej niż długość uchwytu."}},
     reference: [
       {"label":"Płyty","qty":2,"unit":"m²"},
       {"product":"C_RIGISTIL","label":"Profil C RIGISTIL","qty":3.2,"unit":"mb"},
@@ -3435,7 +3435,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
     ],
   },
   {
-    ...{"id":"S-4.70.08-3","code":"4.70.08","name":"Poddasze: C RIGISTIL na uchwytach GL 2 / GL 9, 3×12,5","kind":"direct","layers":3,"defaultBoard":"RF12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":10,"fire":"EI 60","info":"Profile C RIGISTIL co 40 cm, uchwyt GL 2 / GL 9 co max 100 cm · zabudowa od 59 mm","source":{"label":"Rigips 4.70.08 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_08"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"UCHWYT_GL","hangerLabel":"uchwyt GL 2 / GL 9","hangerLn9":4,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":120,"maxUnderWhy":"uchwyt GL 9 o długości 125 mm"}},
+    ...{"id":"S-4.70.08-3","code":"4.70.08","name":"Poddasze: C RIGISTIL na uchwytach GL 2 / GL 9, 3×12,5","kind":"direct","layers":3,"defaultBoard":"RF12.5","mainSpacing":40,"secondarySpacing":40,"hangerSpacing":100,"screwsOuter":25,"screwsInner":10,"fire":"EI 60","info":"Profile C RIGISTIL co 40 cm, uchwyt GL 2 / GL 9 co max 100 cm · zabudowa od 59 mm","source":{"label":"Rigips 4.70.08 – strona systemu i kalkulator zużycia","url":"https://www.rigips.pl/system/poddasza/4_70_08"},"attic":true,"atticFrame":{"mount":"hanger","profile":"C_RIGISTIL","profileLabel":"profil C RIGISTIL","profileMm":18,"edge":"U_RIGISTIL","hanger":"UCHWYT_GL","hangerLabel":"uchwyt GL 2 / GL 9","hangerLn9":4,"joiner":"LACZNIK_GL3","woodScrews":2,"maxUnderMm":120,"maxUnderWhy":"uchwyt GL 9 o długości 125 mm","hangerSizes":[{"name":"GL 2 (75 mm)","reachMm":70},{"name":"GL 9 (125 mm)","reachMm":120}],"hangerSizesNote":"Uchwyt GL 2 (75 mm) albo GL 9 (125 mm) dobrany do zabudowy pod krokwią; zasięg liczony 5 mm krócej niż długość uchwytu."}},
     reference: [
       {"label":"Płyty","qty":3,"unit":"m²"},
       {"product":"C_RIGISTIL","label":"Profil C RIGISTIL","qty":3.2,"unit":"mb"},
@@ -4378,13 +4378,11 @@ export const RIGIPS_SKIPPED: string[] = [
   "3.66.016 – odmiana „Rigidur H typ GF-C1-I-W2 gr. 1x10 + 1x12,5 mm” – układ płyt, którego aplikacja nie liczy",
   "3.10.10 EasyTherm – odmiana antywłamaniowa / propozycja wykończenia / płyta zespolona",
   "3.75.10 – ściana łukowa",
-  "3.21.30 – konstrukcja „profil kapeluszowy” poza zakresem silnika",
   "3.21.20 – konstrukcja „C RIGISTIL” poza zakresem silnika",
   "3.22.00 X OCEAN – odmiana „gr. 1x12,5 mm GLASROC® X OCEAN + gr. 1x12,5 mm Fir” – układ płyt, którego aplikacja nie liczy",
   "3.26.00 – nierozpoznana płyta „RIGITONE 6/18”",
   "3.25.00 – nierozpoznana płyta „GYPTONE BIG gr. 12,5 mm GYPTONE BIG LINE”",
   "3.29.00 – okładzina na wieszakach do poddaszy",
-  "3.29.20 – konstrukcja „profil kapeluszowy” poza zakresem silnika",
   "3.29.05 – konstrukcja „C RIGISTIL” poza zakresem silnika",
   "3.37.012 z wykończeniem – odmiana antywłamaniowa / propozycja wykończenia / płyta zespolona",
   "3.37.021 – odmiana „gr. 2x12,5 mm typ A, Hydro typ H2, Fire typ F, Fir” – inne poszycie z każdej strony ściany",
@@ -4398,15 +4396,10 @@ export const RIGIPS_SKIPPED: string[] = [
   "3.40.05 X OCEAN PLUS z wykończeniem – odmiana antywłamaniowa / propozycja wykończenia / płyta zespolona",
   "3.40.05 X OCEAN z wykończeniem – odmiana antywłamaniowa / propozycja wykończenia / płyta zespolona",
   "3.41.041 HYDRO z wykończeniem – odmiana antywłamaniowa / propozycja wykończenia / płyta zespolona",
-  "3.50.14 – konstrukcja „Kątownik 40x20x1 lub 40x40x1 p” poza zakresem silnika",
-  "3.50.19 – konstrukcja „Kątownik 40x20x1 lub 40x40x1 p” poza zakresem silnika",
-  "3.50.22 – brak tabeli odmian na stronie",
-  "3.80.15 – konstrukcja „Kątownik 40x20x1 lub 40x40x1 p” poza zakresem silnika",
   "4.05.16 – profile Rigistil",
   "4.05.14 – profile Rigistil",
   "4.05.18 – profile Rigistil",
   "4.05.20 – profile Rigistil",
-  "4.05.21 – profile kapeluszowe",
   "4.05.22 – wieszaki Klick-Fix",
   "4.05.26 – profile Rigistil",
   "4.05.30 – profile Rigistil",

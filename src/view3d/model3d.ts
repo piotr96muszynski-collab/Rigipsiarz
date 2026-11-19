@@ -2,13 +2,13 @@
 // dzięki czemu da się ją testować w Node. Wszystko w metrach.
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
-import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
+import { HAT_MM, HAT_W, boardById, ceilingSystemById, isHatCeiling, isHungCeiling, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
 import { ceilingLevels } from '../calc/ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
-import { hangerPositions, liningLayout, pieceArea, pieceOutline, splicePositions, wallLayout } from '../calc/layout';
+import { HAT_FLANGE, hangerPositions, hatFixPositions, liningLayout, pieceArea, pieceOutline, splicePositions, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
-import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
+import { analyzeJunctions, existingRooms, isNewWall, masonryEndExtension, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Attic, Ceiling, Point, Project, Wall } from '../model/types';
 import { atticGrid } from '../calc/attic';
 import { atticPlacements } from '../calc/atticPlan';
@@ -218,7 +218,6 @@ function buildWall(
   const sec = contacts.sections.get(w.id) ?? wallSection(w);
   const pointFix = sys.frame === 'point-fix';
   const glued = sys.frame === 'glued';
-  const bt = sec.bt;
 
   /** Dodaje prostopadłościan w układzie ściany: u wzdłuż, v wysokość, n odsunięcie od osi */
   const box = (
@@ -252,7 +251,7 @@ function buildWall(
 
   // --- Ruszt: słupki (pełne, skrócone, ościeżnicowe, dodatkowe z połączeń) ---
   if (lay && !pointFix && !glued) {
-    const isCD = sys.frame === 'cd-lining';
+    const isCD = sys.frame === 'cd-lining' || sys.frame === 'hat-lining';
     // rzędy słupków: pojedynczy w osi, podwójny i instalacyjny – po jednym przy każdej okładzinie
     const rowDepth = isCD ? CD_H : sec.profile / 1000;
     const rowsN = lay.rows === 2 ? [-(sec.core - rowDepth / 2), sec.core - rowDepth / 2] : [0];
@@ -286,6 +285,16 @@ function buildWall(
     }
   }
 
+  // --- Obudowa z samych płyt: profil obwodowy (kątownik 40 mm) przy ścianach, w Rigips też przy posadzce i stropie ---
+  if (lay && sys.frame === 'panel') {
+    const a = 0.04;
+    // za płytami (strona szachtu), półka przy murze
+    const n = -sec.core - a / 2;
+    box('wallFrame', 'uw', f0, f0 + 0.002, 0, H, n, a);
+    box('wallFrame', 'uw', f1 - 0.002, f1, 0, H, n, a);
+    if (sys.panel?.edgeSides === 'all') for (const y of [0, H - 0.002]) box('wallFrame', 'uw', f0, f1, y, y + 0.002, n, a);
+  }
+
   // --- ATLAS M-System 3G: łączniki talerzykowe za płytą (strona 0), podłoże po stronie przeciwnej ---
   if (lay?.fixers) {
     const depth = sec.core * 2;
@@ -299,6 +308,9 @@ function buildWall(
   const openings = wallOpenings(w, L, H);
   const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
   for (const face of lay?.faces ?? []) {
+    // grubość warstwy po swojej stronie (ściany z innym poszyciem stron), płyta tej warstwy
+    const bt = sec.bt[face.side];
+    const fb = face.board ?? board.id;
     const n = (face.side === 0 ? 1 : -1) * (sec.core + bt * face.layer + bt / 2);
     for (const pc of face.pieces) {
       if (pc.notches?.length) {
@@ -306,7 +318,7 @@ function buildWall(
         parts.push({
           type: 'panel',
           layer: 'wallBoards',
-          mat: `board:${board.id}`,
+          mat: `board:${fb}`,
           origin: [ax, 0, az],
           rotY,
           n,
@@ -318,7 +330,7 @@ function buildWall(
         continue;
       }
       for (const r of subtractRects({ x0: pc.x0, x1: pc.x1, y0: pc.y0, y1: pc.y1 }, holes))
-        box('wallBoards', `board:${board.id}`, r.x0, r.x1, r.y0, r.y1, n, bt);
+        box('wallBoards', `board:${fb}`, r.x0, r.x1, r.y0, r.y1, n, bt);
     }
   }
 
@@ -383,10 +395,9 @@ function buildExistingWall(
   const openings = wallOpenings(w, L, H);
   const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
   const center = inner ? -inner * (T / 2) : 0;
-  // narożnik obrysu: mur przedłużony o grubość, żeby domknąć zewnętrzny róg
-  const shared = (nid: string) => p.walls.some((o) => o.id !== w.id && !isNewWall(o) && (o.a === nid || o.b === nid));
-  const e0 = inner && shared(w.a) ? T : 0;
-  const e1 = inner && shared(w.b) ? T : 0;
+  // narożnik obrysu: w wypukłym mur przedłużony do zewnętrznego lica drugiej ściany, w wklęsłym kończy się w węźle
+  const e0 = (masonryEndExtension(p, w, 'a', inner, nodes) ?? 0) / 100;
+  const e1 = (masonryEndExtension(p, w, 'b', inner, nodes) ?? 0) / 100;
   for (const r of subtractRects({ x0: -e0, x1: L + e1, y0: 0, y1: H }, holes)) box('existing', 'masonry', r.x0, r.x1, r.y0, r.y1, center, T);
 
   for (const l of w.linings ?? []) {
@@ -402,7 +413,8 @@ function buildExistingWall(
       const n = face + l.side * (depth - CD_H / 2);
       // środnik CD od strony płyt, półki w stronę muru
       const prof = profileFor('cdMain', 'up', l.side > 0 ? 'b+' : 'b-');
-      const at = (x: number) => Math.min(l1 - CD_W / 2, Math.max(l0 + CD_W / 2, x));
+      // ruszt tylko na murze (w narożniku wklęsłym okładzina wychodzi za węzeł samymi płytami)
+      const at = (x: number) => Math.min(Math.min(l1, L) - CD_W / 2, Math.max(Math.max(l0, 0) + CD_W / 2, x));
       for (const st of lay.studs)
         for (const [y0, y1] of st.segments) {
           const v0 = Math.max(y0, TRACK_H);
@@ -423,6 +435,33 @@ function buildExistingWall(
           layer: 'wallFrame',
           mat: 'anchor',
           c: [ax + ux * u + nx * (face - l.side * 0.02), q.y, az + uz * u + nz * (face - l.side * 0.02)],
+          axis: [nx * l.side, 0, nz * l.side],
+          r: ANCHOR_R,
+          len: 0.045,
+          owner: w.id,
+        });
+      }
+    }
+    // profile kapeluszowe: pionowe profile i odcinki nad / pod otworami wprost na murze, kołki przez półki
+    if (sys.frame === 'hat-lining') {
+      const lay = liningLayout(p, w, l, contacts);
+      const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
+      const hatH = HAT_MM / 1000;
+      const n = face + l.side * (hatH / 2);
+      const at = (x: number) => Math.min(Math.min(l1, L) - HAT_W / 2, Math.max(Math.max(l0, 0) + HAT_W / 2, x));
+      for (const st of lay.studs)
+        for (const [y0, y1] of st.segments) if (y1 - y0 > 0.005) box('wallFrame', 'cdMain', at(st.x) - HAT_W / 2, at(st.x) + HAT_W / 2, y0, y1, n, hatH);
+      for (const t of lay.tracks) {
+        const y0 = t.kind === 'header' ? t.y : t.y - HAT_W;
+        box('wallFrame', 'cdMain', t.x0, t.x1, y0, y0 + HAT_W, n, hatH);
+      }
+      for (const q of lay.brackets?.points ?? []) {
+        const u = Math.min(Math.min(l1, L) - 0.01, Math.max(Math.max(l0, 0) + 0.01, q.x));
+        parts.push({
+          type: 'cyl',
+          layer: 'wallFrame',
+          mat: 'anchor',
+          c: [ax + ux * u + nx * (face - l.side * 0.015), q.y, az + uz * u + nz * (face - l.side * 0.015)],
           axis: [nx * l.side, 0, nz * l.side],
           r: ANCHOR_R,
           len: 0.045,
@@ -452,8 +491,9 @@ function buildExistingWall(
       const n = face + l.side * (depth + bt * layer + bt / 2);
       const shift = (layer % 2) * (widthM / 2);
       for (const r of boardSheets(L, H, widthM, sheetLen, shift, holes)) {
-        const x0 = Math.max(r.x0, l0);
-        const x1 = Math.min(r.x1, l1);
+        // płyta skrajna wychodzi za węzeł, gdy okładzina zakrywa czoło okładziny sąsiedniej
+        const x0 = r.x0 <= 1e-6 ? l0 : Math.max(r.x0, l0);
+        const x1 = r.x1 >= L - 1e-6 ? l1 : Math.min(r.x1, l1);
         if (x1 - x0 > 0.001) box('wallBoards', `board:${board.id}`, x0, x1, r.y0, r.y1, n, bt);
       }
     }
@@ -510,10 +550,35 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
     });
   };
 
+  // profile kapeluszowe wprost na stropie: profil 15 mm nad płytą, dyble przez obie półki na przemian, bez UD
+  if (isHatCeiling(sys)) {
+    const hatH = HAT_MM / 1000;
+    for (const g of ceilingGrid(c, sys))
+      for (const [s0, s1] of g.segments) {
+        const a = g.at / 100;
+        const mid = (s0 + s1) / 200;
+        parts.push({
+          type: 'box',
+          layer: 'ceilingFrame',
+          mat: 'cdMain',
+          c: g.axis === 'x' ? [mid, yFrame + hatH / 2, a] : [a, yFrame + hatH / 2, mid],
+          s: [Math.max(0.001, (s1 - s0) / 100), hatH, HAT_W],
+          rotY: g.axis === 'x' ? 0 : -Math.PI / 2,
+          owner: c.id,
+        });
+        for (const q of hatFixPositions(s0 / 100, s1 / 100, sys.hangerSpacing / 100)) {
+          const across = a + q.side * HAT_FLANGE;
+          const pos: [number, number, number] = g.axis === 'x' ? [q.at, yFrame + hatH, across] : [across, yFrame + hatH, q.at];
+          parts.push({ type: 'cyl', layer: 'ceilingFrame', mat: 'anchor', c: [pos[0], pos[1] + 0.015, pos[2]], axis: [0, 1, 0], r: ANCHOR_R, len: 0.04, owner: c.id });
+        }
+      }
+    return;
+  }
+
   // profile CD: dolne (montażowe) przy płycie, nośne nad nimi w suficie dwupoziomowym
   const grid = ceilingGrid(c, sys);
-  const onCD = (g: (typeof grid)[number]) => g.level === 'secondary' || twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
-  const hung = twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
+  const onCD = (g: (typeof grid)[number]) => !sys.profiles && (g.level === 'secondary' || isHungCeiling(sys.kind));
+  const hung = isHungCeiling(sys.kind);
   for (const g of grid) {
     const isMain = g.level === 'main';
     const y0 = twoLevel && isMain ? yFrame + CD_H : yFrame;
@@ -628,8 +693,12 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   const timber = grid.profile.startsWith('LATA');
   const pH = grid.profileMm / 1000;
   const pW = timber ? (grid.profile === 'LATA5030' ? 0.05 : 0.06) : grid.profile === 'KAPELUSZ' ? 0.08 : CD_W;
-  const pMat: MatKey = timber ? 'timber' : 'cdMain';
-  const cdShape = !timber && grid.profile !== 'KAPELUSZ' ? { profile: profileFor('cdMain', 'along', 'a-') } : {};
+  const carrier = grid.carrier;
+  // ruszt krzyżowy: profile pod płyty to „montażowe”, nośne biegną pod krokwiami
+  const pMat: MatKey = timber ? 'timber' : carrier ? 'cdSec' : 'cdMain';
+  const cH = (carrier?.mm ?? 0) / 1000;
+  const cW = carrier?.product === 'MFCP44' ? 0.03 : CD_W;
+  const cdShape = !timber && grid.profile !== 'KAPELUSZ' ? { profile: profileFor(pMat, 'along', 'a-') } : {};
   // więźba widoczna: płyty i ruszt osobno w każdym polu między krokwiami
   const spans = between ? grid.bays.map((bay) => ({ x: (bay.u + bay.w / 2) / 100, w: bay.w / 100 })) : [{ x: L / 2, w: L }];
 
@@ -648,9 +717,20 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
       for (const sp of spans)
         parts.push({ type: 'box', layer: 'ceilingFrame', mat: pMat, c: [sp.x, y, z], s: [sp.w, pH, pW], rotY: 0, rotX: f.rotX, owner: a.id, ...cdShape });
       // wieszak przy boku krokwi: od profilu do krokwi
-      if (fr.hanger) {
+      if (fr.hanger && !carrier) {
         const hh = Math.max(0.03, depth - tb + 0.04);
         for (const u of g.hangerU) tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + hh / 2, [0.004, hh, ES_W]);
+      }
+    }
+    if (carrier) {
+      // profile nośne pod każdą krokwią, nad profilami pod płyty; wieszaki na nośnych przy boku krokwi
+      const hh = Math.max(0.03, depth - tb - pH + 0.04);
+      for (const u of g.hangerU) {
+        tilted('ceilingFrame', 'cdMain', f, u / 100, f.run / 2, tb + pH + cH / 2, [cW, cH, f.run]);
+        for (const s of g.fixS) {
+          const k = (f.flipped ? g.surface.run - s : s) / 100;
+          tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + pH + hh / 2, [0.004, hh, ES_W]);
+        }
       }
     }
     if (between) {

@@ -4,7 +4,7 @@ import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
 import { ceilingFixerGrid, ceilingInsulation, liningKey, wallInsulation } from '../calc/materials';
 import type { MaterialLine, ProjectCalc, Requirement } from '../calc/materials';
-import { PRODUCTS, boardById, ceilingSystemById, wallSystemById, type WallSystem } from '../catalog/rigips';
+import { PRODUCTS, boardById, ceilingSystemById, sideLayers, wallSystemById, type WallSystem } from '../catalog/rigips';
 import { CeilingBoardsDrawing, CeilingGridDrawing } from '../drawings/CeilingDrawing';
 import { JunctionDetail, OpeningDetail, type DetailKind } from '../drawings/Details';
 import { CeilingSection, WallSection } from '../drawings/Sections';
@@ -116,7 +116,7 @@ export function DrawingsPanel({ project, calc }: Props) {
     const out = new Map<DetailKind, (typeof walls)[number]>();
     for (const w of walls) {
       const frame = wallSystemById(w.systemId).frame;
-      if (frame === 'glued' || frame === 'cd-lining' || frame === 'point-fix') continue; // okładziny: detale połączeń ścian nie dotyczą
+      if (frame === 'glued' || frame === 'cd-lining' || frame === 'point-fix' || frame === 'hat-lining') continue; // okładziny: detale połączeń ścian nie dotyczą
       const j = junctions.get(w.id);
       if (!j) continue;
       for (const k of [j.endA, j.endB]) {
@@ -264,7 +264,7 @@ export function DrawingsPanel({ project, calc }: Props) {
           return (
             <div key={w.id}>
               <h4>{sys.name}</h4>
-              <WallSection sys={sys} board={boardById(w.boardId)} spacing={w.studSpacing} wool={wallInsulation(w, sys)} vapor={wallVapor(w)} />
+              <WallSection sys={sys} board={boardById(w.boardId)} boarding={w} spacing={w.studSpacing} wool={wallInsulation(w, sys)} vapor={wallVapor(w)} />
             </div>
           );
         })}
@@ -346,6 +346,12 @@ function SheetBody({ l, sys, name, req }: { l: WallLayout; sys: WallSystem; name
     <>
       {l.frame === 'glued' ? (
         <p className="small">Płyty klejone do ściany na placki z kleju gipsowego – bez rusztu.</p>
+      ) : l.frame === 'panel' ? (
+        <p className="small">
+          Bez słupków: {l.studLabel} {sys.panel?.edgeSides === 'all' ? 'po obwodzie (przy ścianach, posadzce i stropie)' : 'przy ścianach po obu stronach'}, kołki co{' '}
+          {sys.panel?.anchorSpacing} cm. Płyty poziomo, każda w jednym kawałku od ściany do ściany; warstwy skręcone ze sobą, styki poziome warstw
+          przesunięte o pół płyty.
+        </p>
       ) : l.frame === 'point-fix' ? (
         <>
           <h4>Rozstaw łączników talerzykowych</h4>
@@ -363,14 +369,14 @@ function SheetBody({ l, sys, name, req }: { l: WallLayout; sys: WallSystem; name
           <h4>Konstrukcja</h4>
           <WallFrameDrawing l={l} title={`${name} – konstrukcja`} />
           <p className="small stud-list">
-            <strong>Osie {l.frame === 'cd-lining' ? 'profili CD' : 'słupków'} od lewej krawędzi (cm):</strong> {studs.join(' · ')}
+            <strong>Osie {l.frame === 'cd-lining' ? 'profili CD' : l.frame === 'hat-lining' ? 'profili kapeluszowych' : 'słupków'} od lewej krawędzi (cm):</strong> {studs.join(' · ')}
           </p>
           {l.brackets && (
             <>
-              <h4>Uchwyty ES – miejsca wiercenia</h4>
-              <WallBracketsDrawing l={l} title={`${name} – uchwyty ES`} />
+              <h4>{l.brackets.hat ? 'Kołki profili kapeluszowych' : 'Uchwyty ES'} – miejsca wiercenia</h4>
+              <WallBracketsDrawing l={l} title={`${name} – ${l.brackets.hat ? 'kołki' : 'uchwyty ES'}`} />
               <p className="small stud-list">
-                <strong>Wysokości uchwytów od posadzki (cm):</strong>{' '}
+                <strong>Wysokości {l.brackets.hat ? 'kołków' : 'uchwytów'} od posadzki (cm):</strong>{' '}
                 {[...new Set(l.brackets.points.map((q) => Math.round(q.y * 100)))].sort((a, b) => a - b).join(' · ')}
               </p>
             </>
@@ -382,15 +388,15 @@ function SheetBody({ l, sys, name, req }: { l: WallLayout; sys: WallSystem; name
         <div className="seg no-print" role="tablist" aria-label="Okładzina">
           {l.faces.map((f, i) => (
             <button key={i} role="tab" aria-selected={face === i} className={face === i ? 'on' : ''} onClick={() => setFace(i)}>
-              {faceName(f, sys.sides, sys.layers)}
+              {faceName(f, sys.sides, Math.max(...sideLayers(sys)), new Set(l.faces.map((q) => q.board)).size)}
             </button>
           ))}
         </div>
       )}
       {l.faces.map((f, i) => (
         <div key={i} className={i === face ? '' : 'print-only'}>
-          {l.faces.length > 1 && <h5 className="print-only">{faceName(f, sys.sides, sys.layers)}</h5>}
-          <WallBoardsDrawing l={l} face={f} title={`${name} – ${faceName(f, sys.sides, sys.layers)}`} />
+          {l.faces.length > 1 && <h5 className="print-only">{faceName(f, sys.sides, Math.max(...sideLayers(sys)), new Set(l.faces.map((q) => q.board)).size)}</h5>}
+          <WallBoardsDrawing l={l} face={f} title={`${name} – ${faceName(f, sys.sides, Math.max(...sideLayers(sys)), new Set(l.faces.map((q) => q.board)).size)}`} />
         </div>
       ))}
       {l.frame !== 'glued' && l.frame !== 'point-fix' && <CutTable req={req} title="Lista cięć profili" />}

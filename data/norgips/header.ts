@@ -6,8 +6,9 @@
 // zużycie materiałów na 1 m² z kalkulatora na stronie każdego systemu (stan 19.11.2026).
 // Jedna pozycja katalogu = jedna konstrukcja (profil × liczba warstw × ruszt); różne płyty
 // i słupki podwójne są odmianami (`variants`). Systemy Norgips nie mają pola `code` – nazwy
-// systemów (SD, SO, SP…) są w nazwie pozycji. Nie ujęto: profili kapeluszowych (KAP) poza
-// zabudową poddasza i suchego jastrychu (SJ) – aplikacja jeszcze ich nie liczy.
+// systemów (SD, SO, SP…) są w nazwie pozycji. Okładziny ścian i sufitów na profilach
+// kapeluszowych (KAP) generuje scripts/gen-hat.mjs (src/catalog/hat.gen.ts). Nie ujęto suchego
+// jastrychu (SJ) – aplikacja jeszcze go nie liczy.
 //
 // Plik generowany: node scripts/gen-norgips.mjs (dane w data/norgips); importuje z `rigips.ts` wyłącznie typy.
 

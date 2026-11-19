@@ -10,6 +10,7 @@ import type { Attic } from '../model/types';
 import { atticFrameOf, atticGrid, type AtticGrid } from './attic';
 import { layerBoards } from './ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
+import { joinsFor, profileMaxStock } from './profileLength';
 import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, pickBoardLength, type Requirement } from './materials';
 
 export interface AtticResult {
@@ -27,7 +28,7 @@ export interface AtticResult {
 
 /** Grubości wełny do wyboru między krokwiami i pod krokwiami, mm */
 export const ATTIC_WOOL_BETWEEN = [0, 100, 150, 180, 200];
-export const ATTIC_WOOL_UNDER = [0, 50, 75, 100, 150];
+export const ATTIC_WOOL_UNDER = [0, 50, 75, 100, 150, 200];
 
 export function atticRequirement(
   a: Attic,
@@ -74,9 +75,21 @@ export function atticRequirement(
       // elementy rusztu wzdłuż kalenicy, na całej długości pomieszczenia
       for (let i = 0; i < g.cd.length; i++) {
         addPiece(req, grid.profile, L);
-        if (frame.joiner) add(req.counts, frame.joiner, Math.max(0, Math.ceil(L / 4 - 1e-9) - 1));
+        if (frame.joiner) add(req.counts, frame.joiner, joinsFor(L, profileMaxStock(grid.profile, 4)));
       }
-      const n = g.cd.length * g.hangerU.length;
+      const carrier = grid.carrier;
+      if (carrier) {
+        // ruszt krzyżowy: profil nośny pod każdą krokwią na całej długości płaszczyzny
+        for (let i = 0; i < g.hangerU.length; i++) {
+          addPiece(req, carrier.product, run);
+          if (frame.joiner) add(req.counts, frame.joiner, Math.max(0, Math.ceil(run / 4 - 1e-9) - 1));
+        }
+        const crossings = g.cd.length * g.hangerU.length;
+        if (carrier.cross) add(req.counts, carrier.cross, crossings);
+        if (carrier.crossLn9) add(req.counts, 'LN9', crossings * carrier.crossLn9);
+      }
+      // wieszaki: na profilach nośnych (ruszt krzyżowy) albo na skrzyżowaniach profili z krokwiami
+      const n = (carrier ? g.fixS.length : g.cd.length) * g.hangerU.length;
       hangers += n;
       if (frame.hanger) add(req.counts, frame.hanger, n);
       add(req.counts, 'WKRET_DREWNO', n * frame.woodScrews);
@@ -108,8 +121,8 @@ export function atticRequirement(
   }
 
   if (frame.hanger) {
-    const gapMm = Math.max(0, grid.depthMm - boards.reduce((t, id) => t + boardById(id).thickness, 0) - grid.profileMm);
-    addNote(req, frame.hanger, `poddasze: ${frame.profileLabel} ok. ${Math.round(gapMm)} mm pod krokwią`);
+    const gapMm = Math.max(0, grid.depthMm - boards.reduce((t, id) => t + boardById(id).thickness, 0) - grid.profileMm - (grid.carrier?.mm ?? 0));
+    addNote(req, frame.hanger, `poddasze: ${grid.hangerSize ? `dobrano ${grid.hangerSize.name}, ` : ''}${grid.carrier ? grid.carrier.label : frame.profileLabel} ok. ${Math.round(gapMm)} mm pod krokwią`);
   }
 
   // wełna: między krokwiami (pasy o 1–2 cm szersze niż światło – wytyczne Isover/Rigips) i pod krokwiami na całej powierzchni

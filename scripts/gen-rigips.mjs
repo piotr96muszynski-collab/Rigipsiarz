@@ -71,6 +71,8 @@ for (const s of data.systems) {
     skip(s, 'ściana łukowa');
     continue;
   }
+  // obudowy z samych płyt na kątowniku obwodowym – opisane ręcznie z kart PDF w src/catalog/rigipsPanel.ts
+  if (['3.50.14', '3.50.19', '3.50.22', '3.80.15'].includes(code)) continue;
   if (!s.vars.length) {
     skip(s, 'brak tabeli odmian na stronie');
     continue;
@@ -80,7 +82,9 @@ for (const s of data.systems) {
     let K = clean(cell(s, v, /Konstrukcja/));
     const cwNames = v.mats.flatMap((m) => m[4]).filter((n) => /^\s*CW \d/.test(n));
     if (!K && cwNames.length) K = `CW/UW ${cwNames[0].match(/CW (\d+)/)[1]}`;
-    if (/C250|4xCW|RIGISTIL|kapelusz|Kątownik/i.test(K)) {
+    // okładziny na profilach kapeluszowych (3.21.30, 3.29.20) generuje scripts/gen-hat.mjs
+    if (/kapelusz/i.test(K)) break;
+    if (/C250|4xCW|RIGISTIL|Kątownik/i.test(K)) {
       skip(s, `konstrukcja „${K.slice(0, 30)}” poza zakresem silnika`);
       break;
     }
@@ -361,7 +365,8 @@ const CEIL_LEGACY = {
 };
 const CEIL_SKIP = [
   [/RIGISTIL/i, 'profile Rigistil'],
-  [/kapelusz/i, 'profile kapeluszowe'],
+  // 4.05.21 (profile kapeluszowe wprost na stropie) generuje scripts/gen-hat.mjs
+  [/kapelusz/i, null],
   [/Klick/i, 'wieszaki Klick-Fix'],
   [/łatach/i, 'ruszt z łat drewnianych'],
   [/RIGITONE|GYPTONE|kaseton/i, 'sufit akustyczny lub kasetonowy'],
@@ -388,6 +393,9 @@ const ATTIC_FRAMES = {
     frame: {
       mount: 'hanger', profile: 'C_RIGISTIL', profileLabel: 'profil C RIGISTIL', profileMm: 18, edge: 'U_RIGISTIL', hanger: 'WIESZAK_RIGISTIL', hangerLabel: 'wieszak RIGISTIL', hangerLn9: 0,
       joiner: 'LACZNIK_GL3', woodScrews: 2, maxUnderMm: 150, maxUnderWhy: 'karta 4.70.07: do 150 mm wełny pod krokwiami',
+      // wieszak mocowany do boku krokwi: zasięg = długość minus ok. 7 cm zakładu (założenie), nie więcej niż układ z karty
+      hangerSizes: [{ name: '170 mm', reachMm: 100 }, { name: '300 mm', reachMm: 150 }],
+      hangerSizesNote: 'Długość wieszaka RIGISTIL (170 lub 300 mm wg karty) dobrana do zabudowy pod krokwią; przyjęto ok. 7 cm zakładu wieszaka na bok krokwi – karta nie podaje zasięgu.',
     },
   },
   '4.70.08': {
@@ -395,6 +403,8 @@ const ATTIC_FRAMES = {
     frame: {
       mount: 'hanger', profile: 'C_RIGISTIL', profileLabel: 'profil C RIGISTIL', profileMm: 18, edge: 'U_RIGISTIL', hanger: 'UCHWYT_GL', hangerLabel: 'uchwyt GL 2 / GL 9', hangerLn9: 4,
       joiner: 'LACZNIK_GL3', woodScrews: 2, maxUnderMm: 120, maxUnderWhy: 'uchwyt GL 9 o długości 125 mm',
+      hangerSizes: [{ name: 'GL 2 (75 mm)', reachMm: 70 }, { name: 'GL 9 (125 mm)', reachMm: 120 }],
+      hangerSizesNote: 'Uchwyt GL 2 (75 mm) albo GL 9 (125 mm) dobrany do zabudowy pod krokwią; zasięg liczony 5 mm krócej niż długość uchwytu.',
     },
   },
   '4.70.81': { title: 'łaty drewniane do krokwi', frame: { mount: 'direct', profile: 'LATA5030', profileLabel: 'łata drewniana', profileMm: 30, woodScrews: 2 }, battens: true, plural: 'Łaty drewniane' },
@@ -418,8 +428,8 @@ for (const s of data.systems) {
   const sysName = clean(s.list[1]);
   const AF = s.cat === 'poddasza' ? ATTIC_FRAMES[code] : undefined;
   const why = AF ? undefined : CEIL_SKIP.find(([re]) => re.test(sysName))?.[1];
-  if (why) {
-    skip(s, why);
+  if (why !== undefined) {
+    if (why) skip(s, why);
     continue;
   }
   if (!s.vars.length) {

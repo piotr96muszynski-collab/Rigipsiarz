@@ -38,6 +38,12 @@ const KNOWN_DIFF = new Set([
   'S-UA-1:CD60',
   'S-UA-1:KATOWNIK_UA',
   'S-UA-1:LACZNIK_UA_CD',
+  // profile kapeluszowe na stropie: karty/kalkulatory podają 6 kotew na m², aplikacja liczy kotwy z maksymalnego
+  // rozstawu z tabeli systemu (dwa rzędy na półkach profilu, w rzędzie co 100 lub 120 cm) – założenie, wychodzi mniej
+  'R-HAT-S-1:KOTWA',
+  'R-HAT-S-2:KOTWA',
+  'SN-S-PK48-1-120:KOTWA',
+  'SN-S-PK48-2-120:KOTWA',
   // 3.50.10: kalkulator podaje 3,6 mb UW 100 na m² (sama para UW na słupek co 60 cm), bez UW przy posadzce
   // i stropie; aplikacja liczy je jak karta Siniat UU (4,3 mb = słupki 3,6 + U góra i dół 0,7)
   'SZ-UU100-2+2:UW100',
@@ -111,9 +117,9 @@ describe('katalog – spójność danych', () => {
     for (const s of [...WALL_SYSTEMS, ...CEILING_SYSTEMS]) if (s.code) expect(s.source.url, s.id).toMatch(/^https:\/\/www\.rigips\.pl\//);
   });
   it('katalog obejmuje wszystkie rodzaje ścian i sufitów', () => {
-    expect(new Set(WALL_SYSTEMS.map((s) => s.frame))).toEqual(new Set(['single', 'double', 'separate', 'cd-lining', 'glued', 'point-fix']));
+    expect(new Set(WALL_SYSTEMS.map((s) => s.frame))).toEqual(new Set(['single', 'double', 'separate', 'cd-lining', 'glued', 'point-fix', 'hat-lining', 'panel']));
     expect(new Set(WALL_SYSTEMS.map((s) => s.category)).size).toBe(6);
-    expect(new Set(CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'direct', 'ua-span', 'cw-span', 'point-fix']));
+    expect(new Set(CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'parallel', 'direct', 'ua-span', 'cw-span', 'point-fix']));
   });
 });
 
@@ -121,7 +127,7 @@ describe('zużycie na m² zgodne z kartami Rigips (±25%)', () => {
   for (const s of WALL_SYSTEMS.filter((x) => x.reference))
     it(`ściana ${s.code ?? ''} ${s.name}`, () => {
       // płyta klejona ma tylko klej, masę i taśmę; systemy z płytami specjalnymi mają mniej wspólnych pozycji
-      const min = ATLAS_WALL_EDGE(s.id) ? 0 : /^R[BF]/.test(s.defaultBoard) && !s.innerBoard && s.frame !== 'glued' && s.frame !== 'cd-lining' && s.layers < 3 ? 5 : 3;
+      const min = ATLAS_WALL_EDGE(s.id) ? 0 : /^R[BF]/.test(s.defaultBoard) && !s.innerBoard && s.frame !== 'glued' && s.frame !== 'cd-lining' && s.frame !== 'hat-lining' && s.layers < 3 ? 5 : 3;
       expect(compare(s, wallConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(min);
     });
   for (const s of CEILING_SYSTEMS.filter((x) => x.reference))
@@ -129,7 +135,9 @@ describe('zużycie na m² zgodne z kartami Rigips (±25%)', () => {
       // masa wykończeniowa z karty (gładź) jest poza zakresem – spoinowanie liczymy do Q1
       // płyty specjalne na uchwytach bezpośrednich mają mało wspólnych pozycji (inne wkręty, masy bez porównania)
       const special = !s.maker && s.kind === 'direct' && !/^R[BF]/.test(s.defaultBoard);
-      expect(compare(s, ceilingConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(s.kind === 'point-fix' ? 1 : special ? 2 : 3);
+      // profile kapeluszowe: karta podaje tylko profil, kotwy i taśmę, a kotwy przy maks. rozstawie są w KNOWN_DIFF
+      const hatFew = s.hangerType === 'hat' && !s.atticFrame && KNOWN_DIFF.has(`${s.id}:KOTWA`);
+      expect(compare(s, ceilingConsumption(s), s.reference!).length).toBeGreaterThanOrEqual(s.kind === 'point-fix' ? 1 : special || hatFew ? 2 : 3);
     });
 });
 

@@ -1,6 +1,6 @@
 import { findOverlaps, uncoveredParts } from '../geometry/contacts';
 import { dist, existingRooms, isNewWall, masonrySide, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
-import { wallSystemById } from '../catalog/rigips';
+import { wallSystemById, type StudSpacing } from '../catalog/rigips';
 import { createExistingWall, createOpening, createWall, uid } from './factory';
 import type { Id, Lining, Opening, OpeningKind, Point, Project, Wall } from './types';
 
@@ -14,6 +14,7 @@ export function setWallSystem(w: Wall, systemId: string) {
   delete w.insulationThickness;
   delete w.doubleStuds;
   delete w.innerBoardId;
+  delete w.sideBBoards;
 }
 
 /** Odmiana wybrana w doborze: system razem z płytą, rozstawem i słupkami z karty producenta */
@@ -21,7 +22,9 @@ export interface SystemChoice {
   system: { id: string };
   boardId: string;
   innerBoardId?: string;
-  studSpacing: 60 | 40 | 30;
+  /** Płyty strony 2 z odmiany (systemy z innym poszyciem stron) */
+  sideBBoards?: string[];
+  studSpacing: StudSpacing;
   doubleStuds: boolean;
 }
 
@@ -38,6 +41,11 @@ export function applyWallChoice(w: Wall | Lining, c: SystemChoice) {
   else delete w.doubleStuds;
   if (c.innerBoardId && c.innerBoardId !== s.innerBoard) w.innerBoardId = c.innerBoardId;
   else delete w.innerBoardId;
+  // okładzina (ma `side`) jest jednostronna – bez płyt strony 2
+  if (!('side' in w)) {
+    if (c.sideBBoards?.length && c.sideBBoards.join() !== (s.sideB ?? []).join()) w.sideBBoards = [...c.sideBBoards];
+    else delete w.sideBBoards;
+  }
 }
 
 /** System nowych ścian: ustawienia płyty, rozstawu i wełny wracają do wartości systemu */
