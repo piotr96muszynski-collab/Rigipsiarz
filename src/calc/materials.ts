@@ -7,12 +7,14 @@ import {
   ceilingMaxSpan,
   ceilingSystemById,
   wallMaxHeight,
+  wallMidBoard,
   sideBoards,
   wallSystemById,
   wallTieCount,
   wallMaxWidth,
   type Board,
   type CeilingSystem,
+  type Maker,
   type Product,
   type WallSystem,
   type Unit,
@@ -35,7 +37,7 @@ import {
 import { WOOL_THICKNESSES, resolveWool, woolThicknessOf, type WoolChoice } from '../catalog/insulation';
 import type { Ceiling, Lining, Point, Project, Wall } from '../model/types';
 import { createAttic, createCeiling, createProject, createWall } from '../model/factory';
-import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
+import { compoundFor, resolveFinishing, tapeFor, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
 import { atticRequirement, type AtticResult } from './atticMaterials';
 import { ceilingLevels, ceilingWallWarnings, hangerGapClass, layerBoards, type CeilingLevels } from './ceilingLevels';
@@ -141,22 +143,31 @@ export function addBoardScrews(req: Requirement, area: number, boards: string[],
  * masa wg karty wybranej masy na każdą warstwę płyt (warstwy wewnętrzne tylko wypełnione).
  * Gładzie (Q2–Q4) nie są liczone.
  */
-export function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number, fin: FinishingSettings) {
+export function addJointing(
+  req: Requirement,
+  area: number,
+  layers: number,
+  boardId: string,
+  tapePerM2: number,
+  fin: FinishingSettings,
+  maker?: Maker,
+) {
   if (boardById(boardId).kind === 'cement') {
     add(req.meters, 'TASMA_AQ', area * tapePerM2);
     add(req.kg, 'MASA_AQ', area * (0.5 + 0.25 * (layers - 1)));
     return;
   }
-  add(req.meters, tapeById(fin.tape).product, area * tapePerM2);
-  const c = compoundById(fin.compound);
-  add(req.kg, c.product, area * c.kgPerM2 * layers);
+  const c = compoundFor(fin, maker);
+  if (!c.noTape) add(req.meters, tapeFor(fin, maker).product, area * tapePerM2);
+  add(req.kg, c.product, area * (c.kgPerM2 + (c.innerKgPerM2 ?? c.kgPerM2) * (layers - 1)));
+  if (c.finish) add(req.kg, c.finish.product, area * c.finish.kgPerM2);
 }
 
 /** Wkręty na m² jednej strony ściany przy rozstawie 60 cm (karta 3.40.05: 9 + 24 szt. na 2 strony) */
-const WALL_SCREWS_OUTER = 12;
-const WALL_SCREWS_INNER = 4.5;
+export const WALL_SCREWS_OUTER = 12;
+export const WALL_SCREWS_INNER = 4.5;
 /** Klej gipsowy pod płytę klejoną (placki), kg/m² – orientacyjnie */
-const GLUE_PER_M2 = 5; // kalkulator Rigips 3.10.00: 500 kg na 100 m²
+export const GLUE_PER_M2 = 5; // kalkulator Rigips 3.10.00: 500 kg na 100 m²
 
 export interface WallBreakdown {
   lengthM: number;
@@ -249,7 +260,7 @@ export function wallRequirement(
       ? 'CD60'
       : sys.studKind === 'UA'
         ? `UA${sys.profile}`
-        : sys.studKind === 'UU'
+        : sys.studKind === 'UU' || sys.studKind === 'UW2'
           ? `UW${sys.profile}`
           : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`]
             ? `CW${sys.profile}AKU`
@@ -310,6 +321,12 @@ export function wallRequirement(
       addPiece(req, 'UD30', len);
       addPiece(req, 'UD30', len);
       add(req.counts, 'LN9', Math.ceil(len * 10));
+    } else if (sys.studKind === 'UW2') {
+      // Knauf W635: słupek z dwóch profili UW, płyta pośrednia między nimi; zespolenie wkrętami
+      // przyjęte jak przy słupkach podwójnych CW (Systemfinder nie podaje) – 4,4 pchełki na mb
+      addStud(stud, len);
+      addStud(stud, len);
+      add(req.counts, 'LN9', Math.ceil(len * 4.4));
     } else {
       addStud(stud, len);
       if (doubled) {
@@ -459,8 +476,8 @@ export function wallRequirement(
   // płyta dosztywniająca między rzędami rusztu (Siniat 168B50…): pełna powierzchnia netto, przykręcona do jednego rzędu
   if (sys.midBoard) {
     const n = sys.midLayers ?? 1;
-    // Knauf W115W: płyta pośrednia jak poszycie (np. Akustik Plus przy poszyciu Akustik Plus)
-    const mid = sys.midBoardFromFace ? w.boardId : sys.midBoard;
+    // Knauf W115W: płyta pośrednia jak poszycie; W635: wg odmiany (F15 → F13, HF15 → HF13)
+    const mid = wallMidBoard(sys, w.boardId)!;
     add(req.boardArea, keyFor(mid, w.height), net * n);
     addBoardScrews(req, net, Array(n).fill(mid), WALL_SCREWS_OUTER * (0.6 / Math.max(0.2, w.studSpacing / 100)), WALL_SCREWS_INNER);
   }
@@ -492,7 +509,7 @@ export function wallRequirement(
       addBoardScrews(req, boardedNet, boards, WALL_SCREWS_OUTER * f, WALL_SCREWS_INNER * f);
     }
     // --- Spoinowanie: wg płyty zewnętrznej strony (płyta cementowa – taśma i masa do Aquaroc) ---
-    addJointing(req, boardedNet, boards.length, boards[boards.length - 1], 1.4, fin);
+    addJointing(req, boardedNet, boards.length, boards[boards.length - 1], 1.4, fin, sys.maker);
     // --- Płyty z ołowiem (Siniat RTG): samoprzylepna taśma z ołowiem na słupkach pod płytą ---
     // karta Siniat 75A50/RTG: 2,4 mb/m² przy słupkach co 625 mm (4,8 przy 312,5) – na każdą warstwę RTG
     const lead = boards.filter((id) => boardById(id).leadMm).length;
@@ -529,7 +546,7 @@ export function pointFixCount(L: number, H: number, sx: number, sy: number, hole
 }
 
 /** Spoinowanie w systemie ATLAS: taśma, STONER na każdą warstwę, GTA na wierzch (zużycie orientacyjne) */
-function addAtlasJointing(req: Requirement, area: number, layers: number, tapePerM2: number) {
+export function addAtlasJointing(req: Requirement, area: number, layers: number, tapePerM2: number) {
   add(req.meters, 'TASMA_SPOIN', area * tapePerM2);
   add(req.kg, 'ATLAS_STONER', area * 0.25 * layers);
   add(req.kg, 'ATLAS_GTA', area * 0.1);
@@ -652,7 +669,7 @@ function panelWall(
   for (const sc of spec.screws) add(req.counts, sc.product, net * sc.perM2);
 
   // --- Spoinowanie (taśma 1,4 mb/m² jak w kartach) ---
-  addJointing(req, net, sys.layers, w.boardId, 1.4, resolveFinishing(p.settings.finishing));
+  addJointing(req, net, sys.layers, w.boardId, 1.4, resolveFinishing(p.settings.finishing), sys.maker);
 
   const ins = wallInsulation(w, sys);
   if (ins) add(req.area, `WELNA${ins.thickness}`, net);
@@ -979,7 +996,7 @@ export function ceilingRequirement(
   const boards = layerBoards(sys, c.boardId);
   for (const id of boards) add(req.boardArea, `${id}|${id === c.boardId ? sheetLen : pickBoardLength(id, Math.min(longSide, 300))}`, A);
   addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
-  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin);
+  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin, sys.maker);
   const ins = ceilingInsulation(c);
   if (ins) add(req.area, `WELNA${ins.thickness}`, A * ins.layers);
   // paroizolacja między wełną / rusztem a płytami (w poddaszach element systemu)

@@ -613,6 +613,8 @@ export interface SystemVariant {
   doubleStuds?: boolean;
   /** Maksymalna wysokość ściany, cm */
   maxHeight?: number;
+  /** Płyta pośrednia tej odmiany, gdy zależy od poszycia (Knauf W635: F15 → F13, HF15 → HF13) */
+  midBoard?: string;
   /** Maksymalna szerokość (rozpiętość) obudowy z samych płyt, cm */
   maxWidth?: number;
   /** Klasa odporności ogniowej EI w minutach (brak = nieokreślona) */
@@ -685,6 +687,9 @@ export interface WallSystem {
   /** Inna płyta na warstwach wewnętrznych (np. PRO pod Habito); liczba tych warstw w `innerLayers` */
   innerBoard?: string;
   innerLayers?: number;
+  /** Trzecia płyta – warstwy najbliżej rusztu, pod płytą wewnętrzną (np. 2×15 DFH2 w Rigips 3.22.00 X OCEAN) */
+  baseBoard?: string;
+  baseLayers?: number;
   /** Słupki z profili akustycznych CW Aku */
   akuStuds?: boolean;
   /**
@@ -722,7 +727,7 @@ export interface WallSystem {
    * - UU: para profili U (UW) skręconych w skrzynkę z parą UD 30 trzymającą płytę rdzeniową
    *   (obudowy szybów typu ShaftWall – Siniat UU, Rigips 3.50.10).
    */
-  studKind?: 'UA' | 'UU';
+  studKind?: 'UA' | 'UU' | 'UW2';
   /** Kotwienie słupków do ściany w pionie: kątowniki (Siniat C100/L) albo przewiązki PWA; rozstaw, cm */
   wallTie?: WallTie;
   /**
@@ -1086,6 +1091,9 @@ export interface CeilingSystem {
   innerBoard?: string;
   /** Liczba warstw z płyty wewnętrznej */
   innerLayers?: number;
+  /** Trzecia płyta – warstwy przy ruszcie, pod płytą wewnętrzną (np. 2×15 DFH2 w Rigips 4.10.25 X OCEAN) */
+  baseBoard?: string;
+  baseLayers?: number;
   /** Rozstaw profili nośnych (górnych / UA), cm */
   mainSpacing: number;
   /** Rozstaw profili montażowych (dolnych CD) lub CW w suficie przęsłowym, cm */
@@ -1366,18 +1374,31 @@ export const isLiningSystem = (sys: WallSystem): boolean =>
 export const isHatWall = (sys: WallSystem): boolean => sys.frame === 'hat-lining';
 export const isHatCeiling = (sys: CeilingSystem): boolean => sys.kind === 'direct' && sys.hangerType === 'hat' && !sys.atticFrame;
 
+type BoardStack = { layers: number; innerBoard?: string; innerLayers?: number; baseBoard?: string; baseLayers?: number };
+
 /**
- * Płyty kolejnych warstw jednej strony, od rusztu: `innerLayers` warstw z płyty wewnętrznej
- * (systemy z dwoma rodzajami płyt, np. PRO pod Habito, albo 12,5 pod 15 mm), reszta z płyty wybranej w elemencie.
+ * Płyty kolejnych warstw jednej strony, od rusztu: najpierw `baseLayers` warstw z płyty przy ruszcie
+ * (karty z trzema grubościami/rodzajami, np. Rigips 3.22.00 X OCEAN: 2×15 DFH2 + 1×12,5 DFH2 + X OCEAN),
+ * potem `innerLayers` warstw z płyty wewnętrznej (np. PRO pod Habito, albo 12,5 pod 15 mm), reszta z płyty wybranej w elemencie.
  */
-export function layerBoards(sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): string[] {
-  const inner = sys.innerBoard ? Math.min(sys.layers - 1, sys.innerLayers ?? sys.layers - 1) : 0;
-  return Array.from({ length: sys.layers }, (_, i) => (i < inner ? (innerBoardId ?? sys.innerBoard!) : boardId));
+export function layerBoards(sys: BoardStack, boardId: string, innerBoardId?: string): string[] {
+  const base = sys.baseBoard ? Math.min(sys.layers - 1, sys.baseLayers ?? 0) : 0;
+  const inner = sys.innerBoard ? Math.min(sys.layers - 1 - base, sys.innerLayers ?? sys.layers - 1 - base) : 0;
+  return Array.from({ length: sys.layers }, (_, i) =>
+    i < base ? sys.baseBoard! : i < base + inner ? (innerBoardId ?? sys.innerBoard!) : boardId,
+  );
 }
 
 /** Grubość wszystkich warstw płyt jednej strony, mm (warstwy mogą mieć różną grubość, np. 12,5 + 15) */
-export const boardStackMm = (sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): number =>
+export const boardStackMm = (sys: BoardStack, boardId: string, innerBoardId?: string): number =>
   layerBoards(sys, boardId, innerBoardId).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
+
+/** Płyta pośrednia / dosztywniająca dla wybranego poszycia: jak poszycie, z odmiany albo z systemu */
+export function wallMidBoard(sys: WallSystem, boardId: string): string | undefined {
+  if (!sys.midBoard) return undefined;
+  if (sys.midBoardFromFace) return boardId;
+  return sys.variants?.find((v) => v.board === boardId && v.midBoard)?.midBoard ?? sys.midBoard;
+}
 
 /** Płyty ściany potrzebne do wyliczeń poszycia (ściana albo okładzina) */
 export interface WallBoarding {
@@ -1419,6 +1440,7 @@ export function wallStudLabel(sys: WallSystem): string {
   if (sys.frame === 'hat-lining') return 'kapeluszowy 15/48';
   if (sys.studKind === 'UA') return `UA ${sys.profile}`;
   if (sys.studKind === 'UU') return `2×U ${sys.profile} (UU)`;
+  if (sys.studKind === 'UW2') return `2×UW ${sys.profile}`;
   return `CW ${sys.profile}`;
 }
 

@@ -13,6 +13,8 @@ import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyR
 import { joinsFor, profileMaxStock } from './profileLength';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
 import { boardById } from '../catalog/rigips';
+import { addAtticWalls, atticWallLayout } from './atticWalls';
+import { atticRoofWallFaces } from './atticRoofWalls';
 
 export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: FinishingSettings, grid: AtticGrid & { roof: AtticRoofGrid }): AtticResult {
   const req = emptyReq();
@@ -95,5 +97,13 @@ export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: Finishin
   if (vaporBarrierOn(a.vaporBarrier, vapor)) vaporBarrierLines(req, areaM2, vapor);
 
   // rozkład płyt na płaszczyznach o dowolnym obrysie jeszcze nie jest liczony – płyty po polu z naddatkiem
-  return { req, grid, boards: { surfaces: [], sheets: [], warnings: [] }, areaM2, perimeterM, hangers, warnings, assumptions };
+  // okładziny ścianek kolankowych i ścian szczytowych (także dobudówek) – jak w zwykłym poddaszu
+  const walls = atticRoofWallFaces(a, roof).map(atticWallLayout);
+  const wallAreaM2 = addAtticWalls(req, walls, fin);
+  for (const w of walls) warnings.push(...w.warnings);
+  if (walls.length)
+    assumptions.push(
+      'Okładziny ścian poddasza: profile pionowe co rozstaw, docięte do lica skosu; profil przyścienny UD po obwodzie każdej ściany; płyty pionowo, docinane pod kątem skosu. Przy dachu z narożnikami i koszami okładziny są w zestawieniu i na rysunkach, w widoku 3D jeszcze ich nie ma.',
+    );
+  return { req, grid, boards: { surfaces: [], sheets: [], warnings: [] }, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions };
 }

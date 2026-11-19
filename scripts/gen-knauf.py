@@ -99,6 +99,7 @@ WALL_META = {
     'W686': ('okładzina', 'single', 1, 'Przedścianka z płyt cementowych'),
     'W683': ('okładzina', 'cd-lining', 1, 'Okładzina z płyt cementowych na CD 60'),
     'W628B': ('szacht', 'single', 1, 'Ściana szybu (typ B)'),
+    'W635': ('szacht', 'single', 1, 'Ściana szybu z płytą pośrednią'),
 }
 # W629 = W628B na zdwojonych słupkach → odmiany doubleStuds w systemie W628B
 MERGE = {'W629': 'W628B'}
@@ -109,6 +110,8 @@ lines = read(f'{SCR}/walls.txt') + read(f'{SCR}/lin.txt')
 # systemy spoza Systemfindera, z zeszytu technicznego W11.pl (W115W, W114)
 ZESZYT = {r[0] for r in read(f'{SCR}/zeszyt-w11.txt')}
 lines += read(f'{SCR}/zeszyt-w11.txt')
+# W635: słupki z dwóch UW i płyta pośrednia (dwie dodatkowe kolumny: płyta pośrednia, liczba warstw)
+lines += read(f'{SCR}/w635.txt')
 groups = OrderedDict()
 for r in lines:
     sysn, grid, prof, layers, boards, clad, wool, ei, rw, ra1, thk, mass, H = r[:13]
@@ -116,25 +119,28 @@ for r in lines:
     if sysn not in WALL_META:
         continue
     double = grid == 'Z' or (r[0] == 'W629')
-    p = prof.replace('2x ', '').replace('2x', '').replace('CW', '').replace('CD60/27', '50')
+    p = prof.replace('2x ', '').replace('2x', '').replace('CW', '').replace('UW', '').strip().replace('CD60/27', '50')
     profile = int(p)
     nl = int(layers)
-    key = (sysn, profile, nl)
-    groups.setdefault(key, []).append(dict(boards=boards, clad=clad, wool=num(wool), ei=num(ei), rw=num(rw), ra1=num(ra1),
+    mid, ml = (r[13], int(r[14])) if len(r) > 14 else (None, 0)
+    key = (sysn, profile, nl, ml)
+    groups.setdefault(key, []).append(dict(mid=mid, ml=ml, boards=boards, clad=clad, wool=num(wool), ei=num(ei), rw=num(rw), ra1=num(ra1),
                                            thk=num(thk), mass=num(mass), H=[num(x) for x in H.split('/')], double=double, orig=r[0]))
 
 # liczba różnych warstw w systemie – czy id potrzebuje sufiksu warstw
 layers_per_sys = {}
-for (s, p, n) in groups:
+for (s, p, n, _ml) in groups:
     layers_per_sys.setdefault(s, set()).add(n)
 
 walls = []
-for (sysn, profile, nl), vs in groups.items():
+for (sysn, profile, nl, ml), vs in groups.items():
     cat, frame, sides, kind = WALL_META[sysn]
     if frame == 'cd-lining':
         sid = f'KN-{sysn}-{nl}'
     else:
         sid = f'KN-{sysn.replace("+", "P")}-CW{profile}' + (f'-{nl}' if len(layers_per_sys[sysn]) > 1 else '')
+        if ml:
+            sid = f'KN-{sysn}-UW{profile}-{nl}+{ml}'
     # płyta domyślna
     codes = [v['boards'].split('+')[-1] for v in vs if '+' not in v['boards'] and not v['double']]
     mixed_all = all('+' in v['boards'] for v in vs)
@@ -177,6 +183,8 @@ for (sysn, profile, nl), vs in groups.items():
             if v['ra1']:
                 o['ra1'] = v['ra1']
             o['wool'] = v['wool'] or 0
+            if v['mid']:
+                o['midBoard'] = BID[v['mid']]
             o['thickness'] = v['thk']
             o['mass'] = v['mass']
             variants.append(o)
@@ -191,6 +199,8 @@ for (sysn, profile, nl), vs in groups.items():
         title = f'{kind} CW {profile}, {nl}×12,5 obustronnie'
     if mixed_all:
         title = f'{kind} CW {profile}, ' + layer_text(dv['boards'], nl, dv['clad']).replace(' ' + SHORT[default], '').replace(' ' + SHORT[inner], '')
+    if ml:
+        title = f'{kind}, słupki 2×UW {profile}, poszycie ' + layer_text(dv['boards'], nl, dv['clad']) + f', płyta pośrednia {ml}×{pl(THK[dv["mid"]])}'
     has_double = any(v['double'] for v in vs)
     w = OrderedDict()
     w['id'] = sid
@@ -207,6 +217,11 @@ for (sysn, profile, nl), vs in groups.items():
     if sysn == 'W115W':
         w['midBoard'] = BID[default]
         w['midBoardFromFace'] = True
+    if ml:
+        w['studKind'] = 'UW2'
+        w['midBoard'] = BID[dv['mid']]
+        if ml > 1:
+            w['midLayers'] = ml
     w['studSpacing'] = stud
     w['maxHeight'] = maxh
     w['insulationDefault'] = bool(dv['wool'])
@@ -230,6 +245,10 @@ for (sysn, profile, nl), vs in groups.items():
     if sysn == 'W115W':
         info.append('płyta pośrednia 12,5 mm tego samego rodzaju co poszycie, przykręcona do słupków jednego rzędu, '
                     'z odcinkami taśmy akustycznej (detal W115W.pl-B1; liczona w płytach i wkrętach)')
+    if ml:
+        mids = sorted({SHORT[v['mid']] for v in vs}, key=lambda x: x)
+        info.append(f'słupki z dwóch profili UW {profile} co 60 cm, między nimi {ml}× płyta pośrednia ({" / ".join(mids)}) w głębokości profilu, '
+                    'poszycie od strony pomieszczenia · zespolenie UW i rozstaw wkrętów przyjęte (Systemfinder ich nie podaje)')
     if sysn in ZESZYT and max(maxh.values()) > 650:
         info.append('klasa EI z tabeli tylko dla ścian do 6,5 m (przypis zeszytu technicznego)')
     if frame == 'cd-lining':
@@ -423,7 +442,8 @@ hdr = '''// Katalog systemów suchej zabudowy Knauf – ściany, przedścianki, 
 // Systemy Knauf nie mają pola `code` – numer systemu (W112, D112…) jest w nazwie i w odmianach.
 // W115W (płyta pośrednia między rusztami) i W114 (w Systemfinderze jako W113+, tam bez płyt Diamant
 // i Silentboard i z EI 120) – z zeszytu technicznego W11.pl, wyd. 06/2026 (data/knauf/zeszyt-w11.txt).
-// Pominięte (silnik ich nie liczy): ściany na drewnie (W12x), W635 (szyb na UW), D116 (nośne UA), D131 (sufit samonośny), sufity modułowe, Cubo, Fireboard
+// W635 (szyb na słupkach 2×UW z płytą pośrednią) – z Systemfindera, data/knauf/w635.txt.
+// Pominięte (silnik ich nie liczy): ściany na drewnie (W12x), D116 (nośne UA), D131 (sufit samonośny), sufity modułowe, Cubo, Fireboard
 // K25x, ściany RTG i antywłamaniowe.
 //
 // Plik generowany: python3 scripts/gen-knauf.py data/knauf src/catalog/knauf.ts (dane w data/knauf); importuje z `rigips.ts` wyłącznie typy.

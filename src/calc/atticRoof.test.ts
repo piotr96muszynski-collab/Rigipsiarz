@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { atticRequirement } from './atticMaterials';
 import { allCeilingSystems } from '../catalog/rigips';
-import { createAttic } from '../model/factory';
+import { createAttic, createLining } from '../model/factory';
 import { atticRoof, faceCdLines, hasRoofCorners } from './atticRoof';
 
 const base = { width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 45, collarHeight: undefined };
@@ -86,5 +86,25 @@ describe('zestawienie poddasza z narożnikami i koszami', () => {
     const r = atticRequirement(createAttic({ ...base, ends: ['hip', 'gable'], systemId: sys.id, woolUnder: 0 }), sys);
     expect(r.grid.roof).toBeUndefined();
     expect(r.warnings.some((w) => w.startsWith('Narożniki dachu i kosze nie są liczone'))).toBe(true);
+  });
+});
+
+describe('okładziny ścian poddasza z narożnikami i koszami', () => {
+  it('kolankowe przerwane dobudówką, szczyt tylko przy końcu bez połaci narożnej', () => {
+    const a = createAttic({
+      ...base,
+      ends: ['hip', 'gable'],
+      kneeLining: createLining(1, 'O-CD-1'),
+      gableLining: createLining(1, 'O-CD-1'),
+      wings: [{ id: 'w', side: 'left', at: 500, width: 600, length: 400, end: 'gable' }],
+    });
+    const r = atticRequirement(a);
+    const gables = r.walls.filter((w) => w.face.id === 'gable');
+    // szczyt główny przy 2. końcu + szczyt dobudówki
+    expect(gables).toHaveLength(2);
+    const knees = r.walls.filter((w) => w.face.id !== 'gable');
+    // lewa: 2 odcinki obok dobudówki, prawa: cała, połać narożna: 1, dobudówka: 2 boki
+    expect(knees.length).toBe(6);
+    expect(r.wallAreaM2).toBeGreaterThan(0);
   });
 });

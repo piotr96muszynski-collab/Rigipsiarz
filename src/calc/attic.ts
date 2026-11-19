@@ -218,6 +218,26 @@ export function atticFrameOf(sys: CeilingSystem): AtticFrame {
   };
 }
 
+/** Rodzaj rusztu poddasza – filtr w wyborze systemu */
+export type AtticFrameKind = 'hanger' | 'hat' | 'battens' | 'between' | 'cross';
+
+export const ATTIC_FRAME_KIND_LABEL: Record<AtticFrameKind, string> = {
+  hanger: 'Profile na wieszakach',
+  hat: 'Profile kapeluszowe do krokwi',
+  battens: 'Łaty drewniane do krokwi',
+  between: 'Między krokwiami (więźba widoczna)',
+  cross: 'Ruszt krzyżowy',
+};
+
+/** Rodzaj rusztu systemu poddasza */
+export function atticFrameKind(sys: CeilingSystem): AtticFrameKind {
+  const f = atticFrameOf(sys);
+  if (f.carrier) return 'cross';
+  if (f.mount === 'between') return 'between';
+  if (f.mount === 'direct') return f.battens || f.profile.startsWith('LATA') ? 'battens' : 'hat';
+  return 'hanger';
+}
+
 /** Najkrótszy wieszak z listy systemu, który sięga na potrzebny odstęp; brak listy albo żaden nie sięga = undefined */
 export function atticHangerSize(frame: AtticFrame, needMm: number) {
   return frame.hangerSizes?.find((s) => s.reachMm + 0.5 >= needMm);
@@ -430,7 +450,7 @@ export function atticGrid(a: Attic, sys: CeilingSystem = ceilingSystemById(a.sys
     ...(frame.mount === 'direct' ? [`${Label} przykręca się do każdej krokwi, bez regulacji – spód krokwi musi być w jednej płaszczyźnie (podkładki przy nierównościach).`] : []),
     ...(batten ? [`Przekrój łat ${batten.size} mm dobrany do rozstawu krokwi (karta: mocowanie co max ${batten.maxFix} cm).`] : []),
     ...(section.hasCollar ? [`Sufit poziomy: jętka przy każdej parze krokwi, ${between ? 'ruszt między jętkami' : 'ruszt mocowany do jętek'}.`] : []),
-    'Płyty i wełna liczone po licu zabudowy, bez okien dachowych i ścian szczytowych.',
+    `Płyty i wełna liczone po licu zabudowy, bez okien dachowych${a.gableLining ? '' : ' i ścian szczytowych'}.`,
   ];
   if (hangerSize && frame.hangerSizesNote) assumptions.push(frame.hangerSizesNote);
 

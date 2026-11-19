@@ -131,24 +131,37 @@ for (const s of data.systems) {
     // grupa „główna” = płyta specjalna (jeśli jest) albo ostatnia wymieniona; pozostałe to warstwy wewnętrzne
     const cls = (g) => boardClass(g.ids[0]);
     let mainIdx = groups.findIndex((g) => cls(g) !== 'STD');
-    if (mainIdx < 0) mainIdx = groups.length - 1;
+    // wszystkie płyty tej samej klasy (np. Rigidur H 1×10 + 1×12,5) – zewnętrzna to ostatnia wymieniona
+    if (mainIdx < 0 || groups.every((g) => cls(g) === cls(groups[0]))) mainIdx = groups.length - 1;
     // UU: płyta rdzeniowa (cieńsza, w ruszcie) to warstwy wewnętrzne, grubsza – poszycie zewnętrzne
     if (uu && groups.length === 2) mainIdx = groups[0].th >= groups[1].th ? 0 : 1;
     const main = groups[mainIdx];
-    const inner = groups.filter((_, i) => i !== mainIdx);
-    if (inner.length > 1 || (inner[0] && cls(inner[0]) !== 'STD' && !uu)) {
+    const rest = groups.filter((_, i) => i !== mainIdx);
+    // trzy grupy (3.22.00 X OCEAN: X OCEAN + 1×12,5 DFH2 + 2×15 DFH2): grupa najdalej od głównej leży przy ruszcie
+    const baseG = rest.length === 2 ? (mainIdx === 0 ? rest[1] : rest[0]) : undefined;
+    const inner = baseG ? rest.filter((g) => g !== baseG) : rest;
+    const sameAsMain = (g) => cls(g) === cls(main) && g.th !== main.th;
+    const okInner = (g) => cls(g) === 'STD' || uu || sameAsMain(g);
+    if (rest.length > 2 || inner.some((g) => !okInner(g)) || (baseG && (cls(baseG) !== 'STD' || baseG.ids.length !== 1))) {
       skip(s, `odmiana „${label.slice(0, 50)}” – układ płyt, którego aplikacja nie liczy`);
       continue;
     }
     const tag = (g) => (cls(g) === 'STD' ? '' : cls(g));
-    const spec = inner[0] ? `${inner[0].n}${tag(inner[0])}+${main.n}${tag(main)}` : `${main.n}${tag(main)}`;
+    // ta sama klasa płyty w kilku grubościach – w id grubość warstwy wewnętrznej (W-CW75-1RIGIDUR10+1RIGIDUR)
+    const innerTag = (g) => tag(g) + (tag(g) && sameAsMain(g) ? fmtTh(g.th).replace(',', '.') : '');
+    const spec = [baseG && `${baseG.n}x${fmtTh(baseG.th).replace(',', '.')}${tag(baseG)}`, inner[0] && `${inner[0].n}${innerTag(inner[0])}`, `${main.n}${tag(main)}`]
+      .filter(Boolean)
+      .join('+');
     const prefix = { wall: 'W', lining: 'O', shaft: 'SZ' }[kind];
     let id = `${prefix}-${twoRows ? '2' : ''}${glued ? 'KLEJ' : cd ? 'CD' : uu ? `UU${profile}` : `CW${profile}`}${aku ? 'AKU' : ''}-${spec}`;
     if (id === 'O-KLEJ-1') id = 'O-KLEJ';
 
     let fam = families.get(id);
     if (!fam) {
-      fam = { id, kind, frame, profile, aku, uu, cls: cls(main), innerCls: inner[0] ? cls(inner[0]) : undefined, mainN: main.n, innerN: inner[0]?.n ?? 0, innerTh: inner[0]?.th, recs: [], variants: [], order: families.size };
+      fam = {
+        id, kind, frame, profile, aku, uu, cls: cls(main), innerCls: inner[0] ? cls(inner[0]) : undefined, mainN: main.n, innerN: inner[0]?.n ?? 0, innerTh: inner[0]?.th,
+        base: baseG ? { id: baseG.ids[0], n: baseG.n, th: baseG.th } : undefined, recs: [], variants: [], order: families.size,
+      };
       families.set(id, fam);
     }
     const wall = kind !== 'lining';
@@ -267,11 +280,12 @@ for (const fam of families.values()) {
   const first = variants.find((x) => x.board === defaultBoard);
   const baseRec = fam.recs.find((r) => r.s.list[0] === first.code && r.spacing === first.studSpacing && !!r.doubled === !!first.doubleStuds) ?? fam.recs[0];
   const sides = fam.kind === 'wall' ? 2 : 1;
-  const layers = fam.mainN + fam.innerN;
+  const layers = fam.mainN + fam.innerN + (fam.base?.n ?? 0);
   const ths = uniq(variants.map((x) => Number(x.board.match(/[\d.]+$/)[0]))).sort((a, b) => a - b);
   const thText = `${fmtTh(ths[0])}${ths.length > 1 ? ` (lub ${ths.slice(1).map(fmtTh).join(', ')})` : ''}`;
+  const baseText = fam.base ? `${fam.base.n}×${fmtTh(fam.base.th)} ${CLASS_NAME[boardClass(fam.base.id)]} + ` : '';
   const boardText = fam.innerN
-    ? `${fam.innerN}×${fmtTh(fam.innerTh)} ${CLASS_NAME[fam.innerCls]} + ${fam.mainN}×${thText} ${CLASS_NAME[fam.cls]}`
+    ? `${baseText}${fam.innerN}×${fmtTh(fam.innerTh)} ${CLASS_NAME[fam.innerCls]} + ${fam.mainN}×${thText} ${CLASS_NAME[fam.cls]}`
     : `${fam.mainN}×${thText}${fam.cls === 'STD' ? '' : ` ${CLASS_NAME[fam.cls]}`}`;
   const cwText = fam.uu ? `2×UW ${fam.profile} (słupki skrzynkowe, płyta rdzeniowa)` : `CW ${fam.profile}${fam.aku ? ' Aku' : ''}`;
   const name =
@@ -319,6 +333,7 @@ for (const fam of families.values()) {
     sides,
     defaultBoard,
     ...(fam.innerN ? { innerBoard: first.innerBoards[0], innerLayers: fam.innerN } : {}),
+    ...(fam.base ? { baseBoard: fam.base.id, baseLayers: fam.base.n } : {}),
     ...(fam.aku && !fam.uu ? { akuStuds: true } : {}),
     ...(fam.uu ? { studKind: 'UU' } : {}),
     studSpacing,
@@ -457,12 +472,14 @@ for (const s of data.systems) {
       skip(s, `odmiana „${label.slice(0, 50)}” – ilość płyt niezgodna z opisem`);
       continue;
     }
-    if (groups.length > 2) {
+    // trzy grupy (4.10.25 X OCEAN: 2×15 DFH2 + 1×12,5 DFH2 + X OCEAN) – pierwsza leży przy ruszcie
+    if (groups.length > 3 || (groups.length === 3 && (boardClass(groups[0].ids[0]) !== 'STD' || groups[0].ids.length !== 1))) {
       skip(s, `odmiana „${label.slice(0, 50)}” – trzy rodzaje płyt`);
       continue;
     }
     const main = groups[groups.length - 1];
-    const inner = groups.length > 1 ? groups[0] : undefined;
+    const inner = groups.length > 1 ? groups[groups.length - 2] : undefined;
+    const baseG = groups.length === 3 ? groups[0] : undefined;
     const cross = qty(v, /krzyżowy/, 'PC');
     const trans = qty(v, /poprzeczny/, 'PC');
     const kind = cross ? 'two-level' : trans ? 'one-level' : 'direct';
@@ -496,7 +513,7 @@ for (const s of data.systems) {
       const cls = boardClass(main.ids[0]);
       fam = {
         id: CEIL_LEGACY[key] ?? `S-${code.replace(/\s+/g, '')}-${layers}`,
-        code, s, v, kind, hangerType, layers, main, inner, cls,
+        code, s, v, kind, hangerType, layers, main, inner, base: baseG, cls,
         mainSpacing, secondarySpacing, hangerSpacing, across,
         screwsOuter: outerScrews, screwsInner: innerScrews,
         attic: s.cat === 'poddasza', variants: [], loads: [],
@@ -626,8 +643,9 @@ for (const fam of ceilFams.values()) {
   const ths = uniq(fam.variants.map((x) => Number(x.board.match(/[\d.]+$/)[0]))).sort((a, b) => a - b);
   const thText = `${fmtTh(ths[0])}${ths.length > 1 ? ` (lub ${ths.slice(1).map(fmtTh).join(', ')})` : ''}`;
   const clsText = fam.cls === 'STD' ? '' : ` ${CLASS_NAME[fam.cls]}`;
+  const baseText = fam.base ? `${fam.base.n}×${fmtTh(fam.base.th)} + ` : '';
   const boardText = fam.inner
-    ? `${fam.inner.n}×${fmtTh(fam.inner.th)} + ${fam.main.n}×${thText}${clsText}`
+    ? `${baseText}${fam.inner.n}×${fmtTh(fam.inner.th)} + ${fam.main.n}×${thText}${clsText}`
     : `${fam.layers}×${thText}${clsText}`;
   const fireOnly = fam.variants.every((x) => x.fire);
   const frameText =
@@ -656,7 +674,7 @@ for (const fam of ceilFams.values()) {
     first.thickness ? `zabudowa od ${first.thickness} mm` : undefined,
     ...fam.loads,
     fam.kind === 'two-level' && fam.secondarySpacing === 50 && qty(fam.v, /^CD ?60/, 'm') >= 360 ? 'kalkulator Rigips liczy tu profile montażowe co 40 cm' : undefined,
-    fam.inner ? `układ płyt z karty: ${fam.inner.n}×${fmtTh(fam.inner.th)} mm + ${fam.main.n}×${fmtTh(fam.main.th)} mm` : undefined,
+    fam.inner ? `układ płyt z karty: ${baseText}${fam.inner.n}×${fmtTh(fam.inner.th)} mm + ${fam.main.n}×${fmtTh(fam.main.th)} mm` : undefined,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -668,6 +686,7 @@ for (const fam of ceilFams.values()) {
     layers: fam.layers,
     defaultBoard,
     ...(fam.inner ? { innerBoard: first.innerBoards[0], innerLayers: fam.inner.n } : {}),
+    ...(fam.base ? { baseBoard: fam.base.ids[0], baseLayers: fam.base.n } : {}),
     mainSpacing: fam.mainSpacing,
     secondarySpacing: fam.secondarySpacing,
     hangerSpacing: fam.hangerSpacing,

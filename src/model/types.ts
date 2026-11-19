@@ -188,6 +188,10 @@ export interface Attic {
   ends?: [AtticEnd, AtticEnd];
   /** Dobudówki z koszami (dach L / T); brak = bez */
   wings?: AtticWing[];
+  /** Okładzina ścianek kolankowych (i wysokiej ściany dachu jednospadowego); brak = bez okładziny. `side` nieużywane */
+  kneeLining?: Lining;
+  /** Okładzina obu ścian szczytowych, do lica skosów i sufitu; brak = bez okładziny. `side` nieużywane */
+  gableLining?: Lining;
 }
 
 /** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */
