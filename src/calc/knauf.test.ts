@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { BOARDS, CEILING_SYSTEMS, WALL_SYSTEMS, boardById, ceilingSystemById, wallMaxHeight, wallSystemById } from '../catalog/rigips';
+import {
+  BOARDS,
+  CEILING_SYSTEMS,
+  WALL_SYSTEMS,
+  boardById,
+  boardStackMm,
+  ceilingSystemById,
+  wallFrameDepth,
+  wallMaxHeight,
+  wallSystemById,
+} from '../catalog/rigips';
 import { KNAUF_BOARDS, KNAUF_CEILING_SYSTEMS, KNAUF_WALL_SYSTEMS } from '../catalog/knauf';
 import { ceilingConsumption, wallConsumption, type ConsumptionLine } from './materials';
 import { recommendCeilings, recommendWalls } from './recommend';
@@ -85,6 +95,39 @@ describe('katalog Knauf – wartości z Systemfindera', () => {
     const s = ceilingSystemById('KN-D612-1');
     expect([s.kind, s.hangerType, s.attic]).toEqual(['direct', 'es', true]);
     expect(s.variants!.some((v) => v.board === 'KN-F15' && v.fire === 30)).toBe(true);
+  });
+});
+
+describe('katalog Knauf – zeszyt techniczny W11.pl (W115W, W114)', () => {
+  it('W115W CW 75: płyta pośrednia między rusztami, wartości z tabeli wariantów i wysokości', () => {
+    const s = wallSystemById('KN-W115W-CW75');
+    expect([s.frame, s.category, s.midBoard, s.midBoardFromFace]).toEqual(['double', 'podwójna', 'KN-F13', true]);
+    expect(s.source.url).toMatch(/systemy-scian-szkieletowych-na-konstrukcji-metalowej$/);
+    expect(s.maxHeight).toEqual({ 30: 780, 40: 660, 60: 600 });
+    const akup = s.variants!.find((v) => v.board === 'KN-AKUP' && v.studSpacing === 60)!;
+    expect(akup).toMatchObject({ fire: 60, rw: 80, ra1: 73, thickness: 215, mass: 62 });
+    const cw100 = wallSystemById('KN-W115W-CW100');
+    expect(cw100.variants!.find((v) => v.board === 'KN-AKUP')).toMatchObject({ rw: 84, ra1: 80, thickness: 265 });
+    expect(cw100.maxHeight).toEqual({ 30: 845, 40: 680, 60: 650 });
+    // 2×CW75 + 5 mm + płyta pośrednia 12,5 + 2×2×12,5 = 217,5 mm (karta: 215 mm)
+    expect(wallFrameDepth(s) + 2 * boardStackMm(s, s.defaultBoard)).toBeCloseTo(217.5);
+  });
+  it('W115W: płyta pośrednia tego samego rodzaju co poszycie – 5 m² płyt na m² ściany', () => {
+    const s = wallSystemById('KN-W115W-CW75');
+    expect(q(wallConsumption(s), 'board:KN-F13')).toBeCloseTo(5);
+    const c = wallConsumption({ ...s, defaultBoard: 'KN-AKUP' });
+    expect(q(c, 'board:KN-AKUP')).toBeCloseTo(5);
+    expect(q(c, 'board:KN-F13')).toBe(0);
+    // W115 bez płyty pośredniej: 4 m²
+    expect(q(wallConsumption(wallSystemById('KN-W115-CW75-2')), 'board:KN-A13')).toBeCloseTo(4);
+  });
+  it('W114 (dawniej W113+ z Systemfindera): EI 240, płyty Diamant i Silentboard, stare id prowadzą do W114', () => {
+    const s = wallSystemById('KN-W114-CW100');
+    expect([s.layers, s.fire, s.maxHeight]).toEqual([4, 'EI 240', { 30: 925, 40: 850, 60: 675 }]);
+    expect(s.variants!.find((v) => v.board === 'KN-DIA13')).toMatchObject({ rw: 68, ra1: 63, mass: 106 });
+    expect(s.variants!.find((v) => v.board === 'KN-SIL')).toMatchObject({ innerBoards: ['KN-DIA13'], rw: 71, mass: 126.5 });
+    expect(wallSystemById('KN-W113P-CW100').id).toBe('KN-W114-CW100');
+    expect(KNAUF_WALL_SYSTEMS.some((w) => w.name.includes('W113+'))).toBe(false);
   });
 });
 

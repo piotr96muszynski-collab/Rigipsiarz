@@ -1,9 +1,9 @@
 import {
   BOARDS,
   PRODUCTS,
-  STOCK_LENGTHS,
   boardById,
   isLiningSystem,
+  isHatCeiling,
   ceilingMaxSpan,
   ceilingSystemById,
   wallMaxHeight,
@@ -17,6 +17,7 @@ import {
   type Unit,
 } from '../catalog/rigips';
 import { pickBoardLengthCm } from './boardLength';
+import { activeProfileLength, joinsFor, profileLengthChoices, profileMaxStock, profileOverlap, profileStocks, type ProfileLengthPref } from './profileLength';
 import { FIXERS } from '../catalog/atlas';
 import {
   analyzeJunctions,
@@ -39,7 +40,7 @@ import { atticRequirement, type AtticResult } from './atticMaterials';
 import { ceilingLevels, ceilingWallWarnings, hangerGapClass, layerBoards, type CeilingLevels } from './ceilingLevels';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn, wallVaporSpec } from './vaporBarrier';
-import { OFFCUT_MIN, bracketPositions, panelRows, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
+import { OFFCUT_MIN, bracketPositions, hatFixPositions, panelRows, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -176,7 +177,8 @@ export interface WallBreakdown {
 /** Grubości wełny, które mieszczą się w ruszcie ściany (mm); pusta lista = bez wełny */
 export function wallWoolOptions(sys: WallSystem): number[] {
   // płyta klejona i ATLAS M-System 3G – brak miejsca na wełnę
-  if (sys.frame === 'glued' || sys.frame === 'point-fix') return [];
+  // profile kapeluszowe – płyta 15 mm od ściany, brak miejsca na wełnę
+  if (sys.frame === 'glued' || sys.frame === 'point-fix' || sys.frame === 'hat-lining') return [];
   // obudowa z samych płyt – wełna wg karty (Siniat: 50 mm, przy 2×15 do 100 mm)
   if (sys.frame === 'panel') return sys.panel?.wool ?? [];
   // okładzina na CD 60 i uchwytach ES – przestrzeń regulowana uchwytem, typowo 50 mm
@@ -237,17 +239,20 @@ export function wallRequirement(
   if (sys.frame === 'panel') return panelWall(p, req, w, j, sys, L, H, openings, warnings, contacts);
   if (sys.frame === 'point-fix') return pointFixWall(req, w, j, sys, L, H, openings, warnings, wallLayout(p, w, j, contacts ?? buildContacts(p)));
 
-  const isCD = sys.frame === 'cd-lining';
+  const isHat = sys.frame === 'hat-lining';
+  const isCD = sys.frame === 'cd-lining' || isHat;
   const rows = sys.frame === 'glued' ? 0 : sys.frame === 'double' || sys.frame === 'separate' ? 2 : 1;
-  const stud = isCD
-    ? 'CD60'
-    : sys.studKind === 'UA'
-      ? `UA${sys.profile}`
-      : sys.studKind === 'UU'
-        ? `UW${sys.profile}`
-        : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`]
-          ? `CW${sys.profile}AKU`
-          : `CW${sys.profile}`;
+  const stud = isHat
+    ? 'KAPELUSZ'
+    : isCD
+      ? 'CD60'
+      : sys.studKind === 'UA'
+        ? `UA${sys.profile}`
+        : sys.studKind === 'UU'
+          ? `UW${sys.profile}`
+          : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`]
+            ? `CW${sys.profile}AKU`
+            : `CW${sys.profile}`;
   // słupki podwójne: dwa CW zespolone wkrętami (kalkulator Rigips: 8 pchełek/m² przy 1,8 m pary słupków na m²)
   const doubled = !!w.doubleStuds && !isCD && rows > 0;
   const track = isCD ? 'UD30' : `UW${sys.profile}`;
@@ -262,7 +267,10 @@ export function wallRequirement(
   const addStud = (product: string, len: number) => {
     if (len <= 0.01) return;
     addPiece(req, product, len);
-    if (isCD) {
+    if (isHat) {
+      // profil kapeluszowy kołkowany wprost do ściany: kołki w dwóch rzędach (te same punkty co na rysunku i w 3D)
+      add(req.counts, sys.anchor ?? 'KOLEK', hatFixPositions(0, len, bracketM).length);
+    } else if (isCD) {
       // tyle samo uchwytów co na rysunku „miejsca wiercenia” i w 3D
       const brackets = bracketPositions(0, len, bracketM).length;
       add(req.counts, 'WIESZAK_ES', brackets);
@@ -357,12 +365,19 @@ export function wallRequirement(
         add(req.counts, 'KOLEK', 8);
       }
       // nadproże z UW/UD z zagiętymi końcami (+15 cm na stronę)
+      if (isHat) {
+        // nad i pod otworem poziomy odcinek profilu kapeluszowego pod krawędź płyt (założenie aplikacji)
+        if (o.top < H - 0.05) addStud(stud, o.w);
+        if (o.sill > 0.05) addStud(stud, o.w);
+        continue;
+      }
       if (o.top < H - 0.05) addPiece(req, track, o.w + 0.3);
       if (o.sill > 0.05) addPiece(req, track, o.w + 0.3);
       add(req.counts, 'LN9', 8 + (o.sill > 0.05 ? 4 : 0));
     }
 
-    // --- Profile UW/UD (posadzka i strop) ---
+    // --- Profile UW/UD (posadzka i strop); okładzina na profilach kapeluszowych jest bez UD ---
+    if (isHat) continue;
     const floorRuns: number[] = [];
     let cursor = 0;
     for (const o of [...openings].filter((o) => o.sill <= 0.01).sort((a, b) => a.x0 - b.x0)) {
@@ -427,6 +442,14 @@ export function wallRequirement(
         add(areaByKey, keyOf(layer), Math.max(0, (x1 - x0) * Hb - openingArea));
       }
   for (const [k, a] of Object.entries(areaByKey)) add(req.boardArea, k, a);
+  // płyta dosztywniająca między rzędami rusztu (Siniat 168B50…): pełna powierzchnia netto, przykręcona do jednego rzędu
+  if (sys.midBoard) {
+    const n = sys.midLayers ?? 1;
+    // Knauf W115W: płyta pośrednia jak poszycie (np. Akustik Plus przy poszyciu Akustik Plus)
+    const mid = sys.midBoardFromFace ? w.boardId : sys.midBoard;
+    add(req.boardArea, `${mid}|${pickBoardLength(mid, w.height)}`, net * n);
+    addBoardScrews(req, net, Array(n).fill(mid), WALL_SCREWS_OUTER * (0.6 / Math.max(0.2, w.studSpacing / 100)), WALL_SCREWS_INNER);
+  }
   // odpad z wycięć liczymy do płyty zewnętrznej
   if (cutWaste > 0) add(req.boardArea, sheetKey, cutWaste);
   if (cutWaste > 0) add((req.boardCutWaste ??= {}), sheetKey, cutWaste);
@@ -853,23 +876,29 @@ export function ceilingRequirement(
   // obwodowe UD 30 (w suficie na CW: UW o szerokości profilu)
   const cwSpan = sys.kind === 'cw-span';
   const profile = sys.profile ?? 50;
-  const perimeterProfile = cwSpan ? `UW${profile}` : 'UD30';
-  for (const e of edges) {
-    addPiece(req, perimeterProfile, e);
-    add(req.counts, 'KOLEK', anchorsFor(e, 0.8));
+  const mf = sys.profiles;
+  const perimeterProfile = cwSpan ? `UW${profile}` : (mf?.edge ?? 'UD30');
+  // profile kapeluszowe kołkowane wprost do stropu – bez UD po obwodzie (karty Rigips 4.05.21, Siniat PK48, Norgips OSF KAP)
+  const hat = isHatCeiling(sys);
+  if (!hat) {
+    for (const e of edges) {
+      addPiece(req, perimeterProfile, e);
+      add(req.counts, 'KOLEK', anchorsFor(e, 0.8));
+    }
+    add(req.meters, cwSpan ? TAPE_FOR_PROFILE[profile] : 'TASMA_USZ30', P);
   }
-  add(req.meters, cwSpan ? TAPE_FOR_PROFILE[profile] : 'TASMA_USZ30', P);
 
   const grid = ceilingGrid(c, sys);
-  const mainProduct = sys.kind === 'ua-span' ? 'UA50' : cwSpan ? `CW${profile}` : 'CD60';
+  const mainProduct = mf?.main ?? (sys.kind === 'ua-span' ? 'UA50' : cwSpan ? `CW${profile}` : hat ? 'KAPELUSZ' : 'CD60');
+  const secondaryProduct = mf?.secondary ?? 'CD60';
 
   let longestMain = 0;
   for (const g of grid) {
     for (const [s0, s1] of g.segments) {
       const run = (s1 - s0) / 100;
-      const product = g.level === 'main' ? mainProduct : 'CD60';
+      const product = g.level === 'main' ? mainProduct : secondaryProduct;
       addPiece(req, product, run);
-      if (product === 'CD60') add(req.counts, 'LACZNIK_WZDL', Math.max(0, Math.ceil(run / 4 - 1e-9) - 1));
+      if (product === 'CD60') add(req.counts, 'LACZNIK_WZDL', joinsFor(run, profileMaxStock('CD60')));
       if (g.level !== 'main') continue;
       longestMain = Math.max(longestMain, run);
       if (sys.kind === 'ua-span') {
@@ -882,8 +911,18 @@ export function ceilingRequirement(
         add(req.counts, 'LN9', 2);
         continue;
       }
+      if (hat) {
+        // dyble w dwóch rzędach na półkach profilu (te same punkty co na rysunku i w 3D)
+        add(req.counts, 'KOTWA', hatFixPositions(s0 / 100, s1 / 100, sys.hangerSpacing / 100).length);
+        continue;
+      }
       const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100) - 1e-9));
-      if (sys.kind === 'direct') {
+      if (mf) {
+        // zawiesie z kątownika ciętego na długość zwieszenia, przykręcone do stropu i do profilu głównego
+        add(req.meters, mf.hangerAngle, hangers * (levels.hangerGap / 100 + mf.hangerOverlap));
+        add(req.counts, mf.screw, hangers * mf.hangerScrews);
+        addNote(req, mf.hangerAngle, `sufit: zwieszenie ok. ${Math.round(levels.hangerGap * 10)} mm na zawiesie`);
+      } else if (sys.kind === 'direct') {
         const pid = sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : sys.hangerType === 'attic' ? 'WIESZAK_PODD' : 'WIESZAK_ES';
         add(req.counts, pid, hangers);
         add(req.counts, 'LN9', hangers * 4);
@@ -905,7 +944,8 @@ export function ceilingRequirement(
 
   // skrzyżowania profili nośnych i montażowych (te same co na rysunku i w 3D)
   const crossings = ceilingCrossings(c, sys, grid).length;
-  if (sys.kind === 'two-level') add(req.counts, 'LACZNIK_KRZ', crossings);
+  if (mf) add(req.counts, mf.screw, crossings * mf.crossScrews);
+  else if (sys.kind === 'two-level') add(req.counts, 'LACZNIK_KRZ', crossings);
   else if (sys.kind === 'one-level') add(req.counts, 'LACZNIK_JEDNO', crossings * 2);
   else if (sys.kind === 'ua-span') add(req.counts, 'LACZNIK_UA_CD', crossings * 2);
 
@@ -932,22 +972,36 @@ export function ceilingRequirement(
 
 const KERF = 0.005;
 
+/** 1 przedłużenie, 2–4 przedłużenia, 5+ przedłużeń */
+const plExt = (n: number) =>
+  n === 1 ? 'przedłużenie' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'przedłużenia' : 'przedłużeń';
+
 export interface CutResult {
   bars: { stock: number; pieces: number[] }[];
+  /** Liczba przedłużeń (elementy dłuższe niż najdłuższy profil) */
+  joins: number;
 }
 
-export function cutPieces(pieces: number[], stocks: number[]): CutResult {
+/**
+ * Rozkrój elementów na sztuki handlowe. Element dłuższy niż najdłuższy profil jest
+ * przedłużany: pełne sztuki + dostawka, przy `overlap` > 0 każda dostawka zachodzi
+ * na poprzednią sztukę o długość zakładu.
+ */
+export function cutPieces(pieces: number[], stocks: number[], overlap = 0): CutResult {
   const sortedStocks = [...stocks].sort((a, b) => a - b);
   const max = sortedStocks[sortedStocks.length - 1];
   const defaultStock = stocks[0];
   const list: number[] = [];
   const bars: { stock: number; pieces: number[]; free: number }[] = [];
+  const lap = overlap < max / 2 ? overlap : 0;
+  let joins = 0;
   for (const p of pieces) {
     let rest = p;
     // elementy dłuższe niż najdłuższy profil – pełne sztuki + dostawka
     while (rest > max + 1e-9) {
       bars.push({ stock: max, pieces: [max], free: 0 });
-      rest -= max;
+      rest = rest - max + lap;
+      joins++;
     }
     if (rest > 0.01) list.push(rest);
   }
@@ -966,21 +1020,8 @@ export function cutPieces(pieces: number[], stocks: number[]): CutResult {
       bars.push({ stock: fit, pieces: [p], free: fit - p - KERF });
     }
   }
-  return { bars: bars.map(({ stock, pieces }) => ({ stock, pieces })) };
+  return { bars: bars.map(({ stock, pieces }) => ({ stock, pieces })), joins };
 }
-
-const stockFamily = (productId: string) =>
-  productId.startsWith('CW')
-    ? 'CW'
-    : productId.startsWith('UW')
-      ? 'UW'
-      : productId.startsWith('UA')
-        ? 'UA'
-        : productId.startsWith('CD')
-          ? 'CD'
-          : productId.startsWith('UD')
-            ? 'UD'
-            : productId;
 
 // ---------------------------------------------------------------------------
 // Zestawienie materiałów
@@ -997,6 +1038,8 @@ export interface MaterialLine {
   packs?: number;
   packUnit?: Unit;
   note?: string;
+  /** Profil z wyborem długości handlowej (lista zakupów); `first` – pierwsza linia tego profilu */
+  profile?: { pid: string; pref: ProfileLengthPref; choices: number[]; first: boolean };
 }
 
 const GROUP_ORDER: Product['group'][] = ['Płyty', 'Profile', 'Akcesoria do sufitów', 'Mocowanie', 'Izolacja', 'Wykończenie'];
@@ -1073,23 +1116,40 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
     });
   }
 
-  // profile i narożniki – rozkrój
+  // profile i narożniki – rozkrój (długości wg ustawienia profilu w projekcie / aplikacji)
   for (const [pid, pieces] of Object.entries(merged.pieces)) {
     const product = PRODUCTS[pid];
-    const stocks = STOCK_LENGTHS[stockFamily(pid)] ?? [product.length ?? 3];
-    const { bars } = cutPieces(pieces, stocks);
+    const stocks = profileStocks(pid, product.length ?? 3);
+    const choices = profileLengthChoices(pid);
+    const pref = activeProfileLength(pid);
+    const overlap = profileOverlap(pid);
+    const { bars, joins } = cutPieces(pieces, stocks, overlap);
     const byStock = new Map<number, number>();
     for (const b of bars) byStock.set(b.stock, (byStock.get(b.stock) ?? 0) + 1);
     const totalM = pieces.reduce((a, b) => a + b, 0);
+    const notes: string[] = [`${fmtLen(totalM)} mb w elementach`];
+    if (joins > 0)
+      notes.push(
+        overlap > 0
+          ? `${joins} ${plExt(joins)} na zakład ${Math.round(overlap * 100)} cm (skręcić wkrętami LN)`
+          : pid.startsWith('CD')
+            ? `${joins} ${plExt(joins)} łącznikiem wzdłużnym`
+            : `${joins} ${joins === 1 ? 'styk' : 'styki'} na długości`,
+      );
+    let first = true;
     for (const [stock, count] of [...byStock.entries()].sort((a, b) => a[0] - b[0])) {
-      lines.push({
+      const line: MaterialLine = {
         key: `bar-${pid}-${stock}`,
         group: product.group === 'Wykończenie' ? 'Wykończenie' : 'Profile',
         name: `${product.name}, dł. ${fmtLen(stock)} m`,
         qty: count,
         unit: 'szt.',
-        note: byStock.size === 1 ? `${fmtLen(totalM)} mb w elementach` : undefined,
-      });
+        // uwaga przy pierwszej linii profilu (przy jednej długości – jak dotąd)
+        note: first && (byStock.size === 1 || joins > 0) ? notes.slice(byStock.size === 1 ? 0 : 1).join(' · ') || undefined : undefined,
+      };
+      if (choices.length) line.profile = { pid, pref, choices, first };
+      first = false;
+      lines.push(line);
     }
   }
 

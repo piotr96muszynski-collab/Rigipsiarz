@@ -2,11 +2,11 @@
 // dzięki czemu da się ją testować w Node. Wszystko w metrach.
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
-import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
+import { HAT_MM, HAT_W, boardById, ceilingSystemById, isHatCeiling, isHungCeiling, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
 import { ceilingLevels } from '../calc/ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
-import { hangerPositions, liningLayout, pieceArea, pieceOutline, splicePositions, wallLayout } from '../calc/layout';
+import { HAT_FLANGE, hangerPositions, hatFixPositions, liningLayout, pieceArea, pieceOutline, splicePositions, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Attic, Ceiling, Point, Project, Wall } from '../model/types';
@@ -252,7 +252,7 @@ function buildWall(
 
   // --- Ruszt: słupki (pełne, skrócone, ościeżnicowe, dodatkowe z połączeń) ---
   if (lay && !pointFix && !glued) {
-    const isCD = sys.frame === 'cd-lining';
+    const isCD = sys.frame === 'cd-lining' || sys.frame === 'hat-lining';
     // rzędy słupków: pojedynczy w osi, podwójny i instalacyjny – po jednym przy każdej okładzinie
     const rowDepth = isCD ? CD_H : sec.profile / 1000;
     const rowsN = lay.rows === 2 ? [-(sec.core - rowDepth / 2), sec.core - rowDepth / 2] : [0];
@@ -440,6 +440,33 @@ function buildExistingWall(
         });
       }
     }
+    // profile kapeluszowe: pionowe profile i odcinki nad / pod otworami wprost na murze, kołki przez półki
+    if (sys.frame === 'hat-lining') {
+      const lay = liningLayout(p, w, l, contacts);
+      const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
+      const hatH = HAT_MM / 1000;
+      const n = face + l.side * (hatH / 2);
+      const at = (x: number) => Math.min(l1 - HAT_W / 2, Math.max(l0 + HAT_W / 2, x));
+      for (const st of lay.studs)
+        for (const [y0, y1] of st.segments) if (y1 - y0 > 0.005) box('wallFrame', 'cdMain', at(st.x) - HAT_W / 2, at(st.x) + HAT_W / 2, y0, y1, n, hatH);
+      for (const t of lay.tracks) {
+        const y0 = t.kind === 'header' ? t.y : t.y - HAT_W;
+        box('wallFrame', 'cdMain', t.x0, t.x1, y0, y0 + HAT_W, n, hatH);
+      }
+      for (const q of lay.brackets?.points ?? []) {
+        const u = Math.min(l1 - 0.01, Math.max(l0 + 0.01, q.x));
+        parts.push({
+          type: 'cyl',
+          layer: 'wallFrame',
+          mat: 'anchor',
+          c: [ax + ux * u + nx * (face - l.side * 0.015), q.y, az + uz * u + nz * (face - l.side * 0.015)],
+          axis: [nx * l.side, 0, nz * l.side],
+          r: ANCHOR_R,
+          len: 0.045,
+          owner: w.id,
+        });
+      }
+    }
     // ATLAS M-System 3G: łączniki w siatce z rysunków, talerzyk pod płytą, trzpień w murze
     if (sys.frame === 'point-fix') {
       const grid = liningLayout(p, w, l, contacts).fixers ?? { points: [] };
@@ -520,10 +547,35 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
     });
   };
 
+  // profile kapeluszowe wprost na stropie: profil 15 mm nad płytą, dyble przez obie półki na przemian, bez UD
+  if (isHatCeiling(sys)) {
+    const hatH = HAT_MM / 1000;
+    for (const g of ceilingGrid(c, sys))
+      for (const [s0, s1] of g.segments) {
+        const a = g.at / 100;
+        const mid = (s0 + s1) / 200;
+        parts.push({
+          type: 'box',
+          layer: 'ceilingFrame',
+          mat: 'cdMain',
+          c: g.axis === 'x' ? [mid, yFrame + hatH / 2, a] : [a, yFrame + hatH / 2, mid],
+          s: [Math.max(0.001, (s1 - s0) / 100), hatH, HAT_W],
+          rotY: g.axis === 'x' ? 0 : -Math.PI / 2,
+          owner: c.id,
+        });
+        for (const q of hatFixPositions(s0 / 100, s1 / 100, sys.hangerSpacing / 100)) {
+          const across = a + q.side * HAT_FLANGE;
+          const pos: [number, number, number] = g.axis === 'x' ? [q.at, yFrame + hatH, across] : [across, yFrame + hatH, q.at];
+          parts.push({ type: 'cyl', layer: 'ceilingFrame', mat: 'anchor', c: [pos[0], pos[1] + 0.015, pos[2]], axis: [0, 1, 0], r: ANCHOR_R, len: 0.04, owner: c.id });
+        }
+      }
+    return;
+  }
+
   // profile CD: dolne (montażowe) przy płycie, nośne nad nimi w suficie dwupoziomowym
   const grid = ceilingGrid(c, sys);
-  const onCD = (g: (typeof grid)[number]) => g.level === 'secondary' || twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
-  const hung = twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
+  const onCD = (g: (typeof grid)[number]) => !sys.profiles && (g.level === 'secondary' || isHungCeiling(sys.kind));
+  const hung = isHungCeiling(sys.kind);
   for (const g of grid) {
     const isMain = g.level === 'main';
     const y0 = twoLevel && isMain ? yFrame + CD_H : yFrame;
@@ -638,8 +690,12 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   const timber = grid.profile.startsWith('LATA');
   const pH = grid.profileMm / 1000;
   const pW = timber ? (grid.profile === 'LATA5030' ? 0.05 : 0.06) : grid.profile === 'KAPELUSZ' ? 0.08 : CD_W;
-  const pMat: MatKey = timber ? 'timber' : 'cdMain';
-  const cdShape = !timber && grid.profile !== 'KAPELUSZ' ? { profile: profileFor('cdMain', 'along', 'a-') } : {};
+  const carrier = grid.carrier;
+  // ruszt krzyżowy: profile pod płyty to „montażowe”, nośne biegną pod krokwiami
+  const pMat: MatKey = timber ? 'timber' : carrier ? 'cdSec' : 'cdMain';
+  const cH = (carrier?.mm ?? 0) / 1000;
+  const cW = carrier?.product === 'MFCP44' ? 0.03 : CD_W;
+  const cdShape = !timber && grid.profile !== 'KAPELUSZ' ? { profile: profileFor(pMat, 'along', 'a-') } : {};
   // więźba widoczna: płyty i ruszt osobno w każdym polu między krokwiami
   const spans = between ? grid.bays.map((bay) => ({ x: (bay.u + bay.w / 2) / 100, w: bay.w / 100 })) : [{ x: L / 2, w: L }];
 
@@ -658,9 +714,20 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
       for (const sp of spans)
         parts.push({ type: 'box', layer: 'ceilingFrame', mat: pMat, c: [sp.x, y, z], s: [sp.w, pH, pW], rotY: 0, rotX: f.rotX, owner: a.id, ...cdShape });
       // wieszak przy boku krokwi: od profilu do krokwi
-      if (fr.hanger) {
+      if (fr.hanger && !carrier) {
         const hh = Math.max(0.03, depth - tb + 0.04);
         for (const u of g.hangerU) tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + hh / 2, [0.004, hh, ES_W]);
+      }
+    }
+    if (carrier) {
+      // profile nośne pod każdą krokwią, nad profilami pod płyty; wieszaki na nośnych przy boku krokwi
+      const hh = Math.max(0.03, depth - tb - pH + 0.04);
+      for (const u of g.hangerU) {
+        tilted('ceilingFrame', 'cdMain', f, u / 100, f.run / 2, tb + pH + cH / 2, [cW, cH, f.run]);
+        for (const s of g.fixS) {
+          const k = (f.flipped ? g.surface.run - s : s) / 100;
+          tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + pH + hh / 2, [0.004, hh, ES_W]);
+        }
       }
     }
     if (between) {

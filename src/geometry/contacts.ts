@@ -14,7 +14,7 @@
 // w wyliczeniach. Na końcu sprawdzamy w rzucie, czy żadne dwa elementy się nie przenikają.
 // Jednostki: metry (plan jest w centymetrach).
 
-import { boardById, wallFrameDepth, wallSystemById, type WallFrame } from '../catalog/rigips';
+import { boardStackMm, wallFrameDepth, wallSystemById, type WallFrame } from '../catalog/rigips';
 import type { Id, Lining, Point, Project, Wall } from '../model/types';
 import { cornerThrough, existingRooms, wallPrecedes, isNewWall, masonrySide, nodeMap, projectOnSegment, throughPair } from './geometry';
 
@@ -28,7 +28,7 @@ export interface WallSection {
   frame: WallFrame;
   /** połowa grubości rusztu (rdzenia), m */
   core: number;
-  /** grubość jednej płyty, m */
+  /** grubość jednej płyty, m (warstwy różnej grubości – średnia, lico zewnętrzne wypada dokładnie) */
   bt: number;
   /** liczba warstw płyt na stronie 0 i 1 */
   layers: [number, number];
@@ -40,7 +40,7 @@ export function wallSection(w: Wall): WallSection {
   return {
     frame: sys.frame,
     core: wallFrameDepth(sys) / 2000,
-    bt: boardById(w.boardId).thickness / 1000,
+    bt: boardStackMm(sys, w.boardId, w.innerBoardId) / sys.layers / 1000,
     layers: [sys.layers, sys.sides === 2 ? sys.layers : 0],
     profile: sys.profile,
   };
@@ -142,7 +142,7 @@ const outDir = (ax: Axis, end: 'a' | 'b'): Point => (end === 'a' ? ax.u : { x: -
 /** Grubość okładziny istniejącej ściany (ruszt/odstęp + płyty), m */
 export function liningThickness(l: Lining): number {
   const sys = wallSystemById(l.systemId);
-  return (wallFrameDepth(sys) + sys.layers * boardById(l.boardId).thickness) / 1000;
+  return (wallFrameDepth(sys) + boardStackMm(sys, l.boardId, l.innerBoardId)) / 1000;
 }
 
 export function buildContacts(p: Project): ContactModel {

@@ -8,6 +8,7 @@ import { buildContacts, cornerStudPositions, partRange, type ContactModel, type 
 import { bbox, firstWall, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { pickBoardLengthCm, rowSegments } from './boardLength';
+import { profileMaxStock } from './profileLength';
 
 // ---------------------------------------------------------------------------
 // Ściany
@@ -195,8 +196,10 @@ export interface WallLayout {
 export interface BracketGrid {
   /** jeden uchwyt = jeden kołek w murze */
   points: { x: number; y: number }[];
-  /** największy rozstaw uchwytów wzdłuż profilu z karty systemu, m */
+  /** największy rozstaw uchwytów wzdłuż profilu z karty systemu, m (profile kapeluszowe: w jednym rzędzie) */
   spacing: number;
+  /** profile kapeluszowe: kołki wprost przez półki profilu, w dwóch rzędach */
+  hat?: boolean;
 }
 
 /**
@@ -211,6 +214,21 @@ export function bracketPositions(y0: number, y1: number, spacing: number): numbe
   const n = Math.max(1, Math.ceil(run / spacing - 1e-9));
   const step = run / n;
   return Array.from({ length: n }, (_, i) => round3(y0 + step * (i + 0.5)));
+}
+
+/**
+ * Kołki / dyble profilu kapeluszowego mocowanego wprost do podłoża: dwa rzędy (po jednym na każdej półce),
+ * w każdym rzędzie max co `spacing`, rzędy przesunięte o pół rozstawu – wzdłuż profilu co `spacing / 2`
+ * na przemian po lewej (-1) i prawej (+1) półce. Norgips: „dyble w dwóch rzędach co 100 cm”; Rigips i Siniat
+ * podają rozstaw max. i zużycie 5–6 szt./m², które odpowiada temu układowi (założenie dla tych kart).
+ */
+export function hatFixPositions(s0: number, s1: number, spacing: number): { at: number; side: -1 | 1 }[] {
+  const run = s1 - s0;
+  if (run <= 0.01) return [];
+  // co najmniej po jednym kołku w każdej półce
+  const n = Math.max(2, Math.ceil(run / (spacing / 2) - 1e-9));
+  const step = run / n;
+  return Array.from({ length: n }, (_, i) => ({ at: round3(s0 + step * (i + 0.5)), side: (i % 2 ? 1 : -1) as -1 | 1 }));
 }
 
 /** Siatka łączników talerzykowych na ścianie, m (x od węzła a, y od posadzki) */
@@ -384,7 +402,8 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
   // obudowa z samych płyt – też bez słupków (profil obwodowy tylko przy ścianach / po obwodzie)
   const panel = frame === 'panel';
   const glued = frame === 'glued' || frame === 'point-fix' || panel;
-  const isCD = frame === 'cd-lining';
+  const isHat = frame === 'hat-lining';
+  const isCD = frame === 'cd-lining' || isHat;
   const rows = glued ? 0 : frame === 'double' || frame === 'separate' ? 2 : 1;
 
   const [f0, f1] = partRange(m, w, L, { kind: 'frame' });
@@ -412,14 +431,18 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     }
     if (L - cursor > 0.05) tracks.push({ kind: 'floor', x0: cursor, x1: L, y: 0, cut: L - cursor });
     tracks.push({ kind: 'ceiling', x0: 0, x1: L, y: H, cut: L });
+    // okładzina na profilach kapeluszowych nie ma UD przy posadzce i stropie
+    if (isHat) tracks.length = 0;
     // UW na długość rusztu z modelu styków
     for (const t of tracks) {
       if (t.x0 < 1e-9) t.x0 = f0;
       if (t.x1 > L - 1e-9) t.x1 = f1;
     }
     for (const o of openings) {
-      if (o.top < H - 0.05) tracks.push({ kind: 'header', x0: o.x0, x1: o.x1, y: o.top, cut: o.w + 0.3 });
-      if (o.sill > 0.05) tracks.push({ kind: 'sill', x0: o.x0, x1: o.x1, y: o.sill, cut: o.w + 0.3 });
+      // nadproże / podokiennik: UW/UD z zagiętymi końcami; profil kapeluszowy na wymiar otworu
+      const cut = isHat ? o.w : o.w + 0.3;
+      if (o.top < H - 0.05) tracks.push({ kind: 'header', x0: o.x0, x1: o.x1, y: o.top, cut });
+      if (o.sill > 0.05) tracks.push({ kind: 'sill', x0: o.x0, x1: o.x1, y: o.sill, cut });
     }
   }
 
@@ -517,7 +540,7 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     frame,
     rows,
     studLabel: wallStudLabel(sys),
-    trackLabel: isCD ? 'UD 30' : panel ? wallStudLabel(sys) : `UW ${sys.profile}`,
+    trackLabel: isHat ? 'kapeluszowy 15/48' : isCD ? 'UD 30' : panel ? wallStudLabel(sys) : `UW ${sys.profile}`,
     openings,
     studs,
     tracks,
@@ -531,8 +554,31 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
             ys: faces.flatMap((f) => f.pieces.flatMap((pc) => [pc.y0, pc.y1])).filter((y) => y > 0.01 && y < H - 0.01),
           })
         : undefined,
-    brackets: isCD ? bracketGrid(studs, f0, f1, (sys.bracketSpacing ?? 100) / 100) : undefined,
+    brackets: isHat
+      ? hatGrid(studs, tracks, f0, f1, (sys.bracketSpacing ?? 100) / 100)
+      : isCD
+        ? bracketGrid(studs, f0, f1, (sys.bracketSpacing ?? 100) / 100)
+        : undefined,
   };
+}
+
+/** Odległość osi kołka od osi profilu kapeluszowego (środek półki), m */
+export const HAT_FLANGE = 0.03;
+
+/** Kołki profili kapeluszowych: pionowe profile i poziome odcinki nad / pod otworami */
+function hatGrid(studs: StudElement[], tracks: TrackElement[], f0: number, f1: number, spacing: number): BracketGrid {
+  const half = 0.04;
+  const points = [
+    ...studs.flatMap((st) => {
+      const x = round3(Math.min(f1 - half, Math.max(f0 + half, st.x)));
+      return st.segments.flatMap(([y0, y1]) => hatFixPositions(y0, y1, spacing).map((q) => ({ x: round3(x + q.side * HAT_FLANGE), y: q.at })));
+    }),
+    ...tracks.flatMap((t) => {
+      const y = t.kind === 'header' ? t.y + half : t.y - half;
+      return hatFixPositions(t.x0, t.x1, spacing).map((q) => ({ x: q.at, y: round3(y + q.side * HAT_FLANGE) }));
+    }),
+  ];
+  return { points, spacing, hat: true };
 }
 
 /** Uchwyty ES na wszystkich odcinkach profili CD (te same profile co na rysunku i w 3D) */
@@ -875,8 +921,8 @@ export function hangerPositions(s0: number, s1: number, spacing: number): number
   return Array.from({ length: n }, (_, i) => s0 + step * (i + 0.5));
 }
 
-/** Łączniki wzdłużne CD: co 4 m (długość profilu) od początku odcinka */
-export function splicePositions(s0: number, s1: number, stock = 400): number[] {
+/** Łączniki wzdłużne CD: co długość profilu (ustawienie projektu, domyślnie 4 m) od początku odcinka */
+export function splicePositions(s0: number, s1: number, stock = profileMaxStock('CD60') * 100): number[] {
   const run = s1 - s0;
   const n = Math.max(0, Math.ceil(run / stock - 1e-9) - 1);
   return Array.from({ length: n }, (_, i) => s0 + stock * (i + 1));

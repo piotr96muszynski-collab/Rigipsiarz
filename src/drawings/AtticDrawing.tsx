@@ -1,5 +1,5 @@
 import { splicePositions } from '../calc/layout';
-import type { AtticGrid, AtticSurfaceGrid } from '../calc/attic';
+import { atticSection, type AtticGrid, type AtticSurfaceGrid } from '../calc/attic';
 import { PRODUCTS } from '../catalog/rigips';
 import type { Attic } from '../model/types';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, nss } from './svg';
@@ -27,6 +27,10 @@ export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g
   const splices = fr.joiner && !between ? splicePositions(0, L) : [];
   const edgeName = fr.edge ? PRODUCTS[fr.edge].name.replace(/^Profil (Rigips )?/, '').replace(/ \(.*$/, '') : '';
   const profName = PRODUCTS[grid.profile].name.replace(/^Profil (Rigips )?/, '');
+  // ruszt krzyżowy: profile nośne pod krokwiami (pionowo), profile pod płyty w poprzek, wieszaki na nośnych
+  const carrier = grid.carrier;
+  const lineColor = carrier ? C.secondary : C.main;
+  const hangerPts = carrier ? g.hangerU.flatMap((u) => g.fixS.map((s) => [u, s] as const)) : g.cd.flatMap((s) => g.hangerU.map((u) => [u, s] as const));
 
   return (
     <figure className="drawing">
@@ -41,9 +45,11 @@ export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g
               <line key={`${b.u}-l`} x1={b.u + 1} y1={0} x2={b.u + 1} y2={run} stroke={C.ud} strokeWidth={3} {...nss} />,
               <line key={`${b.u}-r`} x1={b.u + b.w - 1} y1={0} x2={b.u + b.w - 1} y2={run} stroke={C.ud} strokeWidth={3} {...nss} />,
             ])
-          : g.cd.map((s) => <line key={s} x1={0} y1={Y(s)} x2={L} y2={Y(s)} stroke={C.main} strokeWidth={3} {...nss} />)}
+          : g.cd.map((s) => <line key={s} x1={0} y1={Y(s)} x2={L} y2={Y(s)} stroke={lineColor} strokeWidth={3} {...nss} />)}
+        {carrier && g.hangerU.map((u) => <line key={`n${u}`} x1={u} y1={0} x2={u} y2={run} stroke={C.main} strokeWidth={4} {...nss} />)}
+        {carrier?.cross && g.cd.flatMap((s) => g.hangerU.map((u) => <rect key={`x${s}-${u}`} x={u - f * 0.25} y={Y(s) - f * 0.25} width={f * 0.5} height={f * 0.5} fill="none" stroke={INK} strokeWidth={1} {...nss} />))}
         {g.cd.flatMap((s) => splices.map((u) => <rect key={`${s}-${u}`} x={u - f * 0.5} y={Y(s) - f * 0.15} width={f} height={f * 0.3} fill={INK} />))}
-        {g.cd.flatMap((s) => g.hangerU.map((u) => <circle key={`${s}-${u}`} cx={u} cy={Y(s)} r={f * 0.3} fill={C.hanger} />))}
+        {hangerPts.map(([u, s]) => <circle key={`${s}-${u}`} cx={u} cy={Y(s)} r={f * 0.3} fill={C.hanger} />)}
         {/* profil przyścienny na ścianach szczytowych */}
         {fr.edge && !between && (
           <>
@@ -57,8 +63,9 @@ export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g
         <ChainH xs={between ? [0, ...grid.rafters, L] : [0, ...g.hangerU, L]} y={0} off={-f * 1.6} f={f * 0.75} color={C.hanger} />
         <Dim x1={0} y1={0} x2={L} y2={0} off={-f * 3.6} f={f} label={cm(L)} />
         {/* rozstaw profili CD od dolnej krawędzi */}
-        <ChainV ys={[0, ...g.cd.map(Y), run]} x={0} off={-f * 1.6} f={f * 0.75} color={C.main} />
-        <Dim x1={L} y1={0} x2={L} y2={run} off={f * 2.2} f={f} label={cm(run)} />
+        <ChainV ys={[0, ...g.cd.map(Y), run]} x={0} off={-f * 1.6} f={f * 0.75} color={lineColor} />
+        {carrier && <ChainV ys={[0, ...g.fixS.map(Y), run]} x={L} off={f * 1.6} f={f * 0.75} color={C.hanger} />}
+        <Dim x1={L} y1={0} x2={L} y2={run} off={carrier ? f * 4 : f * 2.2} f={f} label={cm(run)} />
         <text x={L / 2} y={run + f * 1.8} fontSize={f * 0.85} textAnchor="middle" fill={INK}>
           {slope ? 'dół skosu (ścianka kolankowa / podłoga)' : 'krawędź przy lewym skosie'}
         </text>
@@ -71,13 +78,19 @@ export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g
           { color: RAFTER, label: `krokwie${slope ? '' : ' / jętki'} ${cm(attic.rafterWidth)}×${cm(attic.rafterHeight)} co ${cm(attic.rafterSpacing)} cm` },
           between
             ? { color: C.main, label: `${profName}: poprzeczki między krokwiami – ${g.cd.length * grid.bays.length} szt.` }
-            : { color: C.main, label: `${profName} w poprzek krokwi – ${g.cd.length} szt. po ${cm(L)} cm` },
+            : { color: lineColor, label: `${profName} w poprzek krokwi – ${g.cd.length} szt. po ${cm(L)} cm` },
+          ...(carrier
+            ? [
+                { color: C.main, label: `${carrier.label} pod każdą ${slope ? 'krokwią' : 'jętką'} – ${g.hangerU.length} szt. po ${cm(run)} cm` },
+                ...(carrier.cross ? [{ color: INK, label: `${carrier.crossLabel ?? 'łącznik krzyżowy'} – ${g.cd.length * g.hangerU.length} szt.` }] : []),
+              ]
+            : []),
           ...(between
             ? [{ color: C.ud, label: `${fr.edge ? edgeName : profName} wzdłuż krokwi, po obu stronach każdego pola – ${grid.bays.length * 2} szt. po ${cm(run)} cm` }]
             : [
                 {
                   color: C.hanger,
-                  label: `${fr.hanger ? fr.hangerLabel : 'mocowanie do krokwi'} – ${g.cd.length * g.hangerU.length} szt., po ${fr.woodScrews} ${fr.woodScrews === 1 ? 'wkręcie' : 'wkręty'} do drewna w krokiew`,
+                  label: `${fr.hanger ? fr.hangerLabel : 'mocowanie do krokwi'} – ${hangerPts.length} szt., po ${fr.woodScrews} ${fr.woodScrews === 1 ? 'wkręcie' : 'wkręty'} do drewna w krokiew`,
                 },
               ]),
           ...(fr.edge && !between ? [{ color: C.ud, label: `${edgeName} na ścianach szczytowych` }] : []),
@@ -109,6 +122,9 @@ export function AtticSectionDrawing({ attic, grid, title }: { attic: Attic; grid
   const face = grid.section.surfaces;
   const faceCollar = face.find((s) => s.kind === 'collar');
   const woolB = Math.min(attic.woolBetween / 10, attic.rafterHeight) / Math.cos(pitch);
+  const carrier = grid.carrier;
+  // ruszt krzyżowy: oś profili nośnych (pod krokwiami) nad profilami pod płyty
+  const carrierLine = carrier ? atticSection(attic, (grid.depthMm - grid.boardsMm - grid.profileMm - carrier.mm / 2) / 10).surfaces : [];
 
   return (
     <figure className="drawing">
@@ -134,6 +150,7 @@ export function AtticSectionDrawing({ attic, grid, title }: { attic: Attic; grid
         )}
         {attic.woolUnder > 0 && face.length > 0 && <polygon points={pts([...outline(face), ...outline(st.surfaces).reverse()])} fill="url(#wool)" fillOpacity={0.7} />}
         <polyline points={pts(outline(face))} fill="none" stroke={INK} strokeWidth={3} {...nss} />
+        {carrierLine.length > 0 && <polyline points={pts(outline(carrierLine))} fill="none" stroke={C.main} strokeWidth={2.5} {...nss} />}
         {grid.surfaces.flatMap((g) =>
           g.cd.map((s) => {
             const k = g.surface.run ? s / g.surface.run : 0;
@@ -143,7 +160,7 @@ export function AtticSectionDrawing({ attic, grid, title }: { attic: Attic; grid
                 cx={g.surface.a.x + (g.surface.b.x - g.surface.a.x) * k}
                 cy={Z(g.surface.a.z + (g.surface.b.z - g.surface.a.z) * k)}
                 r={f * 0.22}
-                fill={C.main}
+                fill={carrier ? C.secondary : C.main}
               />
             );
           }),
@@ -179,7 +196,8 @@ export function AtticSectionDrawing({ attic, grid, title }: { attic: Attic; grid
           ...(attic.woolBetween || attic.woolUnder
             ? [{ pattern: 'wool' as const, label: `wełna: ${attic.woolBetween ? `${attic.woolBetween} mm między krokwiami` : ''}${attic.woolBetween && attic.woolUnder ? ' + ' : ''}${attic.woolUnder ? `${attic.woolUnder} mm pod krokwiami` : ''}` }]
             : []),
-          { color: C.main, label: `${grid.frame.profileLabel} co ${grid.cdSpacing} cm` },
+          ...(carrier ? [{ color: C.main, label: `${carrier.label} pod krokwiami${collar ? ' i jętkami' : ''} (ruszt krzyżowy)` }] : []),
+          { color: carrier ? C.secondary : C.main, label: `${grid.frame.profileLabel} co ${grid.cdSpacing} cm` },
           {
             color: INK,
             label:

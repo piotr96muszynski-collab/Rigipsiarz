@@ -15,6 +15,7 @@ import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from '.
 import { KNAUF_BOARDS, KNAUF_CEILING_SYSTEMS, KNAUF_WALL_SYSTEMS } from './knauf';
 import { RIGIPS_PANEL_SHAFTS } from './rigipsPanel';
 import { SINIAT_BOARDS, SINIAT_CEILING_SYSTEMS, SINIAT_WALL_SYSTEMS } from './siniat';
+import { HAT_CEILING_SYSTEMS, HAT_WALL_SYSTEMS } from './hat.gen';
 
 export type Unit = 'szt.' | 'mb' | 'm²' | 'kg' | 'opak.' | 'rolka' | 'worek';
 
@@ -396,6 +397,11 @@ export const PRODUCTS: Record<string, Product> = {
   LATA5030: { id: 'LATA5030', name: 'Łata drewniana 50×30 mm', group: 'Profile', unit: 'szt.', length: 4 },
   LATA6040: { id: 'LATA6040', name: 'Łata drewniana 60×40 mm', group: 'Profile', unit: 'szt.', length: 4 },
   LATA6050: { id: 'LATA6050', name: 'Łata drewniana 60×50 mm', group: 'Profile', unit: 'szt.', length: 4 },
+  // Ruszt krzyżowy z profili MF (Siniat DK/MFC – poddasza i sufity); długość handlowa przyjęta 4 m
+  MFCP44: { id: 'MFCP44', name: 'Profil główny Nida MFCP44', group: 'Profile', unit: 'szt.', length: 4 },
+  MFCC50: { id: 'MFCC50', name: 'Profil sufitowy Nida MFCC50', group: 'Profile', unit: 'szt.', length: 4 },
+  MFCE26: { id: 'MFCE26', name: 'Profil przyścienny Nida MFCE26', group: 'Profile', unit: 'szt.', length: 4 },
+  MFC2330: { id: 'MFC2330', name: 'Kątownik sufitowy Nida MFC2330 do profili MF', group: 'Akcesoria do sufitów', unit: 'szt.' },
   // Akcesoria sufitowe
   WIESZAK_KLICK: { id: 'WIESZAK_KLICK', name: 'Wieszak bezpośredni „Klick-Fix” do CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
   WIESZAK_RIGISTIL: {
@@ -460,6 +466,20 @@ export const PRODUCTS: Record<string, Product> = {
     unit: 'szt.',
   },
   LACZNIK_WZDL: { id: 'LACZNIK_WZDL', name: 'Łącznik wzdłużny CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
+  MFC2330_MB: {
+    id: 'MFC2330_MB',
+    name: 'Kątownik sufitowy Nida MFC2330 – zawiesia sufitu MF, cięty na długość zwieszenia',
+    group: 'Akcesoria do sufitów',
+    unit: 'mb',
+  },
+  WKRET_FLAT13: {
+    id: 'WKRET_FLAT13',
+    name: 'Wkręt samowiercący 4,2×13 FLAT HEAD do blachy 1 mm',
+    group: 'Mocowanie',
+    unit: 'szt.',
+    pack: 1000,
+    packUnit: 'opak.',
+  },
   // Mocowanie
   KOTWA: { id: 'KOTWA', name: 'Kotwa stropowa metalowa 6 mm', group: 'Mocowanie', unit: 'szt.', pack: 100, packUnit: 'opak.' },
   KOLEK: {
@@ -528,8 +548,10 @@ export type WallCategory = 'działowa' | 'podwójna' | 'instalacyjna' | 'okładz
  * - cd-lining: okładzina na profilach CD 60 i uchwytach ES mocowanych do ściany
  * - glued: płyta klejona do ściany na placki z kleju gipsowego (suchy tynk)
  * - point-fix: płyta na łącznikach talerzykowych ATLAS M-SYSTEM 3G (bez profili)
+ * - hat-lining: okładzina na profilach kapeluszowych 15/48 przykręconych (kołkowanych) wprost do ściany,
+ *   bez UD i bez uchwytów – kołki w dwóch rzędach (na obu półkach profilu)
  */
-export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix' | 'panel';
+export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix' | 'hat-lining' | 'panel';
 
 export const WALL_CATEGORY_LABEL: Record<WallCategory, string> = {
   działowa: 'Ściany działowe – pojedynczy ruszt',
@@ -547,8 +569,14 @@ export const WALL_FRAME_LABEL: Record<WallFrame, string> = {
   'cd-lining': 'ruszt CD 60 na uchwytach ES',
   glued: 'płyta klejona (bez rusztu)',
   'point-fix': 'łączniki ATLAS M-SYSTEM 3G (bez profili)',
+  'hat-lining': 'profile kapeluszowe 15/48 kołkowane do ściany',
   panel: 'płyty samonośne między ścianami (bez słupków, profil po obwodzie)',
 };
+
+/** Wysokość profilu kapeluszowego 15/48 (odstęp płyty od podłoża), mm */
+export const HAT_MM = 15;
+/** Szerokość profilu kapeluszowego z półkami, m (na rysunkach i w 3D) */
+export const HAT_W = 0.08;
 
 export type StudSpacing = 60 | 40 | 30;
 
@@ -645,6 +673,15 @@ export interface WallSystem {
   innerLayers?: number;
   /** Słupki z profili akustycznych CW Aku */
   akuStuds?: boolean;
+  /**
+   * Płyta dosztywniająca między rzędami rusztu podwójnego (ściany Siniat 168B50 / 218B75 / 268B100):
+   * przykręcona do słupków jednego rzędu, liczona w płytach i wkrętach
+   */
+  midBoard?: string;
+  /** Płyta pośrednia tego samego rodzaju co wybrane poszycie (Knauf W115W) – `midBoard` to wtedy płyta domyślna */
+  midBoardFromFace?: boolean;
+  /** Liczba warstw płyty dosztywniającej (brak = 1) */
+  midLayers?: number;
   /** Domyślny rozstaw słupków / profili CD, cm */
   studSpacing: StudSpacing;
   /** Maksymalna wysokość, cm, wg rozstawu słupków */
@@ -653,8 +690,10 @@ export interface WallSystem {
   /** Odporność ogniowa / izolacyjność akustyczna wg karty */
   fire?: string;
   acoustic?: string;
-  /** Rozstaw uchwytów ES na profilu CD (okładziny), cm */
+  /** Rozstaw uchwytów ES na profilu CD (okładziny), cm; profile kapeluszowe: rozstaw kołków w jednym rzędzie (półce) */
   bracketSpacing?: number;
+  /** Okładzina na profilach kapeluszowych: produkt kołka / dybla (brak = kołek szybkiego montażu) */
+  anchor?: string;
   /** Szerokość przestrzeni między rusztami (ściana instalacyjna), cm */
   gap?: number;
   /**
@@ -764,6 +803,7 @@ const HAND_WALLS: WallSystem[] = [
   ...NORGIPS_WALL_SYSTEMS,
   ...KNAUF_WALL_SYSTEMS,
   ...SINIAT_WALL_SYSTEMS,
+  ...HAT_WALL_SYSTEMS,
 ];
 
 /** Systemy podstawowe – widoczne od razu; reszta katalogu jest pod „Pozostałe systemy” i w wyszukiwarce */
@@ -791,6 +831,10 @@ export const WALL_SYSTEM_ALIASES: Record<string, string> = {
   'W-CW75-1AQ': 'W-CW75-1AQUAROC',
   'SZ-CW50-2F': 'SZ-CW50-2',
   'SZ-CW75-2F': 'SZ-CW75-2',
+  // Knauf W113+ z Systemfindera = W114.pl z zeszytu technicznego
+  'KN-W113P-CW50': 'KN-W114-CW50',
+  'KN-W113P-CW75': 'KN-W114-CW75',
+  'KN-W113P-CW100': 'KN-W114-CW100',
 };
 
 const CATEGORY_ORDER: WallCategory[] = ['działowa', 'podwójna', 'instalacyjna', 'okładzina', 'szacht', 'atlas'];
@@ -803,7 +847,7 @@ const wallOrder = (s: WallSystem): number[] => [
   MAKER_ORDER.indexOf(s.maker ?? 'rigips'),
   s.basic ? 0 : 1,
   isStandardBoard(s.defaultBoard) && !s.innerBoard && !s.akuStuds ? 0 : 1,
-  s.frame === 'glued' ? 0 : s.frame === 'cd-lining' ? 1 : 2,
+  s.frame === 'glued' ? 0 : s.frame === 'cd-lining' ? 1 : s.frame === 'hat-lining' ? 2 : 3,
   s.profile,
   s.layers,
 ];
@@ -834,19 +878,24 @@ export const WALL_SYSTEMS: WallSystem[] = [...RIGIPS_WALLS, ...HAND_WALLS]
  * - cw-span: sufit przęsłowy (samonośny) na CW/UW opartych na ścianach
  * - point-fix: płyta na łącznikach ATLAS M-SYSTEM 3G w siatce mainSpacing × secondarySpacing
  */
-export type CeilingKind = 'two-level' | 'one-level' | 'direct' | 'ua-span' | 'cw-span' | 'point-fix';
+export type CeilingKind = 'two-level' | 'one-level' | 'parallel' | 'direct' | 'ua-span' | 'cw-span' | 'point-fix';
 
 export const CEILING_KIND_LABEL: Record<CeilingKind, string> = {
   'two-level': 'Sufity podwieszane CD 60 – ruszt dwupoziomowy',
   'one-level': 'Sufity podwieszane CD 60 – ruszt jednopoziomowy',
+  parallel: 'Sufity podwieszane CD 60 – profile równoległe na wieszakach (bez profili głównych)',
   direct: 'Okładziny sufitów na uchwytach bezpośrednich',
   'ua-span': 'Sufity przęsłowe na UA 50 (bez wieszaków)',
   'cw-span': 'Sufity przęsłowe na CW/UW (bez wieszaków)',
   'point-fix': 'ATLAS M-System 3G – sufity na łącznikach (bez profili)',
 };
 
-/** Wieszaki noniuszowe (sufit podwieszany) albo mocowanie bezpośrednie: uchwyt ES, uchwyt elastyczny, wieszak do poddaszy */
-export type HangerType = 'noniusz' | 'es' | 'elastic' | 'attic';
+/**
+ * Wieszaki noniuszowe (sufit podwieszany) albo mocowanie bezpośrednie: uchwyt ES, uchwyt elastyczny, wieszak do poddaszy;
+ * hat = profile kapeluszowe 15/48 przykręcone dyblami wprost do stropu (bez uchwytów i bez UD), `hangerSpacing` = rozstaw
+ * dybli w jednym rzędzie (półce) profilu
+ */
+export type HangerType = 'noniusz' | 'es' | 'elastic' | 'attic' | 'hat';
 
 /**
  * Ruszt zabudowy poddasza inny niż profile CD 60 na uchwytach ES / elastycznych / wieszakach do poddaszy.
@@ -879,6 +928,28 @@ export interface AtticFrame {
   battens?: { product: string; size: string; mm: number; maxFix: number }[];
   /** Największy rozstaw mocowania elementów wzdłuż krokwi (ruszt między krokwiami), cm */
   sideFix?: number;
+  /**
+   * Ruszt krzyżowy (dwupoziomowy): profile nośne biegną pod każdą krokwią (jętką) i mocuje się je wieszakami
+   * (`hanger`) co `hangerSpacing` systemu; elementy pod płyty (`profile`) idą w poprzek krokwi co `secondarySpacing`
+   * i łączą się z nośnymi na każdym skrzyżowaniu.
+   */
+  carrier?: AtticCarrier;
+}
+
+/** Profile nośne rusztu krzyżowego poddasza */
+export interface AtticCarrier {
+  /** Produkt i nazwa profilu nośnego */
+  product: string;
+  label: string;
+  /** Wysokość profilu nośnego, mm */
+  mm: number;
+  /** Największy rozstaw profili nośnych z karty = największy rozstaw krokwi, cm */
+  maxSpacing: number;
+  /** Łącznik na skrzyżowaniu nośnego z profilem pod płyty (brak = profile skręcane wkrętami) */
+  cross?: string;
+  crossLabel?: string;
+  /** Wkręty „pchełki” na jedno skrzyżowanie */
+  crossLn9?: number;
 }
 
 export interface CeilingSystem {
@@ -923,6 +994,31 @@ export interface CeilingSystem {
   attic?: boolean;
   /** Ruszt poddasza inny niż CD 60 na wieszakach – system tylko do zabudowy poddasza */
   atticFrame?: AtticFrame;
+  /** Ruszt dwupoziomowy z profili innych niż CD 60 (Siniat Nida MF) */
+  profiles?: CeilingProfiles;
+}
+
+/**
+ * Ruszt sufitu dwupoziomowego z innych profili niż CD 60 / UD 30 (Siniat Nida MF: MFCP44 + MFCC50 + MFCE26).
+ * Profile dolne wpinane w górne – bez łączników krzyżowych; zawiesia z kątownika ciętego na długość zwieszenia.
+ */
+export interface CeilingProfiles {
+  /** Profil główny (górny), nośny (dolny, do płyt) i przyścienny */
+  main: string;
+  secondary: string;
+  edge: string;
+  /** Nazwy w opisach */
+  label: string;
+  /** Wysokość rusztu (oba poziomy) bez płyt, mm */
+  frameMm: number;
+  /** Zawiesie z kątownika w mb (długość = zwieszenie + zakład), produkt */
+  hangerAngle: string;
+  /** Zakład kątownika na mocowanie do stropu i do profilu, m */
+  hangerOverlap: number;
+  /** Wkręty do blachy: produkt, na skrzyżowanie profili i na zawiesie */
+  screw: string;
+  crossScrews: number;
+  hangerScrews: number;
 }
 
 const ceilingRefCommon = (layers: number): RefLine[] => [
@@ -1031,12 +1127,13 @@ const CEILING_LIST: CeilingSystem[] = [
   ...NORGIPS_CEILING_SYSTEMS,
   ...KNAUF_CEILING_SYSTEMS,
   ...SINIAT_CEILING_SYSTEMS,
+  ...HAT_CEILING_SYSTEMS,
 ];
 
 /** Sufity podstawowe – widoczne od razu; reszta pod „Pozostałe systemy” */
 const BASIC_CEILINGS = new Set(['S-CD-2P-1', 'S-CD-1P-1', 'S-ES-1', 'S-PODD-1', 'S-UA-1', 'S-CW75-1', 'A-S-L100']);
 
-const CEILING_KIND_ORDER: CeilingKind[] = ['two-level', 'one-level', 'direct', 'ua-span', 'cw-span', 'point-fix'];
+const CEILING_KIND_ORDER: CeilingKind[] = ['two-level', 'one-level', 'parallel', 'direct', 'ua-span', 'cw-span', 'point-fix'];
 const stdBoard = (id: string) => (/^R(B|BI|F|FP|FI)\d/.test(id) ? 0 : 1);
 
 /**
@@ -1135,14 +1232,38 @@ export function wallMaxWidth(sys: WallSystem, board?: string): number | undefine
   return v?.length ? Math.max(...v.map((x) => x.maxWidth!)) : sys.panel.maxWidth;
 }
 
+/** Sufit zawieszony na wieszakach / uchwytach (rozstaw wieszaków ma znaczenie) */
+export const isHungCeiling = (kind: CeilingKind): boolean => kind === 'two-level' || kind === 'one-level' || kind === 'parallel' || kind === 'direct';
+
 /** Okładzina istniejącej ściany (jednostronna, mocowana do muru): CD na ES, klej gipsowy, ATLAS M-System 3G */
 export const isLiningSystem = (sys: WallSystem): boolean =>
-  sys.sides === 1 && (sys.frame === 'cd-lining' || sys.frame === 'glued' || sys.frame === 'point-fix');
+  sys.sides === 1 && (sys.frame === 'cd-lining' || sys.frame === 'glued' || sys.frame === 'point-fix' || sys.frame === 'hat-lining');
+
+/** Ruszt z profili kapeluszowych mocowanych wprost do podłoża (ściana lub strop) */
+export const isHatWall = (sys: WallSystem): boolean => sys.frame === 'hat-lining';
+export const isHatCeiling = (sys: CeilingSystem): boolean => sys.kind === 'direct' && sys.hangerType === 'hat' && !sys.atticFrame;
+
+/**
+ * Płyty kolejnych warstw jednej strony, od rusztu: `innerLayers` warstw z płyty wewnętrznej
+ * (systemy z dwoma rodzajami płyt, np. PRO pod Habito, albo 12,5 pod 15 mm), reszta z płyty wybranej w elemencie.
+ */
+export function layerBoards(sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): string[] {
+  const inner = sys.innerBoard ? Math.min(sys.layers - 1, sys.innerLayers ?? sys.layers - 1) : 0;
+  return Array.from({ length: sys.layers }, (_, i) => (i < inner ? (innerBoardId ?? sys.innerBoard!) : boardId));
+}
+
+/** Grubość wszystkich warstw płyt jednej strony, mm (warstwy mogą mieć różną grubość, np. 12,5 + 15) */
+export const boardStackMm = (sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): number =>
+  layerBoards(sys, boardId, innerBoardId).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
+
+/** Grubość płyty dosztywniającej między rzędami rusztu, mm */
+export const midBoardMm = (sys: WallSystem): number => (sys.midBoard ? (sys.midLayers ?? 1) * boardById(sys.midBoard).thickness : 0);
 
 /** Nazwa słupka ściany do opisów i rysunków, np. „CW 75”, „UA 50”, „2×U 75 (UU)” */
 export function wallStudLabel(sys: WallSystem): string {
   if (sys.frame === 'cd-lining') return 'CD 60';
   if (sys.frame === 'panel') return panelEdgeLabel(sys);
+  if (sys.frame === 'hat-lining') return 'kapeluszowy 15/48';
   if (sys.studKind === 'UA') return `UA ${sys.profile}`;
   if (sys.studKind === 'UU') return `2×U ${sys.profile} (UU)`;
   return `CW ${sys.profile}`;
@@ -1158,11 +1279,13 @@ export function wallTieCount(tie: WallTie, len: number): number {
 export function wallFrameDepth(sys: WallSystem): number {
   switch (sys.frame) {
     case 'double':
-      return sys.profile * 2 + 5;
+      return sys.profile * 2 + 5 + midBoardMm(sys);
     case 'separate':
       return sys.profile * 2 + (sys.gap ?? 10) * 10;
     case 'cd-lining':
       return 27 + 10;
+    case 'hat-lining':
+      return HAT_MM;
     case 'glued':
       return 10;
     case 'panel':

@@ -122,7 +122,7 @@ const PURPOSE_OPTIONS: PickOption<WallPurpose>[] = [
 ];
 const MOUNT_OPTIONS: PickOption<CeilingMount>[] = [
   { value: 'suspended', label: 'Podwieszany', hint: 'obniżony na wieszakach' },
-  { value: 'direct', label: 'Pod stropem', hint: 'na uchwytach ES lub łącznikach' },
+  { value: 'direct', label: 'Pod stropem', hint: 'na uchwytach ES, profilach kapeluszowych lub łącznikach' },
   { value: 'span', label: 'Bez wieszaków', hint: 'od ściany do ściany', short: 'Przęsłowy' },
   { value: 'attic', label: 'Poddasze', hint: 'skosy i jętki' },
 ];

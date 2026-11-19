@@ -2,6 +2,8 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { calculateProject } from '../calc/materials';
 import { appBoardLength, isBoardLengthPref, setAppBoardLength, setProjectBoardLength, type BoardLengthPref } from '../calc/boardLength';
 import { BoardLengthField } from './BoardLengthField';
+import { ProfileLengthsField } from './ProfileLengthsField';
+import { appProfileLengths, setAppProfileLengths, setProjectProfileLengths, type AppProfileLengths } from '../calc/profileLength';
 import { PRODUCT_ALIASES, setCustomSystems, type CustomCatalog } from '../catalog/rigips';
 import { createProject, duplicateProject, sampleProject } from '../model/factory';
 import { migrateKeys, type PriceBook } from '../model/prices';
@@ -44,6 +46,8 @@ export function App() {
   const [catalogVersion, setCatalogVersion] = useState(0);
   // długość arkuszy płyt – ustawienie całej aplikacji (projekt może je nadpisać)
   const [appBoardLen, setAppBoardLen] = useState<BoardLengthPref>(appBoardLength());
+  // długości profili – ustawienie całej aplikacji (projekt może je nadpisać na liście zakupów)
+  const [appProfileLen, setAppProfileLen] = useState<AppProfileLengths>(appProfileLengths());
   const hash = useHash();
 
   const refresh = useCallback(() => listProjects().then(setProjects).catch(() => setProjects([])), []);
@@ -55,6 +59,12 @@ export function App() {
       if (!isBoardLengthPref(v)) return;
       setAppBoardLength(v);
       setAppBoardLen(v);
+      setCatalogVersion((n) => n + 1);
+    });
+    getKV<AppProfileLengths>('profileLengths').then((v) => {
+      if (!v) return;
+      setAppProfileLengths(v);
+      setAppProfileLen(appProfileLengths());
       setCatalogVersion((n) => n + 1);
     });
     getKV<CustomCatalog>('customSystems').then((c) => {
@@ -74,6 +84,13 @@ export function App() {
     setAppBoardLength(v);
     setAppBoardLen(v);
     setKV('boardLength', v);
+    setCatalogVersion((n) => n + 1);
+  };
+
+  const saveProfileLen = (v: AppProfileLengths) => {
+    setAppProfileLengths(v);
+    setAppProfileLen(appProfileLengths());
+    setKV('profileLengths', appProfileLengths());
     setCatalogVersion((n) => n + 1);
   };
 
@@ -146,6 +163,8 @@ export function App() {
           catalogVersion={catalogVersion}
           appBoardLen={appBoardLen}
           setAppBoardLen={saveBoardLen}
+          appProfileLen={appProfileLen}
+          setAppProfileLen={saveProfileLen}
           onOpenCatalog={() => setCatalogOpen(true)}
           onClose={() => {
             setOpenId(null);
@@ -166,6 +185,8 @@ export function App() {
           onOpenCatalog={() => setCatalogOpen(true)}
           appBoardLen={appBoardLen}
           setAppBoardLen={saveBoardLen}
+          appProfileLen={appProfileLen}
+          setAppProfileLen={saveProfileLen}
         />
       )}
       </div>
@@ -199,11 +220,15 @@ function Home({
   onOpenCatalog,
   appBoardLen,
   setAppBoardLen,
+  appProfileLen,
+  setAppProfileLen,
 }: {
   projects: Project[] | null;
   onOpenCatalog: () => void;
   appBoardLen: BoardLengthPref;
   setAppBoardLen: (v: BoardLengthPref) => void;
+  appProfileLen: AppProfileLengths;
+  setAppProfileLen: (v: AppProfileLengths) => void;
   quick: boolean;
   setQuick: (v: boolean) => void;
   onOpen: (p: Project) => void;
@@ -274,6 +299,7 @@ function Home({
           onChange={(v) => setAppBoardLen(v ?? 'auto')}
           hint={APP_BOARD_HINT}
         />
+        <ProfileLengthsField value={appProfileLen} onChange={setAppProfileLen} />
       </section>
 
       <p className="home-foot small">
@@ -293,6 +319,8 @@ function ProjectView({
   catalogVersion,
   appBoardLen,
   setAppBoardLen,
+  appProfileLen,
+  setAppProfileLen,
   onOpenCatalog,
   onClose,
   onDelete,
@@ -301,6 +329,8 @@ function ProjectView({
   catalogVersion: number;
   appBoardLen: BoardLengthPref;
   setAppBoardLen: (v: BoardLengthPref) => void;
+  appProfileLen: AppProfileLengths;
+  setAppProfileLen: (v: AppProfileLengths) => void;
   onOpenCatalog: () => void;
   prices: PriceBook;
   setPrice: (k: string, v: number | undefined) => void;
@@ -313,7 +343,15 @@ function ProjectView({
   // catalogVersion: przelicz po zmianie systemów własnych
   // długość płyt tego projektu – wyliczenia, rysunki i 3D biorą ją z modułu boardLength
   setProjectBoardLength(project.settings.boardLength);
-  useEffect(() => () => setProjectBoardLength(undefined), []);
+  // długości profili tego projektu (rozkrój, łączniki wzdłużne na rysunkach i w 3D)
+  setProjectProfileLengths(project.settings.profileLengths);
+  useEffect(
+    () => () => {
+      setProjectBoardLength(undefined);
+      setProjectProfileLengths(undefined);
+    },
+    [],
+  );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const calc = useMemo(() => calculateProject(project), [project, catalogVersion]);
 
@@ -513,6 +551,8 @@ function ProjectView({
               }
             />
             <BoardLengthField label="Domyślnie w aplikacji" value={appBoardLen} onChange={(v) => setAppBoardLen(v ?? 'auto')} hint={APP_BOARD_HINT} />
+            <hr />
+            <ProfileLengthsField label="Długość profili – domyślnie w aplikacji" value={appProfileLen} onChange={setAppProfileLen} />
             <hr />
             <WoolSettings
               wool={project.settings.wool}

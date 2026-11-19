@@ -1,6 +1,7 @@
 // Ustawienia nowych ścian (przed rysowaniem) i wspólna edycja kilku zaznaczonych ścian.
 
 import { wallSystemById } from '../catalog/rigips';
+import { wallSystemShort } from '../catalog/systemLabel';
 import { dist, isNewWall, wallEnds } from '../geometry/geometry';
 import { setDefaultWallSystem, setWallSystem } from '../model/ops';
 import type { Project, Wall } from '../model/types';
@@ -12,10 +13,9 @@ import { fmtNum } from './wallStyle';
 
 type Update = (fn: (d: Project) => void) => void;
 
-/** Krótka nazwa systemu na przycisku nad planem */
-export function systemShort(id: string) {
-  const s = wallSystemById(id);
-  return (s.code ?? s.name).replace(/^Ściana\s+/, '');
+/** Krótki opis systemu nowych ścian (ruszt i płyty, np. „CW 75, 1×12,5”) – zamiast numeru z katalogu */
+export function systemShort(id: string, boardId?: string) {
+  return wallSystemShort(wallSystemById(id), boardId);
 }
 
 /** Parametry, z którymi powstaje każda nowa ściana narysowana na planie */
@@ -28,7 +28,7 @@ export function WallDefaultsEditor({ project, update }: { project: Project; upda
       d.settings.wallDefaults = { ...(d.settings.wallDefaults ?? {}) };
       fn(d.settings.wallDefaults);
     });
-  const spacingLabel = sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW';
+  const spacingLabel = sys.frame === 'point-fix' ? 'Rozstaw łączników' : sys.frame === 'cd-lining' || sys.frame === 'hat-lining' ? 'Rozstaw profili' : 'Rozstaw CW';
   return (
     <div className="editor wall-defaults">
       <div className="field">

@@ -23,7 +23,7 @@ function shaft(systemId: string, L: number, H: number, boardId = wallSystemById(
 describe('obudowy szachtów z samych płyt (ruszt „panel”)', () => {
   it('w katalogu: Rigips 3.50.14, 3.50.19, 3.50.22, 3.80.15 i Siniat 25–60 bez konstrukcji', () => {
     const codes = WALL_SYSTEMS.filter((s) => s.frame === 'panel').flatMap((s) => [s.code, ...(s.variants ?? []).map((v) => v.code)]);
-    for (const c of ['3.50.14', '3.50.19', '3.50.22', '3.80.15', '25', '30', '37,5', '45', '50', '60']) expect(codes).toContain(c);
+    for (const c of ['3.50.14', '3.50.19', '3.50.22', '3.80.15', '25', '27,5', '30', '37,5', '45', '50', '55', '60']) expect(codes).toContain(c);
     for (const s of WALL_SYSTEMS.filter((x) => x.frame === 'panel')) {
       expect(s.panel, s.id).toBeDefined();
       expect(s.sides).toBe(1);
