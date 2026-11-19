@@ -409,6 +409,89 @@ def tail(rest, start):
     return hi, h, ac, (num(rest[mi]) if mis else None), ei_of(rest[mi + 1:])
 
 
+# Obudowy pionów bez konstrukcji nośnej (rozdz. 10, s. 1100–1105): wkręty z tabeli zużycia, szt./m²
+# (blachowkręty Nida 3,5×25/35/45/55/70 i 4,2×70 – aplikacja liczy wkręty TN tej długości; dla płyt Twarda
+# karta podaje FixDens, dla Hydro blachowkręty Hydro C5 o tych samych długościach)
+PANEL_SCREWS = {
+    (2, 12.5): ['TN25', 'TN35'],
+    (2, 15): ['TN25', 'TN45'],
+    (3, 12.5): ['TN25', 'TN35', 'TN55'],
+    (3, 15): ['TN25', 'TN45', 'TN70'],
+    (4, 12.5): ['TN25', 'TN35', 'TN55', 'TN70'],
+    (4, 15): ['TN25', 'TN45', 'TN55', 'TN70'],
+}
+panel_rows = []
+
+
+def make_panels():
+    """Obudowy pionów bez konstrukcji nośnej: płyty poziomo od ściany do ściany, profil C przy ścianach."""
+    groups = OrderedDict()
+    for r in panel_rows:
+        groups.setdefault((r['layers'], r['th']), []).append(r)
+    out = []
+    for (nl, th), rows in groups.items():
+        variants = []
+        for r in sorted(rows, key=lambda r: PREF.index(r['codes'][-1])):
+            j = ' '.join(r['rest'])
+            mw = re.search(r'\b(2000|2400|2500)\b', j)
+            wool = re.search(r'szklana/skalna\s+(\d+)', j)
+            ac = re.search(r'Bez ograniczeń\s+(\d+)\s+(\d+)\s+\d+\s+([\d,]+)', j)
+            ei = re.search(r'EI(\d+)', j)
+            code = r['code'].split('/')[0]
+            o = OrderedDict()
+            o['code'] = code
+            o['label'] = f'{nl}×{pl(th)} {short(r["codes"][-1], th)} ({btype(r["codes"][-1], th)}) · szer. do {pl(int(mw[1]) / 1000)} m'
+            o['board'] = board_id(r['codes'][-1], th)
+            o['maxWidth'] = int(mw[1]) // 10
+            if ei:
+                o['fire'] = int(ei[1])
+            if ac:
+                o['rw'] = int(ac[1])
+                o['ra1'] = int(ac[2])
+                o['mass'] = num(ac[3])
+            if wool:
+                o['wool'] = int(wool[1])
+            o['thickness'] = num(code)
+            variants.append(o)
+        default = variants[0]
+        eis = sorted({v['fire'] for v in variants if v.get('fire')})
+        pages = sorted({r['page'] for r in rows})
+        widths = sorted({v['maxWidth'] for v in variants})
+        w = OrderedDict()
+        w['id'] = f'SN-SZ-BK-{nl}' + ('' if th == 12.5 else f'-{pl(th)}')
+        w['name'] = f'Nida Szacht – obudowa pionu bez konstrukcji nośnej (płyty samonośne), {nl}×{pl(th)}'
+        w['category'] = 'szacht'
+        w['frame'] = 'panel'
+        w['profile'] = 50
+        w['layers'] = nl
+        w['sides'] = 1
+        w['defaultBoard'] = default['board']
+        w['studSpacing'] = 60
+        w['insulationDefault'] = False
+        if eis:
+            w['fire'] = f'EI {eis[0]}' if len(eis) == 1 else f'EI {eis[0]} – EI {eis[-1]}'
+        w['panel'] = OrderedDict([
+            ('edge', 'CW50'), ('edgeSides', 'walls'),
+            # karta: 0,6 elementu kotwiącego na 0,8 mb profilu na m² (≈ 1 kołek na 1,33 mb) – przyjęto co 130 cm
+            ('anchorSpacing', 130),
+            ('maxWidth', max(widths)),
+            ('screws', [OrderedDict([('product', p), ('perM2', 4)]) for p in PANEL_SCREWS[(nl, th)]]),
+            ('wool', sorted({v['wool'] for v in variants if v.get('wool')})),
+        ])
+        w['info'] = ' · '.join([
+            'Bez słupków: profil Nida C50 (C75, C100) przykołkowany do ścian po obu stronach obudowy',
+            'płyty poziomo, każda od ściany do ściany (szerokość do ' + '/'.join(pl(x / 100) for x in widths) + ' m zależnie od płyty = długość arkusza), warstwy skręcone ze sobą blachowkrętami',
+            'wysokość bez ograniczeń wg karty',
+            'wełna (szklana/skalna) tylko dla podanej izolacyjności akustycznej',
+            'element kotwiący dobrać do podłoża (karta) – aplikacja liczy kołki co ok. 130 cm (z zużycia 0,6 szt./m²)',
+        ])
+        w['source'] = ('SRC', f'Siniat – Katalog techniczny, {CHAPTER["10"]}, karty s. ' + ', '.join(str(p) for p in pages))
+        w['maker'] = 'siniat'
+        w['variants'] = variants
+        out.append(w)
+    return out
+
+
 def make_linings():
     walls = []
     # 1) okładziny wolnostojące na C (rozdz. 3) i szachty na C (rozdz. 10)
@@ -419,10 +502,15 @@ def make_linings():
             # rodzaj słupka: C (CW), UA (profil ościeżnicowy UAR, 2 mm), UU (para U w skrzynkę z płytą rdzeniową)
             if ch == '03':
                 m = re.match(r'^(UARUAR|UAR|CC|C)(\d+)-', sysc)
-                if not m:
-                    skip(r['code'].rsplit('/', 1)[0], 'okładziny wolnostojące z łącznikami stabilizacyjnymi LS (opłytowanie na 3/4 wysokości, karta bez pełnej tabeli parametrów)')
+                mls = re.match(r'^C(\d+)$', sysc) if len(r['parts']) > 1 and r['parts'][1].startswith('LS-') else None
+                if mls:
+                    # okładzina z łącznikami stabilizacyjnymi Nida LS: płyty min. na 3/4 wysokości
+                    double, prof, kind_s = False, int(mls[1]), 'LS'
+                elif not m:
+                    skip(r['code'].rsplit('/', 1)[0], 'okładziny wolnostojące o nieznanym oznaczeniu')
                     continue
-                double, prof, kind_s = m[1] in ('CC', 'UARUAR'), int(m[2]), 'UA' if m[1].startswith('UAR') else 'C'
+                else:
+                    double, prof, kind_s = m[1] in ('CC', 'UARUAR'), int(m[2]), 'UA' if m[1].startswith('UAR') else 'C'
             else:
                 m = re.match(r'^([\d,]+)(AA|A)(\d+)$', sysc)
                 mua = re.match(r'^([\d,]+)(AA|A)$', sysc) and len(r['parts']) > 2 and re.match(r'^UAR(\d+)$', r['parts'][1])
@@ -433,8 +521,11 @@ def make_linings():
                     double, prof, kind_s = sysc.endswith('AA'), int(mua[1]), 'UA'
                 elif muu:
                     double, prof, kind_s = False, int(muu[2]), 'UU'
+                elif re.match(r'^[\d,]+$', sysc):
+                    panel_rows.append(r)
+                    continue
                 else:
-                    skip(sysc, 'obudowy pionów bez konstrukcji nośnej (płyty samonośne skręcane ze sobą) – inny rodzaj zabudowy niż ruszt')
+                    skip(sysc, 'obudowy pionów o nieznanym oznaczeniu')
                     continue
             rest = r['rest']
             # rozstaw: pierwsza wartość 600/400/300 za poszyciem
@@ -450,7 +541,7 @@ def make_linings():
             dcode, dth = default['codes'][-1], default['th']
             pfx = 'SN-O' if ch == '03' else 'SN-SZ'
             sid = f'{pfx}-{"C" if kind_s == "C" else kind_s}{prof}-{nl}' + (f'-{mixed}' if mixed else '')
-            pname = {'C': f'C{prof}', 'UA': f'UAR{prof}', 'UU': f'UU{prof}'}[kind_s]
+            pname = {'C': f'C{prof}', 'LS': f'C{prof}', 'UA': f'UAR{prof}', 'UU': f'UU{prof}'}[kind_s]
             variants = []
             for v in sorted(vs, key=lambda v: (v['double'], PREF.index(v['codes'][-1]), v['th'], v['ei'] or 0)):
                 outer = v['codes'][-1]
@@ -485,11 +576,12 @@ def make_linings():
             w['id'] = sid
             desc = layer_desc(default['codes'], nl, dth) if mixed else f'{nl}×{pl(dth)}'
             w['name'] = ('Nida Tynk – ' if ch == '03' else 'Nida Szacht – ') + f'{kind.lower()} na {pname}' + (
-                f' (2×U{prof} skręcone w skrzynkę)' if kind_s == 'UU' else ' (profile UA, 2 mm)' if kind_s == 'UA' else '') + f', {desc}'
+                f' (2×U{prof} skręcone w skrzynkę)' if kind_s == 'UU' else ' (profile UA, 2 mm)' if kind_s == 'UA'
+                else f' z łącznikami stabilizacyjnymi LS (płyty na 3/4 wysokości)' if kind_s == 'LS' else '') + f', {desc}'
             w['category'] = cat
             w['frame'] = 'single'
             w['profile'] = prof
-            if kind_s != 'C':
+            if kind_s in ('UA', 'UU'):
                 w['studKind'] = kind_s
             w['layers'] = nl
             w['sides'] = 1
@@ -501,13 +593,19 @@ def make_linings():
             if default['maxh']:
                 w['maxHeight'] = {default['spacing']: default['maxh']}
             w['insulationDefault'] = bool(default['wool'])
+            if kind_s == 'LS':
+                w['ls'] = OrderedDict([('boarded', 0.75)])
             if eis:
                 w['fire'] = f'EI {eis[0]}' if len(eis) == 1 else f'EI {eis[0]} – EI {eis[-1]}'
-            head = {'C': f'Profile C{prof}', 'UA': f'Profile ościeżnicowe UAR{prof} (blacha 2 mm)', 'UU': f'Słupki z dwóch profili U{prof} skręconych w skrzynkę'}[kind_s]
+            head = {'C': f'Profile C{prof}', 'LS': f'Profile C{prof}', 'UA': f'Profile ościeżnicowe UAR{prof} (blacha 2 mm)', 'UU': f'Słupki z dwóch profili U{prof} skręconych w skrzynkę'}[kind_s]
             info = [head + f' co {default["spacing"]} cm' + (f' do {pl(default["maxh"] / 100)} m' if default['maxh'] else ''),
-                    'bez mocowania do ściany (U góra i dół)' if ch == '03' else 'obudowa jednostronna, U góra i dół']
+                    ('U góra i dół, słupki spięte ze ścianą łącznikami LS' if kind_s == 'LS' else 'bez mocowania do ściany (U góra i dół)') if ch == '03' else 'obudowa jednostronna, U góra i dół']
             if kind_s == 'UA':
                 info.append(f'na końcu każdego profilu kątownik do UA{prof} ze śrubami M8')
+            if kind_s == 'LS':
+                info.append(f'płyty od posadzki na min. 3/4 wysokości (górna 1/4 może zostać bez płyt, np. nad sufitem podwieszanym); '
+                            f'każdy słupek nad płytami spięty ze ścianą łącznikiem stabilizacyjnym Nida LS{prof} – aplikacja liczy 1 łącznik i 1 kołek na słupek '
+                            f'oraz płyty na 3/4 wysokości (karta: 0,75 m² płyty i 0,4 łącznika na m²)')
             if kind_s == 'UU':
                 info.append('para UD 27 wzdłuż słupka trzyma płytę rdzeniową (pierwsza warstwa, osadzona w ruszcie) – aplikacja liczy UD 30, płytę rdzeniową jako warstwę wewnętrzną')
             if any(v['double'] for v in vs):
@@ -841,7 +939,7 @@ BASIC = {'SN-W-A50-1', 'SN-W-A75-1', 'SN-W-A100-1', 'SN-W-A75-2', 'SN-W-A100-2',
          'SN-O-CDES-1', 'SN-O-FIX', 'SN-SZ-C75-2', 'SN-S-DKES-1', 'SN-S-DKWON-1', 'SN-S-ES-1', 'SN-P-WP-1', 'SN-P-ES-1'}
 
 wr, tab = wall_rows()
-walls = make_walls(wr, tab, None) + make_linings()
+walls = make_walls(wr, tab, None) + make_linings() + make_panels()
 ceilings = make_ceilings() + make_attics()
 for x in walls + ceilings:
     if x['id'] in BASIC:

@@ -4,8 +4,8 @@
  */
 
 export interface WallMoreState {
-  /** Rozstaw słupków / łączników, cm */
-  spacing: number;
+  /** Rozstaw słupków / łączników, cm (brak = system bez rusztu, np. obudowa z samych płyt) */
+  spacing?: number;
   /** Ruszt z łącznikami punktowymi (np. ATLAS M-System) zamiast słupków CW */
   pointFix?: boolean;
   /** Czy system ma słupki CW (wtedy pokazujemy pojedyncze / podwójne) */
@@ -20,7 +20,7 @@ export interface WallMoreState {
 }
 
 export function wallMoreSummary(s: WallMoreState): string[] {
-  const out = [s.pointFix ? `łączniki co ${s.spacing} cm` : `rozstaw ${s.spacing} cm`];
+  const out = s.spacing === undefined ? [] : [s.pointFix ? `łączniki co ${s.spacing} cm` : `rozstaw ${s.spacing} cm`];
   if (s.wool) out.push(s.wool.on ? `wełna ${s.wool.mm} mm` : 'bez wełny');
   if (s.vapor !== undefined) out.push(s.vapor ? 'folia' : 'bez folii');
   if (s.cw) out.push(s.doubleStuds ? 'słupki podwójne' : 'słupki pojedyncze');

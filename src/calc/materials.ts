@@ -9,6 +9,7 @@ import {
   wallMaxHeight,
   wallSystemById,
   wallTieCount,
+  wallMaxWidth,
   type Board,
   type CeilingSystem,
   type Product,
@@ -38,7 +39,7 @@ import { atticRequirement, type AtticResult } from './atticMaterials';
 import { ceilingLevels, ceilingWallWarnings, hangerGapClass, layerBoards, type CeilingLevels } from './ceilingLevels';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn, wallVaporSpec } from './vaporBarrier';
-import { OFFCUT_MIN, bracketPositions, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
+import { OFFCUT_MIN, bracketPositions, panelRows, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -176,6 +177,8 @@ export interface WallBreakdown {
 export function wallWoolOptions(sys: WallSystem): number[] {
   // płyta klejona i ATLAS M-System 3G – brak miejsca na wełnę
   if (sys.frame === 'glued' || sys.frame === 'point-fix') return [];
+  // obudowa z samych płyt – wełna wg karty (Siniat: 50 mm, przy 2×15 do 100 mm)
+  if (sys.frame === 'panel') return sys.panel?.wool ?? [];
   // okładzina na CD 60 i uchwytach ES – przestrzeń regulowana uchwytem, typowo 50 mm
   const cavity = sys.frame === 'cd-lining' ? 50 : sys.profile;
   return WOOL_THICKNESSES.filter((t) => t <= cavity);
@@ -231,6 +234,7 @@ export function wallRequirement(
     })
     .filter((o) => o.w > 0.05 && o.h > 0.05);
 
+  if (sys.frame === 'panel') return panelWall(p, req, w, j, sys, L, H, openings, warnings, contacts);
   if (sys.frame === 'point-fix') return pointFixWall(req, w, j, sys, L, H, openings, warnings, wallLayout(p, w, j, contacts ?? buildContacts(p)));
 
   const isCD = sys.frame === 'cd-lining';
@@ -400,7 +404,9 @@ export function wallRequirement(
   const openingArea = openings.reduce((a, o) => a + o.w * o.h, 0);
   const net = Math.max(0, L * H - openingArea);
   const boards = layerBoards(sys, w.boardId, w.innerBoardId);
-  const keyOf = (layer: number) => `${boards[layer] ?? w.boardId}|${pickBoardLength(boards[layer] ?? w.boardId, w.height)}`;
+  // okładzina z łącznikami LS: płyty tylko do wysokości Hb (min. 3/4 wysokości wg karty Siniat)
+  const Hb = sys.ls ? Math.round(H * sys.ls.boarded * 1000) / 1000 : H;
+  const keyOf = (layer: number) => `${boards[layer] ?? w.boardId}|${pickBoardLength(boards[layer] ?? w.boardId, Hb * 100)}`;
   const sheetKey = keyOf(sys.layers - 1);
   // każda warstwa na swoją długość z modelu styków: w narożniku płyta zachodzi na czoło sąsiedniej
   // ściany albo dochodzi do jej płyty, w trójniku i przy okładzinie muru kończy się na ich licu
@@ -418,13 +424,22 @@ export function wallRequirement(
     for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1)
       for (let layer = 0; layer < sys.layers; layer++) {
         const [x0, x1] = m ? partRange(m, w, L, { kind: 'board', side, layer }) : [0, L];
-        add(areaByKey, keyOf(layer), Math.max(0, (x1 - x0) * H - openingArea));
+        add(areaByKey, keyOf(layer), Math.max(0, (x1 - x0) * Hb - openingArea));
       }
   for (const [k, a] of Object.entries(areaByKey)) add(req.boardArea, k, a);
   // odpad z wycięć liczymy do płyty zewnętrznej
   if (cutWaste > 0) add(req.boardArea, sheetKey, cutWaste);
   if (cutWaste > 0) add((req.boardCutWaste ??= {}), sheetKey, cutWaste);
-  const faceArea = net * sys.sides;
+  // powierzchnia opłytowana (przy łącznikach LS tylko dolna część ściany)
+  const boardedNet = sys.ls ? Math.max(0, L * Hb - openingArea) : net;
+  const faceArea = boardedNet * sys.sides;
+
+  // --- Łączniki stabilizacyjne LS: po jednym na każdym słupku nad opłytowaniem, kołkowane do ściany ---
+  if (sys.ls) {
+    const n = studPositions.length;
+    add(req.counts, `LS${sys.profile}`, n);
+    add(req.counts, 'KOLEK', n);
+  }
 
   // --- Wkręty lub klej ---
   if (sys.frame === 'glued') {
@@ -442,7 +457,7 @@ export function wallRequirement(
 
   // --- Wełna: powierzchnia netto ściany (po odjęciu otworów) × liczba warstw ---
   const ins = wallInsulation(w, sys);
-  if (ins) add(req.area, `WELNA${ins.thickness}`, net * ins.layers);
+  if (ins) add(req.area, `WELNA${ins.thickness}`, boardedNet * ins.layers);
   // paroizolacja po jednej stronie (od pomieszczenia), pod płytami
   const vapor = wallVaporSpec(sys);
   if (vaporBarrierOn(w.vaporBarrier, vapor)) vaporBarrierLines(req, net, vapor);
@@ -511,6 +526,113 @@ function pointFixWall(
     req,
     info: { lengthM: L, heightM: H, netAreaM2: net, studPositions: [], jambPositions: [], junctions: j, warnings },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Obudowa szachtu z samych płyt (Siniat „bez konstrukcji nośnej”, Rigips 3.50.14/19/22, 3.80.15)
+// ---------------------------------------------------------------------------
+
+/**
+ * Płyty poziomo, każda w jednym kawałku od ściany do ściany (największa szerokość obudowy z karty =
+ * długość arkusza), warstwy skręcone ze sobą wkrętami z karty. Profil obwodowy (kątownik 40×40×1
+ * albo profil C) przykołkowany do ścian po obu stronach – w Rigips także do posadzki i stropu.
+ */
+function panelWall(
+  p: Project,
+  req: Requirement,
+  w: Wall,
+  j: WallJunctions,
+  sys: WallSystem,
+  L: number,
+  H: number,
+  openings: { x0: number; x1: number; w: number; h: number; sill: number; top: number }[],
+  warnings: string[],
+  contacts?: ContactModel,
+): { req: Requirement; info: WallBreakdown } {
+  const spec = sys.panel!;
+  const openingArea = openings.reduce((a, o) => a + o.w * o.h, 0);
+  const net = Math.max(0, L * H - openingArea);
+
+  const maxW = wallMaxWidth(sys, w.boardId);
+  if (maxW && L * 100 > maxW + 0.5)
+    warnings.push(
+      `Szerokość ${fmtLen(L)} m przekracza ${fmtLen(maxW / 100)} m dopuszczalne w tym systemie dla tej płyty – płyta musi sięgać w jednym kawałku od ściany do ściany. Zmniejsz obudowę albo wybierz obudowę na profilach.`,
+    );
+  const longest = Math.max(...boardById(w.boardId).lengths);
+  if (L * 100 > longest + 0.5 && !(maxW && L * 100 > maxW + 0.5))
+    warnings.push(`Szerokość ${fmtLen(L)} m jest większa niż najdłuższy arkusz tej płyty (${fmtLen(longest / 100)} m) – wybierz płytę w dłuższym formacie.`);
+  if ([j.endA, j.endB].some((e) => e !== 'existing-wall'))
+    warnings.push('Obudowa z samych płyt musi z obu stron opierać się o ściany (profil obwodowy kołkowany do muru) – połącz jej oba końce ze ścianą istniejącą.');
+  if (openings.length)
+    warnings.push('Karta obudowy z samych płyt nie opisuje otworów – w obudowie stosuje się tylko klapy rewizyjne (przy wymaganiach ogniowych – klapy z klasą EI).');
+
+  // --- Profil obwodowy, kołki, taśma uszczelniająca ---
+  const runs = [H, H, ...(spec.edgeSides === 'all' ? [L, L] : [])];
+  const anchorM = spec.anchorSpacing / 100;
+  for (const r of runs) {
+    addPiece(req, spec.edge, r);
+    // po obwodzie kołki w narożnikach są wspólne dla dwóch odcinków (zamknięty obwód)
+    add(req.counts, 'KOLEK', Math.ceil(r / anchorM - 1e-9) + (spec.edgeSides === 'all' ? 0 : 1));
+  }
+  const tape = spec.edge.startsWith('CW') ? TAPE_FOR_PROFILE[Number(spec.edge.slice(2))] ?? 'TASMA_USZ50' : 'TASMA_USZ30';
+  add(req.meters, tape, runs.reduce((a, b) => a + b, 0));
+
+  // --- Płyty: pasy poziome od ściany do ściany (rozkład ten sam co na rysunku i w 3D). Pas węższy
+  // niż arkusz docinamy wzdłuż – resztę wykorzystuje pas innej warstwy, dlatego arkusze liczymy
+  // z wysokości wszystkich pasów (pakowanie pasów w szerokość arkusza). Odcięty koniec arkusza
+  // dłuższego niż szerokość obudowy i niewykorzystane resztki to odpad. ---
+  const boards = layerBoards(sys, w.boardId, w.innerBoardId);
+  const m = contacts ?? (p.walls.includes(w) ? buildContacts(p) : undefined);
+  const layout = m && sys.id === w.systemId ? wallLayout(p, w, j, m) : undefined;
+  const byKey = new Map<string, { layers: number[]; len: number; width: number }>();
+  boards.forEach((id, layer) => {
+    const lenCm = pickBoardLengthCm(id, L * 100);
+    const key = `${id}|${lenCm}`;
+    const e = byKey.get(key) ?? { layers: [], len: lenCm / 100, width: boardById(id).width / 100 };
+    e.layers.push(layer);
+    byKey.set(key, e);
+  });
+  for (const [key, e] of byKey) {
+    const sheets = panelSheets(L, H, e.len, e.width, e.layers);
+    const used = layout
+      ? layout.faces.filter((f) => e.layers.includes(f.layer)).reduce((a, f) => a + f.pieces.reduce((s2, pc) => s2 + pieceArea(pc), 0), 0)
+      : net * e.layers.length;
+    const total = sheets * e.len * e.width;
+    add(req.boardArea, key, total);
+    if (total - used > 1e-3) add((req.boardCutWaste ??= {}), key, total - used);
+  }
+
+  // --- Wkręty wg karty (szt./m² obudowy) ---
+  for (const sc of spec.screws) add(req.counts, sc.product, net * sc.perM2);
+
+  // --- Spoinowanie (taśma 1,4 mb/m² jak w kartach) ---
+  addJointing(req, net, sys.layers, w.boardId, 1.4, resolveFinishing(p.settings.finishing));
+
+  const ins = wallInsulation(w, sys);
+  if (ins) add(req.area, `WELNA${ins.thickness}`, net);
+
+  return {
+    req,
+    info: { lengthM: L, heightM: H, netAreaM2: net, studPositions: [], jambPositions: [], junctions: j, warnings },
+  };
+}
+
+/**
+ * Arkusze na obudowę z samych płyt (warstwy `layers`): każdy pas to arkusz przycięty wzdłuż do
+ * wysokości pasu (pas dłuższy niż arkusz – kilka arkuszy). Pasy węższe niż arkusz pakujemy razem
+ * w szerokość arkusza (najpierw najszersze), bo z jednego arkusza tnie się np. dolny pas jednej
+ * warstwy i górny drugiej.
+ */
+export function panelSheets(L: number, H: number, sheetLen: number, sheetW: number, layers: number[]): number {
+  const across = Math.max(1, Math.ceil(L / sheetLen - 1e-9));
+  const strips = layers.flatMap((layer) => panelRows(H, sheetW, layer).map(([a, b]) => b - a)).sort((a, b) => b - a);
+  const bins: number[] = [];
+  for (const h of strips) {
+    const i = bins.findIndex((free) => free >= h - 1e-6);
+    if (i >= 0) bins[i] -= h;
+    else bins.push(sheetW - h);
+  }
+  return bins.length * across;
 }
 
 /** Odsunięcie skrajnych łączników sufitu od ścian, cm (instrukcja ATLAS: 7 cm) */
@@ -909,7 +1031,7 @@ export function woolLine(pid: string, netM2: number, waste: number, choice?: Woo
 
 const m2 = (v: number) => v.toFixed(1).replace('.', ',');
 function boardNote(area: number, cut: number): string {
-  return cut >= 0.05 ? `${m2(area - cut)} m² netto + ${m2(cut)} m² odpadu z wycięć L/U przy otworach` : `${m2(area)} m² netto`;
+  return cut >= 0.05 ? `${m2(area - cut)} m² netto + ${m2(cut)} m² odpadu z docinania (wycięcia przy otworach, pasy płyt w obudowie szachtu)` : `${m2(area)} m² netto`;
 }
 
 /** Uwaga do wieszaków noniuszowych: ile sztuk na jakie zwieszenie (wierzch rusztu – strop) */
@@ -1152,9 +1274,11 @@ function perM2(req: Requirement, area: number): ConsumptionLine[] {
 /** Zużycie na 1 m² ściany (powierzchnia ściany, nie płyt) dla wybranego systemu */
 export function wallConsumption(sys: WallSystem, studSpacing = sys.studSpacing, insulation = true): ConsumptionLine[] {
   const p = createProject();
+  // obudowa z samych płyt: wzorzec o szerokości dopuszczalnej w karcie (płyta od ściany do ściany)
+  const len = sys.panel ? Math.min(REF_WALL.lengthCm, sys.panel.maxWidth) : REF_WALL.lengthCm;
   p.nodes = [
     { id: 'a', x: 0, y: 0 },
-    { id: 'b', x: REF_WALL.lengthCm, y: 0 },
+    { id: 'b', x: len, y: 0 },
   ];
   p.walls = [
     createWall(p, 'a', 'b', {

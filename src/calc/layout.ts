@@ -343,6 +343,35 @@ export function boardFace(
   return pieces;
 }
 
+/** Wysokości pasów poziomych jednej warstwy obudowy z samych płyt (od dołu), m – w warstwach nieparzystych pierwszy pas ma pół arkusza */
+export function panelRows(H: number, sheetW: number, layer: number): [number, number][] {
+  const ys = [0];
+  for (let y = layer % 2 ? sheetW / 2 : sheetW; y < H - 1e-3; y += sheetW) ys.push(Math.round(y * 1000) / 1000);
+  ys.push(H);
+  return ys.slice(1).map((y, i) => [ys[i], y]);
+}
+
+/**
+ * Obudowa z samych płyt: pasy poziome na całą szerokość (arkusz od ściany do ściany), w kolejnych
+ * warstwach przesunięte o pół arkusza, żeby styki poziome się mijały.
+ */
+function panelFaces(m: ContactModel, w: Wall, L: number, H: number, layers: number, sheetLen: number, sheetW: number, openings: WallOpening[]): BoardFace[] {
+  const faces: BoardFace[] = [];
+  for (let layer = 0; layer < layers; layer++) {
+    const [x0, x1] = partRange(m, w, L, { kind: 'board', side: 0, layer });
+    const rows = panelRows(H, sheetW, layer);
+    const xs: number[] = [x0];
+    for (let x = x0 + sheetLen; x < x1 - 1e-3; x += sheetLen) xs.push(round3(x));
+    xs.push(x1);
+    const pieces: BoardPiece[] = [];
+    for (const [y0, y1] of rows)
+      for (let k = 0; k + 1 < xs.length; k++)
+        pieces.push({ x0: xs[k], x1: xs[k + 1], y0, y1, cut: xs[k + 1] - xs[k] < sheetLen - 0.005 || y1 - y0 < sheetW - 0.005 });
+    faces.push({ side: 0, layer, x0, x1, offset: 0, joints: xs.slice(1, -1), pieces: cutOpenings(pieces, openings), jambJoints: [], layerJoints: [] });
+  }
+  return faces;
+}
+
 export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactModel = buildContacts(p)): WallLayout {
   const sys = wallSystemById(w.systemId);
   const L = wallLength(p, w) / 100;
@@ -352,7 +381,9 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
 
   const frame = sys.frame;
   // bez profili: klejenie na placki albo łączniki punktowe ATLAS
-  const glued = frame === 'glued' || frame === 'point-fix';
+  // obudowa z samych płyt – też bez słupków (profil obwodowy tylko przy ścianach / po obwodzie)
+  const panel = frame === 'panel';
+  const glued = frame === 'glued' || frame === 'point-fix' || panel;
   const isCD = frame === 'cd-lining';
   const rows = glued ? 0 : frame === 'double' || frame === 'separate' ? 2 : 1;
 
@@ -392,7 +423,9 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     }
   }
 
-  const sheetLen = pickBoardLengthCm(w.boardId, w.height) / 100;
+  // okładzina z łącznikami LS (Siniat): płyty tylko na dolnej części wysokości (min. 3/4)
+  const Hb = sys.ls ? round3(H * sys.ls.boarded) : H;
+  const sheetLen = pickBoardLengthCm(w.boardId, Hb * 100) / 100;
   const boardW = boardById(w.boardId).width / 100;
   const faces: BoardFace[] = [];
   // miejsca, w których może wypaść styk pionowy: słupki (bez ościeży – te i tak są zabronione)
@@ -404,9 +437,10 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
   const onBase = (x: number) => (baseXs ?? []).some((b) => Math.abs(b - x) < 0.005);
   const studXs = () => (baseXs ? [...baseXs, ...added] : undefined);
   const extraXs = () => (baseXs ? extraCands.filter((x) => !added.has(x)) : undefined);
-  const bottomFirst = (i: number, c0: number, c1: number) => rowPattern(i, c0, c1, H, sheetLen, openings);
+  const bottomFirst = (i: number, c0: number, c1: number) => rowPattern(i, c0, c1, Hb, sheetLen, openings);
   const inside = (x: number, r: [number, number]) => x > r[0] + 0.01 && x < r[1] - 0.01;
-  for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1) {
+  if (panel) faces.push(...panelFaces(m, w, L, H, sys.layers, pickBoardLengthCm(w.boardId, L * 100) / 100, boardW, openings));
+  for (let side = 0 as 0 | 1; side < (panel ? 0 : sys.sides); side = (side + 1) as 0 | 1) {
     const layers = Array.from({ length: sys.layers }, (_, layer) => ({
       layer,
       offset: glued ? 0 : round3(((side + layer) * s) % boardW),
@@ -453,7 +487,7 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     for (const q of layers) {
       const [x0, x1] = q.range;
       // styki liczone od węzła a (jak ruszt), płyta przycięta do zakresu z modelu styków
-      const pieces = cutOpenings(clipPieces(boardFace(L, H, sheetLen, q.offset, boardW, q.joints, bottomFirst), x0, x1), openings);
+      const pieces = cutOpenings(clipPieces(boardFace(L, Hb, sheetLen, q.offset, boardW, q.joints, bottomFirst), x0, x1), openings);
       const inRange = q.joints.filter((x) => inside(x, q.range));
       const lower = layers.filter((o) => o.layer === q.layer - 1).flatMap((o) => o.joints.filter((x) => inside(x, o.range)));
       const layerJoints = inRange.filter((x) => lower.some((y) => Math.abs(y - x) < 0.05));
@@ -483,11 +517,11 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     frame,
     rows,
     studLabel: wallStudLabel(sys),
-    trackLabel: isCD ? 'UD 30' : `UW ${sys.profile}`,
+    trackLabel: isCD ? 'UD 30' : panel ? wallStudLabel(sys) : `UW ${sys.profile}`,
     openings,
     studs,
     tracks,
-    sheet: { width: boardW, length: sheetLen },
+    sheet: { width: boardW, length: panel ? pickBoardLengthCm(w.boardId, L * 100) / 100 : sheetLen },
     faces,
     fixers:
       frame === 'point-fix'

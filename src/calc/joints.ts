@@ -6,7 +6,7 @@
 // Dodatkowe słupki CW w narożnikach i trójnikach dolicza ściana (wallRequirement),
 // tutaj są tylko opisane, żeby było widać, skąd się biorą.
 
-import { boardById, wallSystemById, type WallSystem } from '../catalog/rigips';
+import { boardById, panelEdgeLabel, wallSystemById, type WallSystem } from '../catalog/rigips';
 import {
   ACRYLIC_M_PER_TUBE,
   compoundById,
@@ -93,7 +93,9 @@ export function wallThicknessMm(sys: WallSystem, boardId: string): number {
           ? 2 * sys.profile + (sys.gap ?? 10) * 10
           : sys.frame === 'cd-lining'
             ? 27
-            : 10;
+            : sys.frame === 'panel'
+              ? 0
+              : 10;
   return core + sys.sides * sys.layers * t;
 }
 
@@ -208,7 +210,7 @@ export function analyzeJoints(p: Project): Joint[] {
       const Hw = w.height / 100;
       if (free) {
         j.outer = edges(j, 'outer', 'external', Array(sys.sides).fill(Hw), false);
-        if (sys.frame !== 'glued') {
+        if (sys.frame !== 'glued' && sys.frame !== 'panel') {
           const thick = wallThicknessMm(sys, w.boardId) / 1000;
           const key = `${w.boardId}|${pickBoardLength(w.boardId, w.height)}`;
           add(j.req.boardArea, key, thick * Hw * sys.layers);
@@ -218,7 +220,11 @@ export function analyzeJoints(p: Project): Joint[] {
         }
       } else {
         j.inner = edges(j, 'inner', 'contact', Array(sys.sides).fill(Hw), false);
-        if (sys.frame !== 'glued')
+        if (sys.frame === 'panel')
+          j.frame.push(
+            `${panelEdgeLabel(sys)} przy ścianie kołkowany co ${sys.panel?.anchorSpacing ?? 100} cm, taśma uszczelniająca ${fmt(Hw)} mb, płyty dochodzą do muru i są przykręcone do profilu (w wyliczeniu ściany)`,
+          );
+        else if (sys.frame !== 'glued')
           j.frame.push(`słupek przyścienny kotwiony do muru kołkami co 100 cm, taśma uszczelniająca ${fmt(Hw)} mb (w wyliczeniu ściany)`);
       }
       finish(j);
