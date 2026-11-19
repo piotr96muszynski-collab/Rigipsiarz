@@ -1,6 +1,6 @@
 // Krótki, czytelny opis systemu (ruszt i płyty) zamiast samego numeru z katalogu producenta.
 
-import { MAKER_LABEL, boardById, type CeilingSystem, type WallSystem } from './rigips';
+import { MAKER_LABEL, boardById, layerBoards, type CeilingSystem, type WallSystem } from './rigips';
 import { atticFrameKind, atticFrameOf } from '../calc/attic';
 
 /** Grubość płyty w mm po polsku: 12.5 → „12,5” */
@@ -41,7 +41,23 @@ export function wallSystemShort(s: WallSystem, boardId?: string): string {
     innerN > 0 && inner !== outer
       ? `${innerN}×${mm(inner)} + ${s.layers - innerN}×${mm(outer)}`
       : `${s.layers}×${mm(outer)}`;
-  return `${wallFrameLabel(s)}, ${boards}`;
+  const full = `${wallFrameLabel(s)}, ${boards}${sideBShort(s)}`;
+  if (full.length <= 36 || !s.sideB?.length) return full;
+  // za długi opis przy różnym poszyciu stron: liczba warstw i zakres grubości
+  const all = [...layerBoards(s, boardId ?? s.defaultBoard), ...s.sideB].map((id) => boardById(id).thickness);
+  return `${wallFrameLabel(s)}, ${Math.max(s.layers, s.sideB.length)}×${mm(Math.min(...all))}–${mm(Math.max(...all))}`;
+}
+
+/** Inne poszycie strony B: „ / 1×12,5” albo „ / 1×15 + 2×18” (strona A / strona B, warstwy od rusztu) */
+function sideBShort(s: WallSystem): string {
+  if (!s.sideB?.length || s.sides < 2) return '';
+  const groups: { t: number; n: number }[] = [];
+  for (const t of s.sideB.map((id) => boardById(id).thickness)) {
+    const last = groups[groups.length - 1];
+    if (last && last.t === t) last.n++;
+    else groups.push({ t, n: 1 });
+  }
+  return ' / ' + groups.map((g) => `${g.n}×${mm(g.t)}`).join(' + ');
 }
 
 /** Ruszt poddasza: „CD 60 + uchwyt ES”, „Kapelusz do krokwi”, „Ruszt krzyżowy CD 60 + element ES60”… */

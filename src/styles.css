@@ -1089,10 +1089,37 @@ li.done .item-qty strong {
 }
 .home-foot {
   text-align: center;
-  padding: 8px 0 24px;
+  padding: 8px 0 8px;
 }
 .home-foot a {
   color: var(--muted);
+}
+.app-version {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0 0 24px;
+  text-align: center;
+}
+.settings .app-version {
+  justify-content: flex-start;
+  padding: 0;
+}
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  font: inherit;
+  color: var(--accent, inherit);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 .laser {
   position: relative;

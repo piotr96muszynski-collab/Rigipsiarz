@@ -14,7 +14,7 @@
 // w wyliczeniach. Na końcu sprawdzamy w rzucie, czy żadne dwa elementy się nie przenikają.
 // Jednostki: metry (plan jest w centymetrach).
 
-import { boardStackMm, wallFrameDepth, wallSystemById, type WallFrame } from '../catalog/rigips';
+import { boardStackMm, sideLayers, sideStackMm, wallFrameDepth, wallSystemById, type WallFrame } from '../catalog/rigips';
 import type { Id, Lining, Point, Project, Wall } from '../model/types';
 import { cornerThrough, existingRooms, wallPrecedes, isNewWall, masonrySide, nodeMap, projectOnSegment, throughPair } from './geometry';
 
@@ -28,8 +28,8 @@ export interface WallSection {
   frame: WallFrame;
   /** połowa grubości rusztu (rdzenia), m */
   core: number;
-  /** grubość jednej płyty, m (warstwy różnej grubości – średnia, lico zewnętrzne wypada dokładnie) */
-  bt: number;
+  /** grubość jednej płyty na stronie 0 i 1, m (warstwy różnej grubości – średnia, lico zewnętrzne wypada dokładnie) */
+  bt: [number, number];
   /** liczba warstw płyt na stronie 0 i 1 */
   layers: [number, number];
   profile: number;
@@ -37,18 +37,20 @@ export interface WallSection {
 
 export function wallSection(w: Wall): WallSection {
   const sys = wallSystemById(w.systemId);
+  const [n0, n1] = sideLayers(sys);
+  const bt0 = sideStackMm(sys, w, 0) / n0 / 1000;
   return {
     frame: sys.frame,
     core: wallFrameDepth(sys) / 2000,
-    bt: boardStackMm(sys, w.boardId, w.innerBoardId) / sys.layers / 1000,
-    layers: [sys.layers, sys.sides === 2 ? sys.layers : 0],
+    bt: [bt0, n1 ? sideStackMm(sys, w, 1) / n1 / 1000 : bt0],
+    layers: [n0, n1],
     profile: sys.profile,
   };
 }
 
 /** Odsunięcie lica od osi ściany po stronie `side` po `k` warstwach (ze znakiem normalnej) */
 export function faceOffset(sec: WallSection, side: 0 | 1, k: number): number {
-  return (side === 0 ? 1 : -1) * (sec.core + sec.bt * Math.min(Math.max(k, 0), sec.layers[side]));
+  return (side === 0 ? 1 : -1) * (sec.core + sec.bt[side] * Math.min(Math.max(k, 0), sec.layers[side]));
 }
 
 /** Jak element kończy się przy węźle */
@@ -186,7 +188,7 @@ export function buildContacts(p: Project): ContactModel {
     return faceOffset(sec, side, k) * (side === 0 ? 1 : -1) * (near ? 1 : -1);
   };
   /** Środek pasma warstwy k na stronie side (w układzie normalnej ściany) */
-  const layerMid = (sec: WallSection, side: 0 | 1, k: number) => (side === 0 ? 1 : -1) * (sec.core + sec.bt * (k + 0.5));
+  const layerMid = (sec: WallSection, side: 0 | 1, k: number) => (side === 0 ? 1 : -1) * (sec.core + sec.bt[side] * (k + 0.5));
 
   const blank = (w: Wall, nid: Id, joint: EndJoint, role: EndRole, contact: Contact, partner?: Id): WallEndContacts => {
     const sec = sections.get(w.id)!;
@@ -248,7 +250,7 @@ export function buildContacts(p: Project): ContactModel {
         put(e);
       } else {
         const e = blank(w, nid, 'free', 'end', 'free');
-        const stack = sec.bt * Math.max(sec.layers[0], sec.layers[1]);
+        const stack = Math.max(sec.bt[0] * sec.layers[0], sec.bt[1] * sec.layers[1]);
         if (sec.frame !== 'glued' && sec.frame !== 'point-fix' && sec.frame !== 'panel' && stack > 0) {
           e.frame = { s: stack, contact: 'strip' };
           e.strip = { thickness: stack, layers: Math.max(sec.layers[0], sec.layers[1]) };
@@ -642,7 +644,7 @@ export function findGaps(p: Project, m: ContactModel = buildContacts(p), step = 
   return out;
 }
 
-const thickness = (sec: WallSection) => sec.core * 2 + sec.bt * (sec.layers[0] + sec.layers[1]);
+const thickness = (sec: WallSection) => sec.core * 2 + sec.bt[0] * sec.layers[0] + sec.bt[1] * sec.layers[1];
 
 // ---------- Ściany narysowane na już istniejących ----------
 

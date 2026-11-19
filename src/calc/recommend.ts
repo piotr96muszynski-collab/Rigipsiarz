@@ -10,7 +10,8 @@ import {
   ceilingMaxSpan,
   isLiningSystem,
   wallFrameDepth,
-  boardStackMm,
+  sideLayers,
+  wallBoardsMm,
   type CeilingKind,
   type CeilingSystem,
   type Maker,
@@ -96,6 +97,8 @@ export interface WallPick {
   boardId: string;
   /** Płyta warstw wewnętrznych (systemy z dwoma rodzajami płyt) */
   innerBoardId?: string;
+  /** Płyty strony 2 z odmiany (systemy z innym poszyciem stron) */
+  sideBBoards?: string[];
   studSpacing: StudSpacing;
   doubleStuds: boolean;
   /** Maksymalna wysokość tej odmiany, cm (brak = bez ograniczeń / nie podano) */
@@ -132,7 +135,7 @@ function roomOk(boardId: string, room: Room): boolean {
 /** Grubość ściany w danej odmianie, mm */
 function wallThickness(sys: WallSystem, boardId: string, v?: SystemVariant): number {
   if (v?.thickness) return v.thickness;
-  return wallFrameDepth(sys) + boardStackMm(sys, boardId) * sys.sides;
+  return wallFrameDepth(sys) + wallBoardsMm(sys, { boardId, sideBBoards: v?.sideB });
 }
 
 /** Odmiany systemu do sprawdzenia: z karty albo – gdy ich brak – po jednej na znany rozstaw słupków */
@@ -167,7 +170,9 @@ export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWall
     let best: WallPick | undefined;
     for (const c of candidates(sys)) {
       if (c.maxHeight && needs.heightCm > c.maxHeight + 0.5) continue;
-      if (!roomOk(c.boardId, needs.room)) continue;
+      // strefa mokra po jednej stronie: wystarczy płyta do stref mokrych na stronie B (Rigips 3.37.02x – Aquaroc)
+      const sideB = sys.sides === 2 ? (c.v?.sideB ?? sys.sideB) : undefined;
+      if (!roomOk(c.boardId, needs.room) && !(needs.room === 'wet' && sideB?.some((id) => roomOk(id, 'wet')))) continue;
       const fire = c.v?.fire;
       if (needs.fire > 0 && !(fire && fire >= needs.fire)) continue;
       const ra1 = c.v?.ra1;
@@ -188,6 +193,7 @@ export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWall
         variant: c.v,
         boardId: c.boardId,
         innerBoardId: innerFor(sys, c.v, needs.room),
+        sideBBoards: c.v?.sideB,
         studSpacing: c.spacing,
         doubleStuds: c.double,
         maxHeight: c.maxHeight,
@@ -236,8 +242,9 @@ function costKey(p: WallPick): number[] {
   const frameCost =
     s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'panel' ? 1.5 : s.frame === 'cd-lining' ? 2 : s.frame === 'hat-lining' ? 2.5 : s.frame === 'single' ? (s.studKind ? 3.5 : 3) : 4;
   return [
-    s.layers * s.sides,
-    boardCost(p.boardId),
+    // inne poszycie stron: liczy się strona z większą liczbą warstw i droższa płyta (np. Aquaroc na stronie B)
+    2 * Math.max(...sideLayers(s)),
+    Math.max(boardCost(p.boardId), ...(s.sides === 2 ? (p.sideBBoards ?? s.sideB ?? []).map(boardCost) : [])),
     frameCost,
     (p.doubleStuds ? 2 : 1) / p.studSpacing,
     hasStudProfile(s) ? s.profile : 0,
@@ -270,6 +277,7 @@ export function variantForHeight(sys: WallSystem, heightCm: number, boardId = sy
     variant: c.v,
     boardId: c.boardId,
     innerBoardId: innerFor(sys, c.v, 'dry'),
+    sideBBoards: c.v?.sideB,
     studSpacing: c.spacing,
     doubleStuds: c.double,
     maxHeight: c.maxHeight,

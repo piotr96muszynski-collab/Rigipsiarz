@@ -1,14 +1,44 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
 
 // GitHub Pages serwuje aplikację pod /Rigipsiarz/ — base ustawiamy przez zmienną w CI.
 const base = process.env.BASE_PATH ?? '/';
 
+// Numer wersji: liczba commitów (każde scalenie do main = nowe wydanie), skrót commita i jego data.
+// Wydanie (deploy z main) ustawia APP_RELEASE=1; inne buildy są oznaczane jako „-dev”.
+function git(cmd: string): string {
+  try {
+    return execSync(`git ${cmd}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return '';
+  }
+}
+const build = {
+  build: Number(git('rev-list --count HEAD')) || 0,
+  commit: git('rev-parse --short=7 HEAD'),
+  date: git('log -1 --format=%cs'),
+  dev: process.env.APP_RELEASE !== '1',
+};
+
 export default defineConfig({
   base,
+  define: {
+    __APP_BUILD__: JSON.stringify(build.build),
+    __APP_COMMIT__: JSON.stringify(build.commit),
+    __APP_DATE__: JSON.stringify(build.date),
+    __APP_DEV__: JSON.stringify(build.dev),
+  },
   plugins: [
     react(),
+    // version.json obok aplikacji – komunikat o aktualizacji czyta z niego numer nowej wersji
+    {
+      name: 'app-version-json',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify(build) });
+      },
+    },
     VitePWA({
       registerType: 'prompt',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],

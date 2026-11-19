@@ -3,6 +3,7 @@
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
 import { HAT_MM, HAT_W, boardById, ceilingSystemById, isHatCeiling, isHungCeiling, wallFrameDepth, wallSystemById } from '../catalog/rigips';
+import { atticBoardLayout } from '../calc/atticBoards';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
 import { ceilingLevels } from '../calc/ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
@@ -218,7 +219,6 @@ function buildWall(
   const sec = contacts.sections.get(w.id) ?? wallSection(w);
   const pointFix = sys.frame === 'point-fix';
   const glued = sys.frame === 'glued';
-  const bt = sec.bt;
 
   /** Dodaje prostopadłościan w układzie ściany: u wzdłuż, v wysokość, n odsunięcie od osi */
   const box = (
@@ -309,6 +309,9 @@ function buildWall(
   const openings = wallOpenings(w, L, H);
   const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
   for (const face of lay?.faces ?? []) {
+    // grubość warstwy po swojej stronie (ściany z innym poszyciem stron), płyta tej warstwy
+    const bt = sec.bt[face.side];
+    const fb = face.board ?? board.id;
     const n = (face.side === 0 ? 1 : -1) * (sec.core + bt * face.layer + bt / 2);
     for (const pc of face.pieces) {
       if (pc.notches?.length) {
@@ -316,7 +319,7 @@ function buildWall(
         parts.push({
           type: 'panel',
           layer: 'wallBoards',
-          mat: `board:${board.id}`,
+          mat: `board:${fb}`,
           origin: [ax, 0, az],
           rotY,
           n,
@@ -328,7 +331,7 @@ function buildWall(
         continue;
       }
       for (const r of subtractRects({ x0: pc.x0, x1: pc.x1, y0: pc.y0, y1: pc.y1 }, holes))
-        box('wallBoards', `board:${board.id}`, r.x0, r.x1, r.y0, r.y1, n, bt);
+        box('wallBoards', `board:${fb}`, r.x0, r.x1, r.y0, r.y1, n, bt);
     }
   }
 
@@ -661,6 +664,7 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   const z0 = 0;
   const sys = ceilingSystemById(a.systemId);
   const grid = atticGrid(a, sys);
+  const layout = atticBoardLayout(a, sys, grid);
   const L = a.length / 100;
   const rw = a.rafterWidth / 100;
   const rh = a.rafterHeight / 100;
@@ -702,11 +706,21 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
 
   for (const g of grid.surfaces) {
     const f = frame(g.surface.a, g.surface.b);
-    // płyty: kolejne warstwy od lica w stronę rusztu
-    let h = 0;
-    for (const b of [...boards].reverse()) {
-      for (const sp of spans) tilted('ceilingBoards', `board:${b.id}`, f, sp.x, f.run / 2, h + b.t / 2, [sp.w, b.t, f.run]);
-      h += b.t;
+    // płyty z rozkładu (ten sam co na rysunku i na liście zakupów): warstwa 0 przy ruszcie, ostatnia = lico
+    const layers = layout.surfaces.find((x) => x.id === g.surface.id)?.layers ?? [];
+    for (const l of layers) {
+      const t = boards[l.layer]?.t ?? 0.0125;
+      const h = boards.slice(l.layer + 1).reduce((v, b) => v + b.t, 0);
+      for (const pc of l.pieces) {
+        const rects = pc.notches?.length
+          ? subtractRects({ x0: pc.u0, x1: pc.u1, y0: pc.s0, y1: pc.s1 }, pc.notches.map((n) => ({ x0: n.u0, x1: n.u1, y0: n.s0, y1: n.s1 })))
+          : [{ x0: pc.u0, x1: pc.u1, y0: pc.s0, y1: pc.s1 }];
+        for (const r of rects) {
+          // płaszczyzna liczona od dolnej krawędzi; w układzie 3D odwrócona, gdy skos opada w stronę rosnącego x
+          const k = (f.flipped ? g.surface.run - (r.y0 + r.y1) / 2 : (r.y0 + r.y1) / 2) / 100;
+          tilted('ceilingBoards', `board:${l.boardId}`, f, (r.x0 + r.x1) / 200, k, h + t / 2, [(r.x1 - r.x0) / 100, t, (r.y1 - r.y0) / 100]);
+        }
+      }
     }
     if (vapor) for (const sp of spans) tilted('ceilingFrame', 'vapor', f, sp.x, f.run / 2, tb + VAPOR_T / 2, [sp.w, VAPOR_T, f.run]);
     for (const s of g.cd) {
