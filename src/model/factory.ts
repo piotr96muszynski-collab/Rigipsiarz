@@ -120,7 +120,7 @@ export function createAttic(overrides: Partial<Attic> = {}): Attic {
 /** Szybkie wyliczenie: sama zabudowa poddasza */
 export function quickAtticProject(a: Attic): Project {
   const p = createProject(`Poddasze ${a.width / 100}×${a.length / 100} m`);
-  p.attics = [a];
+  p.attics = [{ ...a, plan: a.plan ?? { x: 0, y: 0 } }];
   return p;
 }
 

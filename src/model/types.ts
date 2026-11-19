@@ -121,6 +121,13 @@ export interface Ceiling {
 export interface Attic {
   id: Id;
   name?: string;
+  /**
+   * Położenie na planie: narożnik przy lewej ścianie okapowej i pierwszej ścianie szczytowej, cm.
+   * Kalenica biegnie wzdłuż osi X planu. Brak = projekt sprzed rysowania poddaszy na planie (układane automatycznie).
+   */
+  plan?: Point;
+  /** Kierunek kalenicy na planie: 0 = wzdłuż osi X, 90 = wzdłuż osi Y (lewa ściana okapowa wtedy po prawej) */
+  planRot?: 0 | 90;
   /** gable = dwuspadowy (skosy z obu stron), mono = jednospadowy (skos rośnie od lewej ściany do prawej) */
   roof: 'gable' | 'mono';
   /** Szerokość pomieszczenia w poprzek kalenicy, między ścianami okapowymi, cm */

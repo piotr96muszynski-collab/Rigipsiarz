@@ -1,3 +1,4 @@
+import { AtticEditor } from './AtticEditor';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBack } from './back';
 import { ceilingSystemById, wallSystemById } from '../catalog/rigips';
@@ -62,6 +63,12 @@ const TOOLS: { id: Tool; label: string; hint: string; icon: React.ReactNode }[] 
     hint: 'Dotknij wnętrza zamkniętego pomieszczenia albo przeciągnij prostokąt sufitu.',
     icon: <path d="M3 8h18M6 8v3M12 8v3M18 8v3M3 4h18" />,
   },
+  {
+    id: 'attic',
+    label: 'Poddasze',
+    hint: 'Dotknij wnętrza zamkniętego pomieszczenia albo przeciągnij prostokąt poddasza. Kalenica idzie wzdłuż dłuższego boku, przekrój ustawisz w panelu.',
+    icon: <path d="M3 13l9-8 9 8M6 11v8h12v-8M9 14h6" />,
+  },
 ];
 
 type Layer = 'existing' | 'new';
@@ -103,9 +110,9 @@ export interface FullscreenControl {
 }
 
 export function PlanTab({ project, calc, update, commit, wide, onShowList, fullscreen }: Props) {
-  const [tool, setTool] = useState<Tool>(project.walls.length ? 'select' : 'wall');
+  const [tool, setTool] = useState<Tool>(project.walls.length || project.attics?.length ? 'select' : 'wall');
   // pusty projekt zaczynamy od obrysu istniejącej przestrzeni, potem wstawia się nową zabudowę
-  const [layer, setLayer] = useState<Layer>(project.walls.length || project.ceilings.length ? 'new' : 'existing');
+  const [layer, setLayer] = useState<Layer>(project.walls.length || project.ceilings.length || project.attics?.length ? 'new' : 'existing');
   const [selection, setSelectionRaw] = useState<Selection>(null);
   const [expanded, setExpanded] = useState(false);
   const [fitSignal, setFitSignal] = useState(0);
@@ -155,7 +162,8 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
   const lengthWall = lengthWallId ? project.walls.find((w) => w.id === lengthWallId) : undefined;
   const ceiling = selection?.type === 'ceiling' ? project.ceilings.find((c) => c.id === selection.id) : undefined;
   const opening = wall && selection?.type === 'wall' ? wall.openings.find((o) => o.id === selection.openingId) : undefined;
-  const hasSel = !!(wall || ceiling || multiIds.length);
+  const attic = selection?.type === 'attic' ? project.attics?.find((a) => a.id === selection.id) : undefined;
+  const hasSel = !!(wall || ceiling || attic || multiIds.length);
   useBack(hasSel || multi, () => {
     setSelection(null);
     setMulti(false);
@@ -199,6 +207,10 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
       update((d) => void (d.ceilings = d.ceilings.filter((c) => c.id !== ceiling.id && !sameOutline(c.points, ceiling.points))));
       setSelection(null);
       onMessage('Usunięto sufit – możesz cofnąć');
+    } else if (attic) {
+      update((d) => void (d.attics = (d.attics ?? []).filter((a) => a.id !== attic.id)));
+      setSelection(null);
+      onMessage('Usunięto poddasze – możesz cofnąć');
     }
   };
 
@@ -232,7 +244,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
       ? EXISTING_HINT[tool as 'wall' | 'room']
       : current.hint;
   const showHint = !hintSeen[hintKey] && !msg && !(hasSel && !wide);
-  const empty = project.walls.length === 0 && project.ceilings.length === 0;
+  const empty = project.walls.length === 0 && project.ceilings.length === 0 && !project.attics?.length;
 
   const inspector = (
     <Inspector
@@ -494,6 +506,7 @@ function Inspector({
 }) {
   const wall = selection?.type === 'wall' ? project.walls.find((w) => w.id === selection.id) : undefined;
   const ceiling = selection?.type === 'ceiling' ? project.ceilings.find((c) => c.id === selection.id) : undefined;
+  const attic = selection?.type === 'attic' ? project.attics?.find((a) => a.id === selection.id) : undefined;
   const openingId = selection?.type === 'wall' ? selection.openingId : undefined;
   const opening = wall?.openings.find((o) => o.id === openingId);
   const waste = project.settings.wasteEnabled ? project.settings.waste : 0;
@@ -509,10 +522,10 @@ function Inspector({
         )
         .filter((r) => !!r);
     if (wall && existing) return (wall.linings ?? []).map((l) => calc.linings.get(liningKey(wall.id, l.side))?.req).filter((r) => !!r);
-    const r = wall ? calc.walls.get(wall.id)?.req : ceiling ? calc.ceilings.get(ceiling.id)?.req : undefined;
+    const r = wall ? calc.walls.get(wall.id)?.req : ceiling ? calc.ceilings.get(ceiling.id)?.req : attic ? calc.attics.get(attic.id)?.req : undefined;
     return r ? [r] : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wall, existing, ceiling, calc, multiIds.join()]);
+  }, [wall, existing, ceiling, attic, calc, multiIds.join()]);
   const lines = useMemo(() => (reqs.length ? summarize(reqs, waste) : []), [reqs, waste]);
 
   if (multiIds.length) {
@@ -573,7 +586,7 @@ function Inspector({
     );
   }
 
-  if (!wall && !ceiling) {
+  if (!wall && !ceiling && !attic) {
     const s = calc.stats;
     return (
       <div className="inspector">
@@ -630,19 +643,25 @@ function Inspector({
 
   const index = wall
     ? project.walls.filter((w) => isNewWall(w) === !existing).indexOf(wall) + 1
-    : project.ceilings.indexOf(ceiling!) + 1;
+    : attic
+      ? (project.attics ?? []).indexOf(attic) + 1
+      : project.ceilings.indexOf(ceiling!) + 1;
   const wallName = existing ? `Mur ${index}` : `Ściana ${index}`;
   const title = opening
     ? (opening.kind === 'door' ? (existing ? 'Drzwi wejściowe' : 'Drzwi') : 'Okno') + ` · ${wallName.toLowerCase()}`
     : wall
       ? wallName
-      : `Sufit ${index}`;
+      : attic
+        ? `Poddasze ${index}`
+        : `Sufit ${index}`;
   const liningNames = (wall?.linings ?? []).map((l) => wallSystemById(l.systemId).name);
   const summary = wall
     ? `${fmtNum(dist(...wallEnds(project, wall)) / 100)} × ${fmtNum(wall.height / 100)} m · ${
         existing ? (liningNames.length ? liningNames.join(', ') : 'istniejąca, bez okładziny') : wallSystemById(wall.systemId).name
       }`
-    : `${fmtNum(calc.ceilings.get(ceiling!.id)?.areaM2 ?? 0)} m² · ${ceilingSystemById(ceiling!.systemId).name}`;
+    : attic
+      ? `${fmtNum(attic.width / 100)} × ${fmtNum(attic.length / 100)} m · ${fmtNum(calc.attics.get(attic.id)?.areaM2 ?? 0, 1)} m² zabudowy`
+      : `${fmtNum(calc.ceilings.get(ceiling!.id)?.areaM2 ?? 0)} m² · ${ceilingSystemById(ceiling!.systemId).name}`;
   const subtitle = opening ? `${opening.width} × ${opening.height} cm${opening.kind === 'window' ? `, parapet ${opening.sill} cm` : ''}` : summary;
 
   return (
@@ -676,6 +695,18 @@ function Inspector({
           {wall && existing && <ExistingWallEditor wall={wall} project={project} calc={calc} update={update} activeOpeningId={openingId} />}
           {wall && !existing && <WallEditor wall={wall} project={project} calc={calc} update={update} activeOpeningId={openingId} />}
           {ceiling && <CeilingEditor ceiling={ceiling} wool={project.settings.wool} calc={calc} update={update} />}
+          {attic && (
+            <AtticEditor
+              attic={attic}
+              result={calc.attics.get(attic.id)}
+              edit={(fn) =>
+                update((d) => {
+                  const a = d.attics?.find((x) => x.id === attic.id);
+                  if (a) fn(a);
+                })
+              }
+            />
+          )}
           {lines.length > 0 && (
             <details className="insp-materials" open={wide}>
               <summary>Materiały na ten element ({lines.length})</summary>

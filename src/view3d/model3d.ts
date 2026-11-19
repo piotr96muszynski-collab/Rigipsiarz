@@ -11,6 +11,7 @@ import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Attic, Ceiling, Point, Project, Wall } from '../model/types';
 import { atticGrid } from '../calc/attic';
+import { atticPlacements } from '../calc/atticPlan';
 import { layerBoards } from '../calc/ceilingLevels';
 import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 import { rowSegments } from '../calc/boardLength';
@@ -590,9 +591,11 @@ const JETKA_H = 0.14;
 /**
  * Poddasze w 3D: kalenica wzdłuż osi x, przekrój w płaszczyźnie (z, y). Krokwie i jętki, wieszaki,
  * profile CD w poprzek krokwi, UD na ścianach szczytowych, folia i płyty na skosach oraz suficie –
- * z tej samej siatki co rysunki i zestawienie. `z0` = przesunięcie w planie, m.
+ * z tej samej siatki co rysunki i zestawienie. `origin` = narożnik na planie, cm.
  */
-export function buildAttic(a: Attic, parts: Part3D[], z0 = 0) {
+export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y: 0 }) {
+  const first = parts.length;
+  const z0 = 0;
   const sys = ceilingSystemById(a.systemId);
   const grid = atticGrid(a, sys);
   const L = a.length / 100;
@@ -659,6 +662,17 @@ export function buildAttic(a: Attic, parts: Part3D[], z0 = 0) {
   };
   masonry(-wallT / 2, a.kneeLeft / 100);
   masonry(a.width / 100 + wallT / 2, (a.roof === 'mono' ? st.ridgeHeight : a.kneeRight) / 100);
+  // położenie na planie: obrót kalenicy o 90° (x' = szerokość − z, z' = x) i przesunięcie do narożnika
+  const W = a.width / 100;
+  for (let i = first; i < parts.length; i++) {
+    const b = parts[i] as BoxPart;
+    if (a.planRot === 90) {
+      b.c = [W - b.c[2], b.c[1], b.c[0]];
+      b.rotY -= Math.PI / 2;
+    }
+    b.c[0] += origin.x / 100;
+    b.c[2] += origin.y / 100;
+  }
 }
 
 /** Model 3D projektu; `_calc` zostaje dla zgodności wywołań – układ rusztu liczy się z tych samych funkcji co rysunki */
@@ -674,12 +688,10 @@ export function buildModel3D(p: Project, _calc?: ProjectCalc): Model3D {
     else buildExistingWall(p, w, masonrySide(p, w, rooms), nodes, contacts, parts);
   }
   for (const c of p.ceilings) buildCeiling(c, parts);
-  // poddasza obok reszty projektu (nie mają położenia na planie)
-  const planPts = [...p.nodes, ...p.ceilings.flatMap((c) => c.points)];
-  let atticZ = planPts.length ? Math.max(...planPts.map((q) => q.y)) / 100 + 1 : 0;
+  // poddasza w tym samym miejscu co na planie
+  const spots = atticPlacements(p);
   for (const a of p.attics ?? []) {
-    buildAttic(a, parts, atticZ);
-    atticZ += a.width / 100 + 1.5;
+    buildAttic(a, parts, spots.get(a.id));
   }
 
   const min: [number, number, number] = [Infinity, 0, Infinity];
@@ -696,8 +708,12 @@ export function buildModel3D(p: Project, _calc?: ProjectCalc): Model3D {
       // element pochylony: zakres po osi długości i po rzucie pochylonej szerokości
       const hy = (Math.abs(Math.sin(pt.rotX)) * pt.s[2]) / 2;
       const hz = (Math.abs(Math.cos(pt.rotX)) * pt.s[2]) / 2;
-      grow(pt.c[0] - pt.s[0] / 2, pt.c[1] + hy, pt.c[2] - hz);
-      grow(pt.c[0] + pt.s[0] / 2, pt.c[1] + hy, pt.c[2] + hz);
+      // po obrocie w planie o 90° oś długości leży wzdłuż z
+      const turned = Math.abs(Math.sin(pt.rotY)) > 0.5;
+      const hx = turned ? hz : pt.s[0] / 2;
+      const hzz = turned ? pt.s[0] / 2 : hz;
+      grow(pt.c[0] - hx, pt.c[1] + hy, pt.c[2] - hzz);
+      grow(pt.c[0] + hx, pt.c[1] + hy, pt.c[2] + hzz);
     } else if (pt.type === 'box') grow(pt.c[0], pt.c[1] + pt.s[1] / 2, pt.c[2]);
     else if (pt.type === 'cyl') grow(pt.c[0], pt.c[1], pt.c[2]);
     else if (pt.type === 'panel') {
