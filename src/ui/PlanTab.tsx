@@ -1,10 +1,13 @@
 import { AtticEditor } from './AtticEditor';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useBack } from './back';
 import { ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { liningKey, summarize, type ProjectCalc } from '../calc/materials';
 import { dist, isNewWall, sameOutline, wallEnds } from '../geometry/geometry';
-import { deleteWall, setWallLength } from '../model/ops';
+import { deleteWall, insertOpening, offsetAlongWall, setWallLength, splitWall, toggleOpeningKind } from '../model/ops';
+import { createCeiling } from '../model/factory';
+import { findRoomAt } from '../geometry/rooms';
+import { menuItems, menuTitle, placeMenu, type MenuAction, type MenuItem, type MenuRequest } from './contextMenu';
 import type { Project } from '../model/types';
 import { CeilingEditor, ExistingWallEditor, WallEditor } from './ElementsPanel';
 import { PlanCanvas, type Selection, type Tool } from './PlanCanvas';
@@ -12,7 +15,7 @@ import { MultiWallEditor, multiSummary, systemShort, WallDefaultsEditor } from '
 import { EXIT_FULLSCREEN_ICON, FULLSCREEN_ICON } from './fullscreen';
 import { LengthSheet } from './LengthSheet';
 import { fmtMeters } from './useLaser';
-import { fmtNum } from './wallStyle';
+import { fmtCm, fmtNum } from './wallStyle';
 
 interface Props {
   project: Project;
@@ -161,7 +164,6 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
   const wall = selection?.type === 'wall' ? project.walls.find((w) => w.id === selection.id) : undefined;
   const lengthWall = lengthWallId ? project.walls.find((w) => w.id === lengthWallId) : undefined;
   const ceiling = selection?.type === 'ceiling' ? project.ceilings.find((c) => c.id === selection.id) : undefined;
-  const opening = wall && selection?.type === 'wall' ? wall.openings.find((o) => o.id === selection.openingId) : undefined;
   const attic = selection?.type === 'attic' ? project.attics?.find((a) => a.id === selection.id) : undefined;
   const hasSel = !!(wall || ceiling || attic || multiIds.length);
   useBack(hasSel || multi, () => {
@@ -184,7 +186,13 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
     return () => ro.disconnect();
   }, [hasSel, wide]);
 
-  const removeSelected = () => {
+  /** Usuwa element (z panelu, klawiszem Del albo z menu kontekstowego) */
+  const removeTarget = (t: Selection) => {
+    const multiIds = t?.type === 'walls' ? t.ids.filter((id) => project.walls.some((w) => w.id === id)) : [];
+    const wall = t?.type === 'wall' ? project.walls.find((w) => w.id === t.id) : undefined;
+    const ceiling = t?.type === 'ceiling' ? project.ceilings.find((c) => c.id === t.id) : undefined;
+    const opening = wall && t?.type === 'wall' ? wall.openings.find((o) => o.id === t.openingId) : undefined;
+    const attic = t?.type === 'attic' ? project.attics?.find((a) => a.id === t.id) : undefined;
     if (multiIds.length) {
       update((d) => {
         for (const id of multiIds) deleteWall(d, id);
@@ -213,14 +221,120 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
       onMessage('Usunięto poddasze – możesz cofnąć');
     }
   };
+  const removeSelected = () => removeTarget(selection);
+
+  // --------- menu kontekstowe (prawy przycisk / przytrzymanie) ---------
+  const [menu, setMenu] = useState<(MenuRequest & { touch: boolean }) | null>(null);
+  useBack(!!menu, () => setMenu(null));
+  const runMenu = (action: MenuAction) => {
+    const m = menu;
+    setMenu(null);
+    if (!m) return;
+    const t = m.target;
+    const w = t?.type === 'wall' ? project.walls.find((x) => x.id === t.id) : undefined;
+    const along = w ? offsetAlongWall(project, w, m.world) : 0;
+    switch (action) {
+      case 'edit':
+        if (tool !== 'select' && tool !== 'door' && tool !== 'window') setTool('select');
+        setSelectionRaw(t);
+        setExpanded(true);
+        break;
+      case 'length':
+        if (w) setLengthWallId(w.id);
+        break;
+      case 'door':
+      case 'window': {
+        if (!w) break;
+        // otwór liczony na kopii – ten sam (z tym samym id) trafia do projektu i do zaznaczenia
+        const op = insertOpening(structuredClone(project), w.id, action, along);
+        if (!op) break;
+        update((d) => void d.walls.find((x) => x.id === w.id)?.openings.push(structuredClone(op)));
+        setSelection({ type: 'wall', id: w.id, openingId: op.id });
+        break;
+      }
+      case 'split': {
+        if (!w) break;
+        const p2 = structuredClone(project);
+        if (!splitWall(p2, w.id, along)) {
+          onMessage(w.openings.some((o) => o.offset < along && o.offset + o.width > along) ? 'Tu jest otwór – podziel ścianę obok niego' : 'Za blisko końca ściany');
+          break;
+        }
+        update((d) => void splitWall(d, w.id, along));
+        onMessage(`Podzielono ścianę: ${fmtCm(along)} + ${fmtCm(dist(...wallEnds(project, w)) - along)} – możesz cofnąć`);
+        break;
+      }
+      case 'multi':
+        if (!w) break;
+        setTool('select');
+        setMulti(true);
+        setSelectionRaw({ type: 'wall', id: w.id });
+        break;
+      case 'kind':
+        if (w && t?.type === 'wall' && t.openingId)
+          update((d) => {
+            const o = d.walls.find((x) => x.id === w.id)?.openings.find((x) => x.id === t.openingId);
+            if (o) toggleOpeningKind(o);
+          });
+        break;
+      case 'rotate':
+        if (t?.type === 'attic')
+          update((d) => {
+            const a = d.attics?.find((x) => x.id === t.id);
+            if (a) a.planRot = a.planRot === 90 ? 0 : 90;
+          });
+        break;
+      case 'delete':
+        removeTarget(t);
+        break;
+      case 'deselect':
+        setSelection(null);
+        setMulti(false);
+        break;
+      case 'ceiling-here': {
+        const room = findRoomAt(project, m.world);
+        if (!room) break;
+        const c = createCeiling(project, room);
+        update((d) => void d.ceilings.push(structuredClone(c)));
+        setSelection({ type: 'ceiling', id: c.id });
+        onMessage('Dodano sufit w obrysie pomieszczenia');
+        break;
+      }
+      case 'select-all':
+        selectAllWalls();
+        break;
+      case 'fit':
+        setFitSignal((x) => x + 1);
+        break;
+    }
+  };
+  const selectAllWalls = () => {
+    const ids = project.walls.map((w) => w.id);
+    if (!ids.length) return;
+    setTool('select');
+    setSelection(ids.length === 1 ? { type: 'wall', id: ids[0] } : { type: 'walls', ids });
+  };
+  const menuCtx = useMemo(() => {
+    if (!menu || menu.target) return {};
+    const room = findRoomAt(project, menu.world);
+    return { roomWithoutCeiling: !!room && !project.ceilings.some((c) => sameOutline(c.points, room)) };
+  }, [menu, project]);
 
   // skróty klawiaturowe (komputer)
   const removeRef = useRef(removeSelected);
   removeRef.current = removeSelected;
+  const selectAllRef = useRef(selectAllWalls);
+  selectAllRef.current = selectAllWalls;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const typing = t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable;
+      // Ctrl+A (Cmd+A): wszystkie ściany zamiast zaznaczania tekstu strony; w polach tekstowych działa zwykłe zaznaczanie
+      if (!typing && (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selectAllRef.current();
+        return;
+      }
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         removeRef.current();
@@ -283,7 +397,20 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           multi={multi}
           onMessage={onMessage}
           onEditLength={setLengthWallId}
+          onContextMenu={setMenu}
         />
+
+        {menu && (
+          <PlanMenu
+            key={`${menu.screen.x},${menu.screen.y}`}
+            title={menuTitle(project, menu.target)}
+            items={menuItems(project, menu.target, menuCtx)}
+            at={menu.screen}
+            touch={menu.touch}
+            onPick={runMenu}
+            onClose={() => setMenu(null)}
+          />
+        )}
 
         {lengthWall && (
           <LengthSheet
@@ -624,7 +751,7 @@ function Inspector({
             <kbd>W</kbd> ściana · <kbd>R</kbd> pokój · <kbd>D</kbd> drzwi · <kbd>O</kbd> okno · <kbd>S</kbd> sufit · <kbd>V</kbd> wybierz
           </li>
           <li>
-            <kbd>Shift</kbd> + klik – kilka ścian · <kbd>Del</kbd> usuń · <kbd>Esc</kbd> przerwij · <kbd>F</kbd> cały plan · kółko myszy – powiększenie · prawy przycisk – przesuwanie
+            <kbd>Shift</kbd> + klik – kilka ścian · <kbd>Ctrl</kbd> + <kbd>A</kbd> wszystkie ściany · <kbd>Del</kbd> usuń · <kbd>Esc</kbd> przerwij · <kbd>F</kbd> cały plan · kółko myszy – powiększenie · prawy przycisk – menu (przeciągnięcie przesuwa plan)
           </li>
         </ul>
         {onResetHints && (
@@ -725,6 +852,60 @@ function Inspector({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Menu kontekstowe planu – obok kursora albo nad palcem; zamyka je Esc, Wstecz i dotknięcie poza nim */
+function PlanMenu({ title, items, at, touch, onPick, onClose }: { title: string; items: MenuItem[]; at: { x: number; y: number }; touch: boolean; onPick: (a: MenuAction) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const area = el?.parentElement;
+    if (!el || !area) return;
+    setPos(placeMenu(at, { w: el.offsetWidth, h: el.offsetHeight }, { w: area.clientWidth, h: area.clientHeight }, touch));
+    el.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+  }, [at, touch]);
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const btns = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
+        const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+        btns[(i + (e.key === 'ArrowDown' ? 1 : btns.length - 1)) % btns.length]?.focus();
+      }
+    };
+    // dotknięcie, które otworzyło menu, jeszcze trwa – nasłuch od następnego
+    const id = setTimeout(() => window.addEventListener('pointerdown', onDown, true), 0);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onClose);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onClose);
+    };
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      className={`plan-menu ${touch ? 'touch' : ''}`}
+      role="menu"
+      aria-label={title}
+      style={pos ? { left: pos.x, top: pos.y } : { left: at.x, top: at.y, visibility: 'hidden' }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <div className="plan-menu-title">{title}</div>
+      {items.map((it) => (
+        <button key={it.action} role="menuitem" className={it.danger ? 'danger' : ''} onClick={() => onPick(it.action)}>
+          {it.label}
+        </button>
+      ))}
     </div>
   );
 }
