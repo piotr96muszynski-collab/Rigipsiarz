@@ -1,6 +1,6 @@
 import { ceilingBoardLayout, hangerPositions, splicePositions } from '../calc/layout';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, type CeilingGridLine } from '../calc/materials';
-import { ceilingSystemById, isHungCeiling, PRODUCTS } from '../catalog/rigips';
+import { ceilingSystemById, isHungCeiling } from '../catalog/rigips';
 import { bbox } from '../geometry/geometry';
 import type { Ceiling } from '../model/types';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, nss } from './svg';
@@ -58,7 +58,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
           : kind === 'parallel'
             ? `CD 60 na wieszakach ${sys.hangerType === 'noniusz' ? 'noniuszowych' : ''}`.trim()
             : sys.profiles
-              ? `${PRODUCTS[sys.profiles.main]?.name ?? sys.profiles.main} (górny)`
+              ? `profil główny ${sys.profiles.main} (górny)`
               : 'CD 60 nośny (górny)';
   const mainSpacing = kind === 'direct' || kind === 'parallel' || cwSpan ? sys.secondarySpacing : sys.mainSpacing;
   const crossLabel = sys.profiles ? `wpięcie profilu dolnego, ${sys.profiles.crossScrews} wkręty` : kind === 'two-level' ? 'łącznik krzyżowy' : kind === 'ua-span' ? 'łącznik UA–CD ×2' : 'łącznik jednopoziomowy ×2';
@@ -127,9 +127,9 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
       </Paper>
       <Legend
         items={[
-          { color: C.ud, label: `${cwSpan ? `UW ${sys.profile ?? 50}` : sys.profiles ? (PRODUCTS[sys.profiles.edge]?.name ?? sys.profiles.edge) : 'UD 30'} po obwodzie na taśmie, kołki` },
+          { color: C.ud, label: `${cwSpan ? `UW ${sys.profile ?? 50}` : sys.profiles ? `profil przyścienny ${sys.profiles.edge}` : 'UD 30'} po obwodzie na taśmie, kołki` },
           { color: C.main, label: `${mainLabel} co ${mainSpacing} cm (${mains.length} linii)` },
-          ...(secs.length ? [{ color: C.secondary, label: `${sys.profiles ? (PRODUCTS[sys.profiles.secondary]?.name ?? sys.profiles.secondary) : 'CD 60 montażowy'} (dolny) co ${sys.secondarySpacing} cm (${secs.length} linii)` }] : []),
+          ...(secs.length ? [{ color: C.secondary, label: `${sys.profiles ? `profil nośny ${sys.profiles.secondary}` : 'CD 60 montażowy'} (dolny) co ${sys.secondarySpacing} cm (${secs.length} linii)` }] : []),
           ...(hung
             ? [{ color: C.hanger, label: `${kind === 'direct' ? 'uchwyt bezpośredni + kotwa' : sys.profiles ? 'zawiesie z kątownika + kotwa' : 'wieszak noniuszowy + kotwa'}, max co ${sys.hangerSpacing} cm (${hangers.length} szt.)` }]
             : []),
