@@ -4,6 +4,7 @@ import {
   STOCK_LENGTHS,
   boardById,
   isLiningSystem,
+  isHatCeiling,
   ceilingMaxSpan,
   ceilingSystemById,
   wallMaxHeight,
@@ -38,7 +39,7 @@ import { atticRequirement, type AtticResult } from './atticMaterials';
 import { ceilingLevels, ceilingWallWarnings, hangerGapClass, layerBoards, type CeilingLevels } from './ceilingLevels';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn, wallVaporSpec } from './vaporBarrier';
-import { OFFCUT_MIN, bracketPositions, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
+import { OFFCUT_MIN, bracketPositions, hatFixPositions, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -175,7 +176,8 @@ export interface WallBreakdown {
 /** Grubości wełny, które mieszczą się w ruszcie ściany (mm); pusta lista = bez wełny */
 export function wallWoolOptions(sys: WallSystem): number[] {
   // płyta klejona i ATLAS M-System 3G – brak miejsca na wełnę
-  if (sys.frame === 'glued' || sys.frame === 'point-fix') return [];
+  // profile kapeluszowe – płyta 15 mm od ściany, brak miejsca na wełnę
+  if (sys.frame === 'glued' || sys.frame === 'point-fix' || sys.frame === 'hat-lining') return [];
   // okładzina na CD 60 i uchwytach ES – przestrzeń regulowana uchwytem, typowo 50 mm
   const cavity = sys.frame === 'cd-lining' ? 50 : sys.profile;
   return WOOL_THICKNESSES.filter((t) => t <= cavity);
@@ -233,17 +235,20 @@ export function wallRequirement(
 
   if (sys.frame === 'point-fix') return pointFixWall(req, w, j, sys, L, H, openings, warnings, wallLayout(p, w, j, contacts ?? buildContacts(p)));
 
-  const isCD = sys.frame === 'cd-lining';
+  const isHat = sys.frame === 'hat-lining';
+  const isCD = sys.frame === 'cd-lining' || isHat;
   const rows = sys.frame === 'glued' ? 0 : sys.frame === 'double' || sys.frame === 'separate' ? 2 : 1;
-  const stud = isCD
-    ? 'CD60'
-    : sys.studKind === 'UA'
-      ? `UA${sys.profile}`
-      : sys.studKind === 'UU'
-        ? `UW${sys.profile}`
-        : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`]
-          ? `CW${sys.profile}AKU`
-          : `CW${sys.profile}`;
+  const stud = isHat
+    ? 'KAPELUSZ'
+    : isCD
+      ? 'CD60'
+      : sys.studKind === 'UA'
+        ? `UA${sys.profile}`
+        : sys.studKind === 'UU'
+          ? `UW${sys.profile}`
+          : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`]
+            ? `CW${sys.profile}AKU`
+            : `CW${sys.profile}`;
   // słupki podwójne: dwa CW zespolone wkrętami (kalkulator Rigips: 8 pchełek/m² przy 1,8 m pary słupków na m²)
   const doubled = !!w.doubleStuds && !isCD && rows > 0;
   const track = isCD ? 'UD30' : `UW${sys.profile}`;
@@ -258,7 +263,10 @@ export function wallRequirement(
   const addStud = (product: string, len: number) => {
     if (len <= 0.01) return;
     addPiece(req, product, len);
-    if (isCD) {
+    if (isHat) {
+      // profil kapeluszowy kołkowany wprost do ściany: kołki w dwóch rzędach (te same punkty co na rysunku i w 3D)
+      add(req.counts, sys.anchor ?? 'KOLEK', hatFixPositions(0, len, bracketM).length);
+    } else if (isCD) {
       // tyle samo uchwytów co na rysunku „miejsca wiercenia” i w 3D
       const brackets = bracketPositions(0, len, bracketM).length;
       add(req.counts, 'WIESZAK_ES', brackets);
@@ -353,12 +361,19 @@ export function wallRequirement(
         add(req.counts, 'KOLEK', 8);
       }
       // nadproże z UW/UD z zagiętymi końcami (+15 cm na stronę)
+      if (isHat) {
+        // nad i pod otworem poziomy odcinek profilu kapeluszowego pod krawędź płyt (założenie aplikacji)
+        if (o.top < H - 0.05) addStud(stud, o.w);
+        if (o.sill > 0.05) addStud(stud, o.w);
+        continue;
+      }
       if (o.top < H - 0.05) addPiece(req, track, o.w + 0.3);
       if (o.sill > 0.05) addPiece(req, track, o.w + 0.3);
       add(req.counts, 'LN9', 8 + (o.sill > 0.05 ? 4 : 0));
     }
 
-    // --- Profile UW/UD (posadzka i strop) ---
+    // --- Profile UW/UD (posadzka i strop); okładzina na profilach kapeluszowych jest bez UD ---
+    if (isHat) continue;
     const floorRuns: number[] = [];
     let cursor = 0;
     for (const o of [...openings].filter((o) => o.sill <= 0.01).sort((a, b) => a.x0 - b.x0)) {
@@ -739,14 +754,18 @@ export function ceilingRequirement(
   const profile = sys.profile ?? 50;
   const mf = sys.profiles;
   const perimeterProfile = cwSpan ? `UW${profile}` : (mf?.edge ?? 'UD30');
-  for (const e of edges) {
-    addPiece(req, perimeterProfile, e);
-    add(req.counts, 'KOLEK', anchorsFor(e, 0.8));
+  // profile kapeluszowe kołkowane wprost do stropu – bez UD po obwodzie (karty Rigips 4.05.21, Siniat PK48, Norgips OSF KAP)
+  const hat = isHatCeiling(sys);
+  if (!hat) {
+    for (const e of edges) {
+      addPiece(req, perimeterProfile, e);
+      add(req.counts, 'KOLEK', anchorsFor(e, 0.8));
+    }
+    add(req.meters, cwSpan ? TAPE_FOR_PROFILE[profile] : 'TASMA_USZ30', P);
   }
-  add(req.meters, cwSpan ? TAPE_FOR_PROFILE[profile] : 'TASMA_USZ30', P);
 
   const grid = ceilingGrid(c, sys);
-  const mainProduct = mf?.main ?? (sys.kind === 'ua-span' ? 'UA50' : cwSpan ? `CW${profile}` : 'CD60');
+  const mainProduct = mf?.main ?? (sys.kind === 'ua-span' ? 'UA50' : cwSpan ? `CW${profile}` : hat ? 'KAPELUSZ' : 'CD60');
   const secondaryProduct = mf?.secondary ?? 'CD60';
 
   let longestMain = 0;
@@ -766,6 +785,11 @@ export function ceilingRequirement(
       }
       if (cwSpan) {
         add(req.counts, 'LN9', 2);
+        continue;
+      }
+      if (hat) {
+        // dyble w dwóch rzędach na półkach profilu (te same punkty co na rysunku i w 3D)
+        add(req.counts, 'KOTWA', hatFixPositions(s0 / 100, s1 / 100, sys.hangerSpacing / 100).length);
         continue;
       }
       const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100) - 1e-9));

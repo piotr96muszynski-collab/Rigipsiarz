@@ -286,7 +286,7 @@ for (const [gid, layers] of [[43, 1], [44, 2], [45, 3], [46, 4]]) {
   });
   mkWall({ id: `NG-OS-CD-${layers}`, gid, profile: 50, variants: vs, name: `Okładzina ścienna OS na CD 60 i wieszakach ES, ${layers}×12,5`, category: 'okładzina', frame: 'cd-lining', layers, sides: 1,
     defaultBoard: layers <= 2 ? 'NG-GKB12.5' : 'NG-GKF12.5', insulationDefault: false, bracketSpacing: 120, basic: layers <= 2, refKind: 'OS', maxHeight: undefined,
-    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) pominięte' });
+    info: 'Profile CD 60 pionowo co 60 cm, wieszaki ES co 120 cm, UD 30 góra i dół · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OS-KAP' });
 }
 {
   const vs = groups[42].rows.map(([b, , , thk, minThk, mass, maxH]) => clean({ label: `${layersTxt(thk)} ${boardsTxt(b)} na klej`, board: boardId(b, thk), maxHeight: num(maxH) * 100, thickness: num(minThk), mass: num(mass) }));
@@ -335,7 +335,7 @@ for (const [gid, layers] of [[38, 1], [39, 2], [40, 3], [41, 4]]) {
   const h = layers === 4 ? 60 : layers === 3 ? 70 : 85;
   mkCeil({ id: `NG-OSF-${layers}`, gid, refKind: 'OSF', filter: (r) => r[3] === 'CD60', name: `Okładzina sufitowa OSF na CD 60 i wieszakach ES, ${LT[layers]}`, kind: 'direct', layers,
     defaultBoard: layers >= 3 ? 'NG-GKF12.5' : 'NG-GKB12.5', mainSpacing: sec, secondarySpacing: sec, hangerSpacing: h, hangerType: 'es', basic: layers <= 2,
-    info: `CD 60 co ${sec} cm na wieszakach ES / ES Plus co ${h} cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) pominięte` });
+    info: `CD 60 co ${sec} cm na wieszakach ES / ES Plus co ${h} cm tuż pod stropem · odmiany na profilach kapeluszowych (KAP) – osobne pozycje NG-OSF-KAP` });
 }
 const ZP_COMMON = 'profil FLEX na załamaniach, folia paroizolacyjna i wełna między krokwiami · płyty ogniochronne i akustyczne: profile co 40 cm';
 for (const [gid, layers] of [[22, 1], [24, 2]]) {

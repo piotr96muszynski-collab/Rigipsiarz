@@ -1,4 +1,4 @@
-import { FIXER_EDGE, OPENING_JOINT_MIN, bracketPositions, pieceOutline, type BoardFace, type BoardPiece, type CutRect, type StudKind, type WallLayout } from '../calc/layout';
+import { FIXER_EDGE, OPENING_JOINT_MIN, bracketPositions, hatFixPositions, HAT_FLANGE, pieceOutline, type BoardFace, type BoardPiece, type CutRect, type StudKind, type WallLayout } from '../calc/layout';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, dedupe, nss } from './svg';
 
 const STUD_COLOR: Record<StudKind, string> = {
@@ -115,15 +115,26 @@ export function WallFrameDrawing({ l, title }: { l: WallLayout; title: string })
       </Paper>
       <Legend
         items={[
-          { color: C.stud, label: `${l.frame === 'cd-lining' ? 'profil' : 'słupek'} ${l.studLabel} (rozstaw ${cm(l.spacing * 100)} cm)${l.rows > 1 ? ' – dwa rzędy, drugi identyczny' : ''}` },
+          { color: C.stud, label: `${l.frame === 'cd-lining' || l.frame === 'hat-lining' ? 'profil' : 'słupek'} ${l.studLabel} (rozstaw ${cm(l.spacing * 100)} cm)${l.rows > 1 ? ' – dwa rzędy, drugi identyczny' : ''}` },
           ...(has('short') ? [{ color: C.short, label: 'słupek skrócony nad/pod otworem' }] : []),
           ...(has('jamb') ? [{ color: C.jamb, label: `ościeże ${l.studLabel}` }] : []),
           ...(has('jamb-ua') ? [{ color: C.ua, label: `ościeże UA ${l.profile} + kątowniki` }] : []),
           ...(has('extra') ? [{ color: C.extra, label: `dodatkowy ${l.studLabel} (narożnik / połączenie)` }] : []),
           ...(has('joint') ? [{ color: C.joint, label: `dodatkowy ${l.studLabel} pod styk płyt przy otworze (styki warstw muszą się minąć)` }] : []),
-          { color: C.track, label: `${l.trackLabel} posadzka i strop, nadproża/podokienniki +15 cm na stronę` },
+          ...(l.frame === 'hat-lining'
+            ? l.tracks.length
+              ? [{ color: C.track, label: `${l.trackLabel} poziomo nad/pod otworem (okładzina bez UD przy posadzce i stropie)` }]
+              : []
+            : [{ color: C.track, label: `${l.trackLabel} posadzka i strop, nadproża/podokienniki +15 cm na stronę` }]),
           ...(l.brackets
-            ? [{ color: C.hanger, label: `uchwyt ES do muru, max co ${cm(l.brackets.spacing * 100)} cm wg karty systemu (${l.brackets.points.length} szt.)` }]
+            ? [
+                {
+                  color: C.hanger,
+                  label: l.brackets.hat
+                    ? `kołek przez półkę profilu, dwa rzędy na przemian, w rzędzie max co ${cm(l.brackets.spacing * 100)} cm wg karty systemu (${l.brackets.points.length} szt.)`
+                    : `uchwyt ES do muru, max co ${cm(l.brackets.spacing * 100)} cm wg karty systemu (${l.brackets.points.length} szt.)`,
+                },
+              ]
             : []),
           ...(l.openings.length ? [{ dashed: true, label: 'otwór w świetle' }] : []),
         ]}
@@ -285,7 +296,7 @@ export function WallBracketsDrawing({ l, title }: { l: WallLayout; title: string
   // osie profili jak na rysunku konstrukcji (profil skrajny w osi krawędzi okładziny)
   const xs = dedupe(l.studs.filter((st) => st.segments.length).map((st) => st.x * 100), 0.5);
   // łańcuch: rzędy uchwytów na pełnych profilach; uchwyty krótkich odcinków przy otworach opisane osobno
-  const ys = bracketPositions(0, l.H, g.spacing).map((y) => y * 100);
+  const ys = (g.hat ? hatFixPositions(0, l.H, g.spacing).map((q) => q.at) : bracketPositions(0, l.H, g.spacing)).map((y) => y * 100);
   const onRow = (y: number) => ys.some((r) => Math.abs(r - y * 100) < 0.5);
   const rows = ys.map((y) => Hc - y).sort((a, b) => a - b);
   return (
@@ -331,9 +342,13 @@ export function WallBracketsDrawing({ l, title }: { l: WallLayout; title: string
       </Paper>
       <Legend
         items={[
-          { color: C.hanger, label: `uchwyt ES – 1 kołek w murze (${g.points.length} szt. na rysunku)` },
+          g.hat
+            ? { color: C.hanger, label: `kołek przez półkę profilu kapeluszowego, ${cm(HAT_FLANGE * 100)} cm od osi profilu (${g.points.length} szt. na rysunku)` }
+            : { color: C.hanger, label: `uchwyt ES – 1 kołek w murze (${g.points.length} szt. na rysunku)` },
           { color: C.stud, dashed: true, label: `oś profilu ${l.studLabel} (rozstaw ${cm(l.spacing * 100)} cm)` },
-          { color: C.hanger, dashed: true, label: `rząd uchwytów na pełnych profilach, max co ${cm(g.spacing * 100)} cm wzdłuż profilu` },
+          g.hat
+            ? { color: C.hanger, dashed: true, label: `wysokości kołków na pełnych profilach: na przemian lewa i prawa półka, w każdej max co ${cm(g.spacing * 100)} cm` }
+            : { color: C.hanger, dashed: true, label: `rząd uchwytów na pełnych profilach, max co ${cm(g.spacing * 100)} cm wzdłuż profilu` },
           ...(g.points.some((q) => !onRow(q.y)) ? [{ color: C.hanger, label: 'liczba przy uchwycie – wysokość od posadzki (profil skrócony przy otworze)' }] : []),
           ...(l.openings.length ? [{ dashed: true, label: 'otwór w świetle – profile nad i pod otworem mają własne uchwyty' }] : []),
         ]}

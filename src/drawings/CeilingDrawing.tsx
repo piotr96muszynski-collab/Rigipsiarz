@@ -1,6 +1,6 @@
-import { ceilingBoardLayout, hangerPositions, splicePositions } from '../calc/layout';
+import { HAT_FLANGE, ceilingBoardLayout, hangerPositions, hatFixPositions, splicePositions } from '../calc/layout';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, type CeilingGridLine } from '../calc/materials';
-import { ceilingSystemById, isHungCeiling } from '../catalog/rigips';
+import { ceilingSystemById, isHatCeiling, isHungCeiling } from '../catalog/rigips';
 import { bbox } from '../geometry/geometry';
 import type { Ceiling } from '../model/types';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, nss } from './svg';
@@ -45,11 +45,29 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
   const longest = !hung ? undefined : mains
     .flatMap((g) => g.segments.map((s) => ({ g, s })))
     .sort((a, b) => b.s[1] - b.s[0] - (a.s[1] - a.s[0]))[0];
-  const hangers = !hung ? [] : mains.flatMap((g) => g.segments.flatMap(([a, b]) => hangerPositions(a, b, sys.hangerSpacing).map((s) => pt(g, s))));
+  // profile kapeluszowe: dyble przez obie półki na przemian (bez uchwytów, bez UD, bez łączników)
+  const hat = isHatCeiling(sys);
+  const hatOff = (g: (typeof grid)[number], side: number) => (g.axis === 'x' ? { x: 0, y: side * HAT_FLANGE * 100 } : { x: side * HAT_FLANGE * 100, y: 0 });
+  const hangers = !hung
+    ? []
+    : hat
+      ? mains.flatMap((g) =>
+          g.segments.flatMap(([a, b]) =>
+            hatFixPositions(a / 100, b / 100, sys.hangerSpacing / 100).map((q) => {
+              const p0 = pt(g, q.at * 100);
+              const d = hatOff(g, q.side);
+              return { x: p0.x + d.x, y: p0.y + d.y };
+            }),
+          ),
+        )
+      : mains.flatMap((g) => g.segments.flatMap(([a, b]) => hangerPositions(a, b, sys.hangerSpacing).map((s) => pt(g, s))));
+  const chainAt = (a: number, b: number) => (hat ? hatFixPositions(a / 100, b / 100, sys.hangerSpacing / 100).map((q) => q.at * 100) : hangerPositions(a, b, sys.hangerSpacing));
   // łączniki wzdłużne tylko na CD (UA i CW docina się na długość przęsła)
-  const splices = grid.filter((g) => !sys.profiles && (g.level === 'secondary' || hung)).flatMap((g) => g.segments.flatMap(([a, b]) => splicePositions(a, b).map((s) => ({ g, ...pt(g, s) }))));
+  const splices = hat ? [] : grid.filter((g) => !sys.profiles && (g.level === 'secondary' || hung)).flatMap((g) => g.segments.flatMap(([a, b]) => splicePositions(a, b).map((s) => ({ g, ...pt(g, s) }))));
   const mainLabel =
-    kind === 'direct'
+    hat
+      ? 'profil kapeluszowy 15/48 wprost na stropie'
+      : kind === 'direct'
       ? sys.hangerType === 'attic' ? 'CD 60 na wieszakach do poddaszy' : `CD 60 na uchwytach ${sys.hangerType === 'elastic' ? 'elastycznych' : 'ES'}`
       : cwSpan
         ? `CW ${sys.profile ?? 50} oparty na UW (przęsło)`
@@ -96,7 +114,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
             <circle key={i} cx={p.x} cy={p.y} r={f * 0.32} fill={C.hanger} />
           ))}
         </g>
-        <polygon points={poly(c)} fill="none" stroke={C.ud} strokeWidth={4} {...nss} />
+        {!hat && <polygon points={poly(c)} fill="none" stroke={C.ud} strokeWidth={4} {...nss} />}
         <polygon points={poly(c)} fill="none" stroke={INK} strokeWidth={1} {...nss} />
 
         <SpacingChain lines={mains} bb={bb} f={f} off={f * 2} color={C.main} />
@@ -105,7 +123,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
           <g>
             {longest.g.axis === 'x' ? (
               <ChainH
-                xs={[longest.s[0], ...hangerPositions(longest.s[0], longest.s[1], sys.hangerSpacing), longest.s[1]]}
+                xs={[longest.s[0], ...chainAt(longest.s[0], longest.s[1]), longest.s[1]]}
                 y={longest.g.at}
                 off={-f * 1.1}
                 f={f * 0.7}
@@ -113,7 +131,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
               />
             ) : (
               <ChainV
-                ys={[longest.s[0], ...hangerPositions(longest.s[0], longest.s[1], sys.hangerSpacing), longest.s[1]]}
+                ys={[longest.s[0], ...chainAt(longest.s[0], longest.s[1]), longest.s[1]]}
                 x={longest.g.at}
                 off={f * 1.1}
                 f={f * 0.7}
@@ -127,11 +145,18 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
       </Paper>
       <Legend
         items={[
-          { color: C.ud, label: `${cwSpan ? `UW ${sys.profile ?? 50}` : sys.profiles ? `profil przyścienny ${sys.profiles.edge}` : 'UD 30'} po obwodzie na taśmie, kołki` },
+          ...(hat ? [] : [{ color: C.ud, label: `${cwSpan ? `UW ${sys.profile ?? 50}` : sys.profiles ? `profil przyścienny ${sys.profiles.edge}` : 'UD 30'} po obwodzie na taśmie, kołki` }]),
           { color: C.main, label: `${mainLabel} co ${mainSpacing} cm (${mains.length} linii)` },
           ...(secs.length ? [{ color: C.secondary, label: `${sys.profiles ? `profil nośny ${sys.profiles.secondary}` : 'CD 60 montażowy'} (dolny) co ${sys.secondarySpacing} cm (${secs.length} linii)` }] : []),
           ...(hung
-            ? [{ color: C.hanger, label: `${kind === 'direct' ? 'uchwyt bezpośredni + kotwa' : sys.profiles ? 'zawiesie z kątownika + kotwa' : 'wieszak noniuszowy + kotwa'}, max co ${sys.hangerSpacing} cm (${hangers.length} szt.)` }]
+            ? [
+                {
+                  color: C.hanger,
+                  label: hat
+                    ? `dybel przez półkę profilu, dwa rzędy na przemian, w rzędzie max co ${sys.hangerSpacing} cm (${hangers.length} szt.)`
+                    : `${kind === 'direct' ? 'uchwyt bezpośredni + kotwa' : sys.profiles ? 'zawiesie z kątownika + kotwa' : 'wieszak noniuszowy + kotwa'}, max co ${sys.hangerSpacing} cm (${hangers.length} szt.)`,
+                },
+              ]
             : []),
           ...(crossings.length
             ? [{ color: '#fff', label: `${crossLabel} (${crossings.length} skrzyżowań)` }]
@@ -140,7 +165,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
         ]}
       />
       <figcaption className="muted small">
-        Rzut od dołu, wymiary w cm od krawędzi ścian. Łańcuchy przy krawędziach: rozstaw profili. {hung ? 'Czerwony łańcuch: rozmieszczenie wieszaków na najdłuższym profilu nośnym.' : ''}
+        Rzut od dołu, wymiary w cm od krawędzi ścian. Łańcuchy przy krawędziach: rozstaw profili. {hat ? 'Czerwony łańcuch: dyble na najdłuższym profilu (na przemian w obu półkach).' : hung ? 'Czerwony łańcuch: rozmieszczenie wieszaków na najdłuższym profilu nośnym.' : ''}
       </figcaption>
     </figure>
   );

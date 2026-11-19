@@ -209,7 +209,7 @@ export function WallEditor({
     root.current?.querySelector(`[data-opening="${activeOpeningId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [activeOpeningId]);
 
-  const spacingLabel = sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW';
+  const spacingLabel = sys.frame === 'point-fix' ? 'Rozstaw łączników' : sys.frame === 'cd-lining' || sys.frame === 'hat-lining' ? 'Rozstaw profili' : 'Rozstaw CW';
   const woolOptions = wallWoolOptions(sys);
   const woolMm = wallInsulation({ ...wall, insulation: true }, sys)?.thickness ?? 0;
   const vaporSpec = wallVaporSpec(sys);

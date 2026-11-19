@@ -16,6 +16,8 @@ function wallFrameLabel(s: WallSystem): string {
       return `2×CW ${s.profile} rozsunięte`;
     case 'cd-lining':
       return 'Okładzina CD 60';
+    case 'hat-lining':
+      return 'Kapelusz 15/48';
     case 'glued':
       return 'Okładzina na klej';
     case 'point-fix':

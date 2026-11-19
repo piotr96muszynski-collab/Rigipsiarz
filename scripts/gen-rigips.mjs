@@ -80,7 +80,9 @@ for (const s of data.systems) {
     let K = clean(cell(s, v, /Konstrukcja/));
     const cwNames = v.mats.flatMap((m) => m[4]).filter((n) => /^\s*CW \d/.test(n));
     if (!K && cwNames.length) K = `CW/UW ${cwNames[0].match(/CW (\d+)/)[1]}`;
-    if (/C250|4xCW|RIGISTIL|kapelusz|Kątownik/i.test(K)) {
+    // okładziny na profilach kapeluszowych (3.21.30, 3.29.20) generuje scripts/gen-hat.mjs
+    if (/kapelusz/i.test(K)) break;
+    if (/C250|4xCW|RIGISTIL|Kątownik/i.test(K)) {
       skip(s, `konstrukcja „${K.slice(0, 30)}” poza zakresem silnika`);
       break;
     }
@@ -361,7 +363,8 @@ const CEIL_LEGACY = {
 };
 const CEIL_SKIP = [
   [/RIGISTIL/i, 'profile Rigistil'],
-  [/kapelusz/i, 'profile kapeluszowe'],
+  // 4.05.21 (profile kapeluszowe wprost na stropie) generuje scripts/gen-hat.mjs
+  [/kapelusz/i, null],
   [/Klick/i, 'wieszaki Klick-Fix'],
   [/łatach/i, 'ruszt z łat drewnianych'],
   [/RIGITONE|GYPTONE|kaseton/i, 'sufit akustyczny lub kasetonowy'],
@@ -418,8 +421,8 @@ for (const s of data.systems) {
   const sysName = clean(s.list[1]);
   const AF = s.cat === 'poddasza' ? ATTIC_FRAMES[code] : undefined;
   const why = AF ? undefined : CEIL_SKIP.find(([re]) => re.test(sysName))?.[1];
-  if (why) {
-    skip(s, why);
+  if (why !== undefined) {
+    if (why) skip(s, why);
     continue;
   }
   if (!s.vars.length) {
