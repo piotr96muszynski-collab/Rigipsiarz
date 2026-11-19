@@ -218,7 +218,6 @@ function buildWall(
   const sec = contacts.sections.get(w.id) ?? wallSection(w);
   const pointFix = sys.frame === 'point-fix';
   const glued = sys.frame === 'glued';
-  const bt = sec.bt;
 
   /** Dodaje prostopadłościan w układzie ściany: u wzdłuż, v wysokość, n odsunięcie od osi */
   const box = (
@@ -309,6 +308,9 @@ function buildWall(
   const openings = wallOpenings(w, L, H);
   const holes: Rect[] = openings.map((o) => ({ x0: o.x0, x1: o.x1, y0: o.sill, y1: o.top }));
   for (const face of lay?.faces ?? []) {
+    // grubość warstwy po swojej stronie (ściany z innym poszyciem stron), płyta tej warstwy
+    const bt = sec.bt[face.side];
+    const fb = face.board ?? board.id;
     const n = (face.side === 0 ? 1 : -1) * (sec.core + bt * face.layer + bt / 2);
     for (const pc of face.pieces) {
       if (pc.notches?.length) {
@@ -316,7 +318,7 @@ function buildWall(
         parts.push({
           type: 'panel',
           layer: 'wallBoards',
-          mat: `board:${board.id}`,
+          mat: `board:${fb}`,
           origin: [ax, 0, az],
           rotY,
           n,
@@ -328,7 +330,7 @@ function buildWall(
         continue;
       }
       for (const r of subtractRects({ x0: pc.x0, x1: pc.x1, y0: pc.y0, y1: pc.y1 }, holes))
-        box('wallBoards', `board:${board.id}`, r.x0, r.x1, r.y0, r.y1, n, bt);
+        box('wallBoards', `board:${fb}`, r.x0, r.x1, r.y0, r.y1, n, bt);
     }
   }
 

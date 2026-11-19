@@ -224,6 +224,7 @@ export function WallEditor({
       studSpacing={wall.studSpacing}
       doubleStuds={wall.doubleStuds}
       innerBoardId={wall.innerBoardId}
+      sideBBoards={wall.sideBBoards}
       heightCm={wall.height}
       onApply={(pick) => edit((w) => applyWallChoice(w, pick))}
       onDouble={(on) =>
@@ -233,6 +234,12 @@ export function WallEditor({
         })
       }
       onInner={(id) => edit((w) => void (w.innerBoardId = id))}
+      onSideB={(boards) =>
+        edit((w) => {
+          if (boards.join('+') === (sys.sideB ?? []).join('+')) delete w.sideBBoards;
+          else w.sideBBoards = boards;
+        })
+      }
     />
   );
   const summary = wallMoreSummary({

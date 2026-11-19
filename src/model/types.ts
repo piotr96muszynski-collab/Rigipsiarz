@@ -4,6 +4,7 @@ import type { FinishingSettings } from '../catalog/finishing';
 import type { BoardLengthPref } from '../calc/boardLength';
 import type { ProjectProfileLengths } from '../calc/profileLength';
 import type { WoolChoice } from '../catalog/insulation';
+import type { StudSpacing } from '../catalog/rigips';
 
 export type Id = string;
 
@@ -43,7 +44,7 @@ export interface Lining {
   side: 1 | -1;
   systemId: string;
   boardId: string;
-  studSpacing: 60 | 40 | 30;
+  studSpacing: StudSpacing;
   /** Słupki podwójne (2×CW zespolone) – większa dopuszczalna wysokość */
   doubleStuds?: boolean;
   /** Płyta warstw wewnętrznych w systemach z dwoma rodzajami płyt (brak = wg systemu) */
@@ -78,11 +79,13 @@ export interface Wall {
   systemId: string;
   boardId: string;
   /** Rozstaw słupków CW, cm */
-  studSpacing: 60 | 40 | 30;
+  studSpacing: StudSpacing;
   /** Słupki podwójne (2×CW zespolone wkrętami) – większa dopuszczalna wysokość wg kart Rigips */
   doubleStuds?: boolean;
   /** Płyta warstw wewnętrznych w systemach z dwoma rodzajami płyt (brak = wg systemu) */
   innerBoardId?: string;
+  /** Płyty strony 2 od rusztu w systemach z innym poszyciem stron (brak = wg systemu), np. RTG z ołowiem 2 mm */
+  sideBBoards?: string[];
   insulation: boolean;
   /** Grubość wełny, mm (brak = pełna głębokość rusztu) */
   insulationThickness?: number;
@@ -165,7 +168,7 @@ export interface Attic {
 /** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */
 export interface WallDefaults {
   boardId?: string;
-  studSpacing?: 60 | 40 | 30;
+  studSpacing?: StudSpacing;
   insulation?: boolean;
   /** Grubość wełny, mm (brak = pełna głębokość rusztu) */
   insulationThickness?: number;
