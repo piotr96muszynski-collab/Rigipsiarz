@@ -14,6 +14,7 @@ import {
   wallMaxWidth,
   type Board,
   type CeilingSystem,
+  type Maker,
   type Product,
   type WallSystem,
   type Unit,
@@ -36,7 +37,7 @@ import {
 import { WOOL_THICKNESSES, resolveWool, woolThicknessOf, type WoolChoice } from '../catalog/insulation';
 import type { Ceiling, Lining, Point, Project, Wall } from '../model/types';
 import { createAttic, createCeiling, createProject, createWall } from '../model/factory';
-import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
+import { compoundFor, resolveFinishing, tapeFor, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
 import { atticRequirement, type AtticResult } from './atticMaterials';
 import { ceilingLevels, ceilingWallWarnings, hangerGapClass, layerBoards, type CeilingLevels } from './ceilingLevels';
@@ -142,15 +143,24 @@ export function addBoardScrews(req: Requirement, area: number, boards: string[],
  * masa wg karty wybranej masy na każdą warstwę płyt (warstwy wewnętrzne tylko wypełnione).
  * Gładzie (Q2–Q4) nie są liczone.
  */
-export function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number, fin: FinishingSettings) {
+export function addJointing(
+  req: Requirement,
+  area: number,
+  layers: number,
+  boardId: string,
+  tapePerM2: number,
+  fin: FinishingSettings,
+  maker?: Maker,
+) {
   if (boardById(boardId).kind === 'cement') {
     add(req.meters, 'TASMA_AQ', area * tapePerM2);
     add(req.kg, 'MASA_AQ', area * (0.5 + 0.25 * (layers - 1)));
     return;
   }
-  add(req.meters, tapeById(fin.tape).product, area * tapePerM2);
-  const c = compoundById(fin.compound);
-  add(req.kg, c.product, area * c.kgPerM2 * layers);
+  const c = compoundFor(fin, maker);
+  if (!c.noTape) add(req.meters, tapeFor(fin, maker).product, area * tapePerM2);
+  add(req.kg, c.product, area * (c.kgPerM2 + (c.innerKgPerM2 ?? c.kgPerM2) * (layers - 1)));
+  if (c.finish) add(req.kg, c.finish.product, area * c.finish.kgPerM2);
 }
 
 /** Wkręty na m² jednej strony ściany przy rozstawie 60 cm (karta 3.40.05: 9 + 24 szt. na 2 strony) */
@@ -499,7 +509,7 @@ export function wallRequirement(
       addBoardScrews(req, boardedNet, boards, WALL_SCREWS_OUTER * f, WALL_SCREWS_INNER * f);
     }
     // --- Spoinowanie: wg płyty zewnętrznej strony (płyta cementowa – taśma i masa do Aquaroc) ---
-    addJointing(req, boardedNet, boards.length, boards[boards.length - 1], 1.4, fin);
+    addJointing(req, boardedNet, boards.length, boards[boards.length - 1], 1.4, fin, sys.maker);
     // --- Płyty z ołowiem (Siniat RTG): samoprzylepna taśma z ołowiem na słupkach pod płytą ---
     // karta Siniat 75A50/RTG: 2,4 mb/m² przy słupkach co 625 mm (4,8 przy 312,5) – na każdą warstwę RTG
     const lead = boards.filter((id) => boardById(id).leadMm).length;
@@ -659,7 +669,7 @@ function panelWall(
   for (const sc of spec.screws) add(req.counts, sc.product, net * sc.perM2);
 
   // --- Spoinowanie (taśma 1,4 mb/m² jak w kartach) ---
-  addJointing(req, net, sys.layers, w.boardId, 1.4, resolveFinishing(p.settings.finishing));
+  addJointing(req, net, sys.layers, w.boardId, 1.4, resolveFinishing(p.settings.finishing), sys.maker);
 
   const ins = wallInsulation(w, sys);
   if (ins) add(req.area, `WELNA${ins.thickness}`, net);
@@ -986,7 +996,7 @@ export function ceilingRequirement(
   const boards = layerBoards(sys, c.boardId);
   for (const id of boards) add(req.boardArea, `${id}|${id === c.boardId ? sheetLen : pickBoardLength(id, Math.min(longSide, 300))}`, A);
   addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
-  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin);
+  addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin, sys.maker);
   const ins = ceilingInsulation(c);
   if (ins) add(req.area, `WELNA${ins.thickness}`, A * ins.layers);
   // paroizolacja między wełną / rusztem a płytami (w poddaszach element systemu)
