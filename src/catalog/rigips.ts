@@ -104,6 +104,10 @@ export interface Board {
   color: string;
   kind?: BoardKind;
   custom?: boolean;
+  /** Producent (brak = Rigips) */
+  maker?: Maker;
+  /** Odporność na wilgoć: humid = pomieszczenia wilgotne (łazienka, kuchnia), wet = strefy mokre */
+  moisture?: 'humid' | 'wet';
 }
 
 export const BOARDS: Board[] = [
@@ -368,6 +372,44 @@ export const WALL_FRAME_LABEL: Record<WallFrame, string> = {
 
 export type StudSpacing = 60 | 40 | 30;
 
+/** Producent systemu (brak pola = Rigips; systemy ATLAS mają kategorię „atlas”) */
+export type Maker = 'rigips' | 'norgips' | 'knauf' | 'atlas';
+
+export const MAKER_LABEL: Record<Maker, string> = { rigips: 'Rigips', norgips: 'Norgips', knauf: 'Knauf', atlas: 'ATLAS' };
+
+/**
+ * Odmiana systemu z karty producenta: ta sama konstrukcja z inną płytą (klasa EI, akustyka)
+ * albo z gęstszymi / podwójnymi słupkami (większa wysokość). Wartości wyłącznie z karty –
+ * pola, których karta nie podaje, zostają puste. Służy do doboru systemu po wymaganiach.
+ */
+export interface SystemVariant {
+  /** Numer systemu producenta dla tej odmiany (np. 3.40.011) */
+  code?: string;
+  /** Opis poszycia z karty, np. „1×12,5 Fire+ typ DF” */
+  label: string;
+  /** Id płyty z BOARDS (warstwa zewnętrzna); brak = odmiana dotyczy każdej płyty systemu */
+  board?: string;
+  /** Rozstaw słupków / profili, cm; brak = jak w systemie */
+  studSpacing?: StudSpacing;
+  /** Słupki podwójne (2×CW zespolone) */
+  doubleStuds?: boolean;
+  /** Maksymalna wysokość ściany, cm */
+  maxHeight?: number;
+  /** Klasa odporności ogniowej EI w minutach (brak = nieokreślona) */
+  fire?: number;
+  /** Izolacyjność akustyczna, dB */
+  rw?: number;
+  ra1?: number;
+  /** Wymagana grubość wełny, mm (0 = bez wełny) */
+  wool?: number;
+  /** Grubość całej przegrody / zabudowy, mm */
+  thickness?: number;
+  /** Masa, kg/m² */
+  mass?: number;
+  /** Cena katalogowa producenta, zł/m² (orientacyjna, do porównywania odmian) */
+  price?: number;
+}
+
 export interface WallSystem {
   id: string;
   /** Oznaczenie systemu Rigips (np. 3.40.05), jeśli jest */
@@ -402,6 +444,12 @@ export interface WallSystem {
   source: Source;
   reference?: RefLine[];
   custom?: boolean;
+  /** Producent (brak = Rigips) */
+  maker?: Maker;
+  /** true = system podstawowy (widoczny od razu); pozostałe są pod „Pozostałe systemy” */
+  basic?: boolean;
+  /** Odmiany z karty producenta (płyta, rozstaw, EI, akustyka, wysokość) */
+  variants?: SystemVariant[];
 }
 
 const boardsRef = (m2: number): RefLine => ({ label: 'Płyta g-k', qty: m2, unit: 'm²' });
@@ -911,6 +959,12 @@ export interface CeilingSystem {
   source: Source;
   reference?: RefLine[];
   custom?: boolean;
+  /** Producent (brak = Rigips) */
+  maker?: Maker;
+  /** true = system podstawowy (widoczny od razu); pozostałe są pod „Pozostałe systemy” */
+  basic?: boolean;
+  /** Odmiany z karty producenta (płyta, EI, akustyka) */
+  variants?: SystemVariant[];
 }
 
 const ceilingRefCommon = (layers: number): RefLine[] => [
