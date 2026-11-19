@@ -1,8 +1,9 @@
+import { atticPlacements, atticPlanLines } from '../calc/atticPlan';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bbox, dist, existingRooms, isNewWall, masonrySide, nodeMap, pointInPolygon, sameOutline, wallEnds } from '../geometry/geometry';
 import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
-import { createCeiling, createOpening } from '../model/factory';
+import { createAttic, createCeiling, createOpening } from '../model/factory';
 import { addWalls, clipToMasonry, hitWall, mergeNodeIfOverlaps, offsetAlongWall, removeOverlaps, type SnapResult } from '../model/ops';
 import { buildContacts, findOverlaps, uncoveredParts, wallOutline } from '../geometry/contacts';
 import { anchorsOf, angleMarks, snapGuided, snapMove, type AngleMark, type Guide, type GuideSnap } from '../geometry/snap';
@@ -10,12 +11,13 @@ import type { Point, Project } from '../model/types';
 import { awayFromFinger, BUBBLE_H, BUBBLE_W, type DimLabel, hitDimLabel } from './labelPlace';
 import { fmtCm, liningThickness, wallColor, wallThickness } from './wallStyle';
 
-export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'ceiling';
+export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'ceiling' | 'attic';
 
 export type Selection =
   | { type: 'wall'; id: string; openingId?: string }
   | { type: 'walls'; ids: string[] }
   | { type: 'ceiling'; id: string }
+  | { type: 'attic'; id: string }
   | null;
 
 /** Id zaznaczonych ścian (jednej albo kilku) */
@@ -64,7 +66,7 @@ type Gesture =
   | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number; moved: boolean; tapTarget: Selection; additive: boolean; dimWall?: string }
   | { kind: 'pinch'; d0: number; mid: Point; view: View }
   | { kind: 'draw'; start: Point; end: Point; startScreen: Point; moved: boolean; snap: Snap; down: Point }
-  | { kind: 'rect'; start: Point; end: Point; startScreen: Point; moved: boolean; mode: 'room' | 'ceiling'; guides: Guide[] }
+  | { kind: 'rect'; start: Point; end: Point; startScreen: Point; moved: boolean; mode: 'room' | 'ceiling' | 'attic'; guides: Guide[] }
   | { kind: 'node'; id: string; moved: boolean; guides: Guide[] }
   | {
       kind: 'move';
@@ -78,6 +80,7 @@ type Gesture =
       additive: boolean;
     }
   | { kind: 'vertex'; ceilingId: string; index: number; moved: boolean }
+  | { kind: 'attic'; id: string; orig: Point; grab: Point; startScreen: Point; moved: boolean }
   | { kind: 'opening'; wallId: string; openingId: string; grab: number; moved: boolean };
 
 const HANDLE_PX = 16;
@@ -95,6 +98,14 @@ export function PlanCanvas(props: Props) {
   const [chain, setChain] = useState<Point | null>(null);
   const [hover, setHover] = useState<Snap | null>(null);
   const selIds = selectedWallIds(selection);
+  // poddasza na rzucie: położenie, obrys, kalenica, krokwie, załamania
+  const atticShapes = useMemo(() => {
+    const spots = atticPlacements(project);
+    return (project.attics ?? []).map((a) => {
+      const origin = spots.get(a.id) ?? { x: 0, y: 0 };
+      return { attic: a, origin, lines: atticPlanLines(a, origin) };
+    });
+  }, [project]);
 
   const nodes = useMemo(() => nodeMap(project), [project]);
   // strona pomieszczenia dla ścian obrysu
@@ -133,7 +144,7 @@ export function PlanCanvas(props: Props) {
   }, []);
 
   const fit = useCallback(() => {
-    const pts: Point[] = [...project.nodes, ...project.ceilings.flatMap((c) => c.points)];
+    const pts: Point[] = [...project.nodes, ...project.ceilings.flatMap((c) => c.points), ...atticShapes.flatMap((x) => x.lines.outline)];
     const r = svgRef.current?.getBoundingClientRect();
     const w = r?.width ?? size.w;
     const h = r?.height ?? size.h;
@@ -183,6 +194,10 @@ export function PlanCanvas(props: Props) {
       const L = dist(a, b) || 1;
       const t = op ? (op.offset + op.width / 2) / L : 0.5;
       target = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    } else if (selection.type === 'attic') {
+      const x = atticShapes.find((q) => q.attic.id === selection.id);
+      if (!x) return;
+      target = { x: (x.lines.outline[0].x + x.lines.outline[2].x) / 2, y: (x.lines.outline[0].y + x.lines.outline[2].y) / 2 };
     } else {
       const c = project.ceilings.find((x) => x.id === selection.id);
       if (!c) return;
@@ -284,6 +299,7 @@ export function PlanCanvas(props: Props) {
     return null;
   };
   const hitCeiling = (w: Point) => [...project.ceilings].reverse().find((c) => pointInPolygon(w, c.points));
+  const hitAttic = (w: Point) => [...atticShapes].reverse().find((x) => pointInPolygon(w, x.lines.outline));
 
   // --------- obsługa wskaźnika ---------
   const onPointerDown = (e: React.PointerEvent) => {
@@ -345,7 +361,13 @@ export function PlanCanvas(props: Props) {
         return;
       }
       const hc = hw || additive ? null : hitCeiling(w);
-      const tapTarget: Selection = hw ? { type: 'wall', id: hw.id } : hc ? { type: 'ceiling', id: hc.id } : null;
+      const ha = hw || hc || additive ? null : hitAttic(w);
+      // przeciągnięcie zaznaczonego poddasza przesuwa je po planie
+      if (ha && selection?.type === 'attic' && selection.id === ha.attic.id) {
+        gesture.current = { kind: 'attic', id: ha.attic.id, orig: ha.origin, grab: w, startScreen: s, moved: false };
+        return;
+      }
+      const tapTarget: Selection = hw ? { type: 'wall', id: hw.id } : hc ? { type: 'ceiling', id: hc.id } : ha ? { type: 'attic', id: ha.attic.id } : null;
       gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget, additive };
       return;
     }
@@ -356,7 +378,7 @@ export function PlanCanvas(props: Props) {
       rerender();
       return;
     }
-    if (tool === 'room' || tool === 'ceiling') {
+    if (tool === 'room' || tool === 'ceiling' || tool === 'attic') {
       const snap = snapDraw(w);
       gesture.current = { kind: 'rect', start: snap.point, end: snap.point, startScreen: s, moved: false, mode: tool, guides: snap.guides };
       rerender();
@@ -445,6 +467,21 @@ export function PlanCanvas(props: Props) {
             n.x = sp.point.x;
             n.y = sp.point.y;
           }
+        },
+        { transient: true },
+      );
+      return;
+    }
+    if (g.kind === 'attic') {
+      if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
+      g.moved = true;
+      const step = Math.max(1, grid);
+      const nx = Math.round((g.orig.x + w.x - g.grab.x) / step) * step;
+      const ny = Math.round((g.orig.y + w.y - g.grab.y) / step) * step;
+      update(
+        (d) => {
+          const a = d.attics?.find((x) => x.id === g.id);
+          if (a) a.plan = { x: nx, y: ny };
         },
         { transient: true },
       );
@@ -550,7 +587,21 @@ export function PlanCanvas(props: Props) {
       const { start, end } = g;
       const w = Math.abs(end.x - start.x);
       const h = Math.abs(end.y - start.y);
-      if (g.mode === 'ceiling' && (!g.moved || w < 20 || h < 20)) {
+      if (g.mode === 'attic') {
+        // poddasze: prostokąt przeciągnięty albo obrys pomieszczenia, kalenica wzdłuż dłuższego boku
+        const room = !g.moved || w < 100 || h < 100 ? findRoomAt(project, start) : null;
+        const bb = room ? bbox(room) : { minX: Math.min(start.x, end.x), minY: Math.min(start.y, end.y), maxX: Math.max(start.x, end.x), maxY: Math.max(start.y, end.y) };
+        const bw = bb.maxX - bb.minX;
+        const bh = bb.maxY - bb.minY;
+        if (bw < 100 || bh < 100) onMessage('Przeciągnij prostokąt poddasza (min. 1 × 1 m) albo dotknij wnętrza zamkniętego pomieszczenia');
+        else {
+          const alongY = bh > bw;
+          const a = createAttic({ plan: { x: bb.minX, y: bb.minY }, planRot: alongY ? 90 : 0, length: Math.round(alongY ? bh : bw), width: Math.round(alongY ? bw : bh) });
+          update((d) => void (d.attics = [...(d.attics ?? []), structuredClone(a)]));
+          setSelection({ type: 'attic', id: a.id });
+          onMessage(room ? 'Dodano poddasze w obrysie pomieszczenia – ustaw przekrój w panelu' : 'Dodano poddasze – ustaw przekrój w panelu');
+        }
+      } else if (g.mode === 'ceiling' && (!g.moved || w < 20 || h < 20)) {
         const room = findRoomAt(project, start);
         if (room) {
           // drugi dotyk w tym samym pomieszczeniu nie dokłada drugiego sufitu (niewidoczny duplikat
@@ -612,7 +663,7 @@ export function PlanCanvas(props: Props) {
         const wall = project.walls.find((x) => x.a === g.id || x.b === g.id);
         if (wall) setSelection({ type: 'wall', id: wall.id });
       }
-    } else if (g.kind === 'vertex' || g.kind === 'opening') {
+    } else if (g.kind === 'vertex' || g.kind === 'opening' || g.kind === 'attic') {
       if (g.moved) commit();
     }
     rerender();
@@ -716,6 +767,28 @@ export function PlanCanvas(props: Props) {
                   c.points.map((p, i) => (
                     <circle key={i} cx={p.x} cy={p.y} r={7 / view.z} className="handle" strokeWidth={2 / view.z} />
                   ))}
+              </g>
+            );
+          })}
+
+          {atticShapes.map(({ attic: a, lines }, i) => {
+            const sel = selection?.type === 'attic' && selection.id === a.id;
+            const seg = (l: [Point, Point]) => ({ x1: l[0].x, y1: l[0].y, x2: l[1].x, y2: l[1].y });
+            return (
+              <g key={a.id} className={`attic ${sel ? 'selected' : ''}`}>
+                <polygon points={lines.outline.map((q) => `${q.x},${q.y}`).join(' ')} className="attic-area" strokeWidth={(sel ? 2.5 : 1.5) / view.z} />
+                {a.rafterSpacing * view.z > 6 &&
+                  lines.rafters.map((l, k) => <line key={`r${k}`} {...seg(l)} className="attic-rafter" strokeWidth={Math.max(1 / view.z, a.rafterWidth)} />)}
+                {lines.knees.map((l, k) => (
+                  <line key={`k${k}`} {...seg(l)} className="attic-knee" strokeWidth={5 / view.z} />
+                ))}
+                {lines.folds.map((l, k) => (
+                  <line key={`f${k}`} {...seg(l)} className="attic-fold" strokeWidth={1.5 / view.z} />
+                ))}
+                {lines.ridge && <line {...seg(lines.ridge)} className="attic-ridge" strokeWidth={2 / view.z} />}
+                <text x={(lines.outline[0].x + lines.outline[2].x) / 2} y={(lines.outline[0].y + lines.outline[2].y) / 2} fontSize={13 / view.z} textAnchor="middle" dominantBaseline="middle" className="attic-label">
+                  Poddasze {i + 1}
+                </text>
               </g>
             );
           })}
@@ -893,7 +966,7 @@ export function PlanCanvas(props: Props) {
               y={Math.min(g.start.y, g.end.y)}
               width={Math.abs(g.end.x - g.start.x)}
               height={Math.abs(g.end.y - g.start.y)}
-              className={g.mode === 'ceiling' ? 'preview-ceiling' : 'preview-room'}
+              className={g.mode === 'room' ? 'preview-room' : 'preview-ceiling'}
               strokeWidth={2 / view.z}
             />
           )}

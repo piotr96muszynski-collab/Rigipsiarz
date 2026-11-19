@@ -3414,3 +3414,37 @@ button.catalog-part {
   margin: 0.4rem 0 0.8rem;
   padding-left: 1.2rem;
 }
+
+/* ---------- poddasze na planie ---------- */
+.plan .attic-area {
+  fill: rgb(200 154 91 / 12%);
+  stroke: #a9742f;
+  stroke-dasharray: 8 4;
+  vector-effect: non-scaling-stroke;
+}
+.plan .attic.selected .attic-area {
+  fill: rgb(200 154 91 / 24%);
+  stroke-dasharray: none;
+}
+.plan .attic-rafter {
+  stroke: rgb(200 154 91 / 55%);
+}
+.plan .attic-knee {
+  stroke: var(--masonry);
+}
+.plan .attic-fold {
+  stroke: var(--accent);
+  stroke-dasharray: 5 4;
+}
+.plan .attic-ridge {
+  stroke: #8a6230;
+  stroke-dasharray: 14 5 3 5;
+}
+.plan .attic-label {
+  fill: var(--text);
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 0.25em;
+  pointer-events: none;
+}

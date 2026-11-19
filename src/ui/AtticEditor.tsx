@@ -16,6 +16,10 @@ const ROOF_OPTIONS: PickOption<Attic['roof']>[] = [
   { value: 'gable', label: 'dwuspadowy', hint: 'skosy z obu stron' },
   { value: 'mono', label: 'jednospadowy', hint: 'skos z jednej strony' },
 ];
+const RIDGE_OPTIONS: PickOption<0 | 90>[] = [
+  { value: 0, label: 'poziomo' },
+  { value: 90, label: 'pionowo' },
+];
 const COLLAR_OPTIONS: PickOption<0 | 1>[] = [
   { value: 1, label: 'sufit pod jętkami' },
   { value: 0, label: 'skosy do kalenicy' },
@@ -126,6 +130,13 @@ export function AtticEditor({ attic, edit, result }: Props) {
       {attic.collarHeight !== undefined && (
         <div className="grid-2">
           <DimInput label="Spód jętek od posadzki" unit="m" value={attic.collarHeight} min={100} max={1000} onChange={(v) => edit((a) => void (a.collarHeight = v))} />
+        </div>
+      )}
+
+      {attic.plan && (
+        <div className="field">
+          <span className="label">Kalenica na planie</span>
+          <Picker label="Kalenica na planie" value={attic.planRot ?? 0} mode="segments" options={RIDGE_OPTIONS} onChange={(v) => edit((a) => void (a.planRot = v))} />
         </div>
       )}
 

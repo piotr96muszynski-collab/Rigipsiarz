@@ -13,6 +13,7 @@ import {
 import { bbox, dist, interiorSide, isNewWall, wallEnds } from '../geometry/geometry';
 import { createAttic, createCeiling, createLining, createOpening, fitCeilingHeight } from '../model/factory';
 import { AtticEditor } from './AtticEditor';
+import { freeAtticSpot } from '../calc/atticPlan';
 import { ceilingLevels, ceilingSlab, maxCeilingHeight } from '../calc/ceilingLevels';
 import { addWall, applyWallChoice, deleteWall, setWallLength, setWallSystem } from '../model/ops';
 import { WallVariantInfo } from './VariantInfo';
@@ -112,7 +113,7 @@ export function ElementsPanel({ project, calc, update }: Props) {
         >
           + Sufit
         </button>
-        <button className="btn" onClick={() => update((d) => void (d.attics = [...(d.attics ?? []), createAttic()]))}>
+        <button className="btn" onClick={() => update((d) => void (d.attics = [...(d.attics ?? []), createAttic({ plan: freeAtticSpot(d) })]))}>
           + Poddasze
         </button>
       </div>
