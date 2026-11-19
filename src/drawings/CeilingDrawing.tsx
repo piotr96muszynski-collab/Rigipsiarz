@@ -253,8 +253,8 @@ export function CeilingFixersDrawing({ c, title }: { c: Ceiling; title: string }
         ]}
       />
       <figcaption className="muted small">
-        Wymiary w cm. Łańcuchy wymiarowe: osie rzędów łączników od krawędzi sufitu. Skrajne łączniki przy obwodzie, 1 cm od
-        ściany w osi siatki – talerzyk podpiera krawędź płyty. Talerzyki wypoziomuj laserem przed montażem płyt.
+        Wymiary w cm. Łańcuchy wymiarowe: osie rzędów łączników od krawędzi sufitu. Skrajny rząd łączników 7 cm od każdej
+        ściany (instrukcja ATLAS M-System 3G), pośrednie co rozstaw. Talerzyki wypoziomuj laserem przed montażem płyt.
       </figcaption>
     </figure>
   );

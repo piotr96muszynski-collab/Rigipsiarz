@@ -32,7 +32,7 @@ import { createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
-import { OFFCUT_MIN, liningAsWall, pieceArea, wallLayout } from './layout';
+import { OFFCUT_MIN, fixerColumns, liningAsWall, pieceArea, pointFixGrid, wallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -385,7 +385,7 @@ function pointFixWall(
   sys: WallSystem,
   L: number,
   H: number,
-  openings: { w: number; h: number; sill: number; top: number }[],
+  openings: { x0: number; x1: number; w: number; h: number; sill: number; top: number }[],
   warnings: string[],
 ): { req: Requirement; info: WallBreakdown } {
   const fixer = sys.fixer ?? FIXERS.L100;
@@ -395,7 +395,8 @@ function pointFixWall(
   const net = Math.max(0, L * H - openingArea);
 
   // łączniki (zestaw zawiera talerzyk, kołek i 4 wkręty – osobnych wkrętów TN nie liczymy)
-  const n = pointFixCount(L, H, sx, sy, openingArea);
+  // te same łączniki co na rysunku: skrajne 7 cm od krawędzi, bez łączników w świetle otworów
+  const n = pointFixGrid(0, L, H, sx, sy, openings).points.length;
   add(req.counts, fixer.product, n);
   if (fixer.extension) add(req.counts, fixer.extension, n);
 
@@ -416,18 +417,14 @@ function pointFixWall(
 }
 
 /**
- * Siatka łączników ATLAS M-System 3G na suficie, cm (współrzędne planu): od krawędzi do
- * krawędzi, rzędy także przy obwodzie; punkty przy krawędzi przesunięte o 1 cm do środka,
- * żeby jednoznacznie leżały w obrysie. `xs`/`ys` – osie rzędów, `points` – łączniki w obrysie.
+ * Siatka łączników ATLAS M-System 3G na suficie, cm (współrzędne planu): skrajne rzędy 7 cm
+ * od ścian (instrukcja ATLAS), pośrednie co rozstaw. `xs`/`ys` – osie rzędów, `points` – łączniki
+ * w obrysie.
  */
 export function ceilingFixerGrid(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c.systemId)) {
   const bb = bbox(c.points);
-  const axis = (lo: number, hi: number, step: number) => {
-    const out: number[] = [];
-    for (let v = lo; v < hi - 1e-6; v += step) out.push(v);
-    out.push(hi);
-    return out.map((v) => Math.min(hi - 1, Math.max(lo + 1, v)));
-  };
+  // jak na ścianie: skrajne rzędy 7 cm od brzegu, pośrednie co rozstaw od krawędzi sufitu (cm)
+  const axis = (lo: number, hi: number, step: number) => fixerColumns(0, (hi - lo) / 100, step / 100).map((v) => Math.round((lo + v * 100) * 10) / 10);
   const xs = axis(bb.minX, bb.maxX, c.direction === 0 ? sys.mainSpacing : sys.secondarySpacing);
   const ys = axis(bb.minY, bb.maxY, c.direction === 0 ? sys.secondarySpacing : sys.mainSpacing);
   const points: Point[] = [];

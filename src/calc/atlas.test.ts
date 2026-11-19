@@ -77,9 +77,10 @@ describe('ATLAS M-System 3G – wyliczenia', () => {
     expect(Object.keys(r.req.area)).toEqual([]);
     expect(r.info.warnings.join(' ')).toMatch(/wełny/);
     expect(r.info.studPositions).toEqual([]);
-    // 8 kolumn (4 m / 0,6 → 7 odstępów) × 7 rzędów (2,6 m / 0,5 → 6 odstępów) = 56 szt. → 3 opakowania
+    // skrajne 7 cm od krawędzi (instrukcja ATLAS): kolumny 7, 60 … 360, 393 cm = 8;
+    // rzędy 7 … 253 cm co ≤ 50 cm (5 odstępów po 49,2) = 6 → 48 szt. → 3 opakowania
     const line = calc.total.find((l) => l.key === 'ATLAS_3G_L100')!;
-    expect(line.qty).toBe(56);
+    expect(line.qty).toBe(48);
     expect(line.packs).toBe(3);
   });
   it('sufit 10×8 m: łączniki jak w prostokątnej siatce 40×50, bez profili CD/UD', () => {
