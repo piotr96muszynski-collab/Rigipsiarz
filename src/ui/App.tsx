@@ -14,7 +14,8 @@ import { FinishingPanel } from './FinishingPanel';
 import { PlanTab } from './PlanTab';
 import { ProjectList, UndoToast } from './ProjectList';
 import { LaserButton } from './LaserButton';
-import { DrawerLink, MENU_ICON, NAV_ICONS, NavDrawer } from './NavDrawer';
+import { BACK_ICON, NavIcon, SETTINGS_ICON, StageBar, ViewSwitch } from './StageNav';
+import { stageOf, stagesFor, viewForStage, type StageId, type Tab } from './stages';
 import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
@@ -283,8 +284,6 @@ function Home({
 const APP_BOARD_HINT =
   'Arkusze tej długości idą do układu płyt, rysunków, 3D i listy zakupów. Auto – najkrótszy arkusz nie niższy od ściany. Gdy dostawka wyszłaby węższa niż 30 cm, pełny arkusz jest skracany.';
 
-type Tab = 'plan' | 'list' | 'elements' | 'joints' | '3d' | 'drawings' | 'settings';
-
 function ProjectView({
   initial,
   prices,
@@ -344,29 +343,25 @@ function ProjectView({
 
   const s = calc.stats;
   const wide = useMediaQuery('(min-width: 1024px)');
-  const sections: { id: Tab; label: string }[] =
-    wide
-      ? [
-          { id: 'plan', label: 'Plan' },
-          { id: 'elements', label: 'Ściany, sufity i materiały' },
-          { id: 'joints', label: 'Łączenia i wykończenie' },
-          { id: '3d', label: 'Widok 3D' },
-          { id: 'drawings', label: 'Rysunki' },
-          { id: 'settings', label: 'Ustawienia' },
-        ]
-      : [
-          { id: 'plan', label: 'Plan' },
-          { id: 'list', label: 'Lista zakupów' },
-          { id: 'elements', label: 'Ściany i sufity' },
-          { id: 'joints', label: 'Łączenia i wykończenie' },
-          { id: '3d', label: 'Widok 3D' },
-          { id: 'drawings', label: 'Rysunki' },
-          { id: 'settings', label: 'Ustawienia' },
-        ];
-  const tabs = sections.map((t) => ({ ...t, icon: NAV_ICONS[t.id] }));
-  const [menuOpen, setMenuOpen] = useState(false);
-  const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
-  const homeTab: Tab = wide && startTab === 'list' ? 'elements' : startTab;
+  const stages = stagesFor(wide);
+  const stage = stageOf(tab);
+  const views = stages.find((x) => x.id === stage)?.views;
+  // ostatnio oglądany widok każdego etapu – powrót do etapu otwiera to, co było
+  const [lastView, setLastView] = useState<Partial<Record<StageId, Tab>>>({});
+  const go = (t: Tab) => {
+    const st = stageOf(t);
+    if (st) setLastView((prev) => ({ ...prev, [st]: t }));
+    setTab(t);
+  };
+  const goStage = (id: StageId) => go(viewForStage(id, lastView));
+  const beforeSettings = useRef<Tab>(startTab);
+  const toggleSettings = () => {
+    if (tab === 'settings') return setTab(beforeSettings.current);
+    beforeSettings.current = tab;
+    setTab('settings');
+  };
+  const activeTab = tab;
+  const homeTab = startTab;
 
   // przycisk Wstecz: z innej zakładki wraca do startowej, a stamtąd do listy projektów
   useBack(true, () => (activeTab !== homeTab ? setTab(startTab) : onClose()));
@@ -384,25 +379,16 @@ function ProjectView({
   return (
     <div className={`project ${activeTab === 'plan' ? 'on-plan' : ''} ${immersive ? 'immersive' : ''}`}>
       <header className="topbar">
-        <button
-          className="icon-btn menu-btn"
-          onClick={() => setMenuOpen(true)}
-          aria-label="Menu sekcji projektu"
-          aria-expanded={menuOpen}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden>
-            <path d={MENU_ICON} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-          </svg>
+        <button className="icon-btn back-btn" onClick={onClose} aria-label="Wszystkie projekty">
+          <NavIcon d={BACK_ICON} />
         </button>
-        <div className="title-wrap">
-          <span className="section-name">{tabs.find((t) => t.id === activeTab)?.label}</span>
-          <input
-            className="title-input"
-            value={project.name}
-            onChange={(e) => update((d) => void (d.name = e.target.value))}
-            aria-label="Nazwa projektu"
-          />
-        </div>
+        <input
+          className="title-input"
+          value={project.name}
+          onChange={(e) => update((d) => void (d.name = e.target.value))}
+          aria-label="Nazwa projektu"
+        />
+        {wide && <StageBar stages={stages} active={stage} onSelect={goStage} className="in-topbar" />}
         <div className="topbar-actions">
           <LaserButton />
           <button className="icon-btn" onClick={undo} disabled={!canUndo} aria-label="Cofnij">
@@ -415,10 +401,20 @@ function ProjectView({
               <path d="M15 14l5-5-5-5M20 9H10a6 6 0 000 12h3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
+          <button
+            className={`icon-btn ${tab === 'settings' ? 'on' : ''}`}
+            onClick={toggleSettings}
+            aria-label="Ustawienia projektu"
+            aria-pressed={tab === 'settings'}
+          >
+            <NavIcon d={SETTINGS_ICON} />
+          </button>
         </div>
       </header>
 
-      {activeTab !== 'plan' && (
+      {views ? <ViewSwitch views={views} active={tab} onSelect={go} /> : <h2 className="view-title">Ustawienia projektu</h2>}
+
+      {(tab === 'list' || tab === 'elements') && (
       <div className="stats">
         <div>
           <span>Ściany</span>
@@ -452,31 +448,9 @@ function ProjectView({
       </div>
       )}
 
-      <NavDrawer
-        open={menuOpen}
-        setOpen={setMenuOpen}
-        title={project.name}
-        items={tabs}
-        active={activeTab}
-        onSelect={setTab}
-        footer={
-          <>
-            <DrawerLink
-              icon={NAV_ICONS.catalog}
-              label="Katalog systemów"
-              onClick={() => {
-                setMenuOpen(false);
-                onOpenCatalog();
-              }}
-            />
-            <DrawerLink icon={NAV_ICONS.projects} label="Wszystkie projekty" onClick={onClose} />
-          </>
-        }
-      />
-
       <div className="tab-body">
         {activeTab === 'plan' && (
-          <PlanTab project={project} calc={calc} update={update} commit={commit} wide={wide} onShowList={() => setTab(wide ? 'elements' : 'list')} fullscreen={fullscreen} />
+          <PlanTab project={project} calc={calc} update={update} commit={commit} wide={wide} onShowList={() => go('list')} fullscreen={fullscreen} />
         )}
         {tab === '3d' && (
           <Suspense fallback={<p className="muted">Wczytywanie widoku 3D…</p>}>
@@ -484,12 +458,12 @@ function ProjectView({
           </Suspense>
         )}
         {(tab === 'list' || tab === 'elements') && (
-          <div className="split">
+          <div className={`split ${tab === 'list' ? 'solo-list' : ''}`}>
             <div className={tab === 'elements' ? '' : 'panel-hidden'}>
               <ElementsPanel project={project} calc={calc} update={update} />
             </div>
             <div className={`side ${tab === 'list' ? '' : 'panel-hidden'}`}>
-              {wide && <h2 className="side-title">Lista zakupów</h2>}
+              {wide && tab === 'elements' && <h2 className="side-title">Lista zakupów</h2>}
               <ShoppingList project={project} lines={calc.total} prices={prices} setPrice={setPrice} update={update} />
             </div>
           </div>
@@ -560,6 +534,8 @@ function ProjectView({
           </div>
         )}
       </div>
+
+      {!wide && <StageBar stages={stages} active={stage} onSelect={goStage} />}
     </div>
   );
 }
