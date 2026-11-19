@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { interiorSide } from './geometry';
-import { createExistingWall, createLining, createProject, createWall, uid } from '../model/factory';
-import type { Project, Wall } from '../model/types';
-import { buildContacts, cornerStudPositions, findCollisions, findGaps, partRange } from './contacts';
+import { analyzeJunctions, dist, interiorSide, isNewWall, wallEnds } from './geometry';
+import { createExistingWall, createLining, createOpening, createProject, createWall, uid } from '../model/factory';
+import { addWall, addWalls, removeOverlaps } from '../model/ops';
+import type { Point, Project, Wall } from '../model/types';
+import { buildContacts, cornerStudPositions, findCollisions, findGaps, findOverlaps, partRange } from './contacts';
 
 type Seg = [number, number, number, number];
 
@@ -232,5 +233,72 @@ describe('ten sam obrys sufitu', () => {
     expect(sameOutline(a, [a[2], a[1], a[0], a[3]])).toBe(true);
     expect(sameOutline(a, [{ x: 0.5, y: 0 }, a[1], a[2], a[3]])).toBe(true);
     expect(sameOutline(a, [{ x: 50, y: 0 }, a[1], a[2], a[3]])).toBe(false);
+  });
+});
+
+describe('ściana narysowana na istniejącej', () => {
+  const rect = (x0: number, y0: number, w: number, h: number) => [
+    { x: x0, y: y0 },
+    { x: x0 + w, y: y0 },
+    { x: x0 + w, y: y0 + h },
+    { x: x0, y: y0 + h },
+  ];
+  const room = (p: Project, pts: Point[], kind?: 'existing') => pts.forEach((pt, i) => addWalls(p, pt, pts[(i + 1) % 4], kind ? { kind } : {}));
+
+  it('drugi pokój w narożniku pierwszego dokłada tylko 2 brakujące ściany', () => {
+    const p = createProject();
+    room(p, rect(0, 0, 400, 300));
+    room(p, rect(0, 0, 200, 150));
+    expect(p.walls).toHaveLength(6);
+    expect(findOverlaps(p)).toHaveLength(0);
+    // nowe ściany tworzą trójniki z ścianami pierwszego pokoju
+    const j = analyzeJunctions(p);
+    expect([...j.values()].filter((x) => x.endA === 'tee-abut' || x.endB === 'tee-abut')).toHaveLength(2);
+  });
+
+  it('ten sam pokój narysowany drugi raz nie dubluje ścian', () => {
+    const p = createProject();
+    room(p, rect(0, 0, 400, 300));
+    room(p, rect(0, 0, 400, 300));
+    expect(p.walls).toHaveLength(4);
+    expect(p.nodes).toHaveLength(4);
+  });
+
+  it('ściana dłuższa od istniejącej w tej samej linii dostaje tylko przedłużenie', () => {
+    const p = createProject();
+    addWalls(p, { x: 0, y: 0 }, { x: 200, y: 0 });
+    const added = addWalls(p, { x: -100, y: 0 }, { x: 400, y: 0 });
+    expect(added).toHaveLength(2);
+    const lens = added.map((w) => dist(...wallEnds(p, w))).sort((a, b) => a - b);
+    expect(lens).toEqual([100, 200]);
+    // przedłużenia zaczynają się w węzłach istniejącej ściany
+    expect(p.nodes).toHaveLength(4);
+  });
+
+  it('obrys i nowa zabudowa to różne warstwy – ściana g-k przy murze nie jest pomijana', () => {
+    const p = createProject();
+    room(p, rect(0, 0, 400, 300), 'existing');
+    addWalls(p, { x: 0, y: 0 }, { x: 200, y: 0 });
+    expect(p.walls.filter(isNewWall)).toHaveLength(1);
+  });
+
+  it('nakładanie po przeciągnięciu węzła jest wykrywane i usuwane', () => {
+    const p = createProject();
+    addWall(p, { x: 0, y: 0 }, { x: 400, y: 0 });
+    const w = addWall(p, { x: 100, y: 50 }, { x: 300, y: 50 })!;
+    for (const id of [w.a, w.b]) p.nodes.find((n) => n.id === id)!.y = 0;
+    expect(findOverlaps(p)).toEqual([expect.objectContaining({ over: w.id, lengthCm: 200 })]);
+    expect(removeOverlaps(p)).toBe(1);
+    expect(p.walls).toHaveLength(1);
+    expect(p.nodes).toHaveLength(2);
+  });
+
+  it('nałożona ściana z otworem zostaje (otworu nie przenosimy samoczynnie)', () => {
+    const p = createProject();
+    addWall(p, { x: 0, y: 0 }, { x: 400, y: 0 });
+    const w = addWall(p, { x: 0, y: 1 }, { x: 600, y: 1 })!;
+    w.openings.push(createOpening('door', 450));
+    removeOverlaps(p);
+    expect(p.walls).toHaveLength(2);
   });
 });

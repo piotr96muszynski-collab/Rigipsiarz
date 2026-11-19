@@ -88,6 +88,15 @@ export interface Ceiling {
   height: number;
 }
 
+/** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */
+export interface WallDefaults {
+  boardId?: string;
+  studSpacing?: 60 | 40 | 30;
+  insulation?: boolean;
+  /** Grubość wełny, mm (brak = pełna głębokość rusztu) */
+  insulationThickness?: number;
+}
+
 export interface ProjectSettings {
   /** Czy doliczać naddatek na odpady */
   wasteEnabled: boolean;
@@ -95,6 +104,8 @@ export interface ProjectSettings {
   waste: number;
   defaultHeight: number;
   defaultWallSystem: string;
+  /** Ustawienia nowych ścian rysowanych na planie (płyta, rozstaw, wełna); brak = wartości domyślne systemu */
+  wallDefaults?: WallDefaults;
   defaultCeilingSystem: string;
   gridSnap: number;
   /** Wybrany produkt wełny dla każdej grubości (klucz = grubość w mm) */

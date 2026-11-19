@@ -627,3 +627,84 @@ export function findGaps(p: Project, m: ContactModel = buildContacts(p), step = 
 }
 
 const thickness = (sec: WallSection) => sec.core * 2 + sec.bt * (sec.layers[0] + sec.layers[1]);
+
+// ---------- Ściany narysowane na już istniejących ----------
+
+/** Odległość od osi i różnica kierunku, przy których dwie ściany traktujemy jako leżące w jednej linii (cm) */
+const OVERLAP_TOL_CM = 1;
+
+type WallKindKey = 'new' | 'existing';
+const kindOf = (w: Wall): WallKindKey => (isNewWall(w) ? 'new' : 'existing');
+
+/**
+ * Fragmenty odcinka from→to (cm), których nie zajmuje już żadna ściana tego samego rodzaju leżąca
+ * w tej samej linii. Np. drugi „Pokój” narysowany po ścianach pierwszego dostaje tylko brakujące ściany.
+ * Końce fragmentów, które wypadają na węzłach istniejących ścian, mają ich dokładne położenie.
+ */
+export function uncoveredParts(p: Project, from: Point, to: Point, kind: WallKindKey, ignore?: Id): [Point, Point][] {
+  const L = Math.hypot(to.x - from.x, to.y - from.y);
+  if (L < 1e-6) return [];
+  const u = { x: (to.x - from.x) / L, y: (to.y - from.y) / L };
+  const along = (q: Point) => (q.x - from.x) * u.x + (q.y - from.y) * u.y;
+  const off = (q: Point) => Math.abs((q.x - from.x) * -u.y + (q.y - from.y) * u.x);
+  const nodes = nodeMap(p);
+  // zajęte przedziały wzdłuż odcinka, z punktami końców
+  const cover: { s: number; e: number; ps: Point; pe: Point }[] = [];
+  for (const w of p.walls) {
+    if (w.id === ignore || kindOf(w) !== kind) continue;
+    const A = nodes.get(w.a);
+    const B = nodes.get(w.b);
+    if (!A || !B) continue;
+    if (off(A) > OVERLAP_TOL_CM || off(B) > OVERLAP_TOL_CM) continue;
+    let [s, e, ps, pe] = [along(A), along(B), A as Point, B as Point];
+    if (s > e) [s, e, ps, pe] = [e, s, pe, ps];
+    if (e <= OVERLAP_TOL_CM || s >= L - OVERLAP_TOL_CM) continue;
+    cover.push({ s, e, ps: { x: ps.x, y: ps.y }, pe: { x: pe.x, y: pe.y } });
+  }
+  if (!cover.length) return [[from, to]];
+  cover.sort((x, y) => x.s - y.s);
+  const out: [Point, Point][] = [];
+  let cur = 0;
+  let curPt: Point = from;
+  for (const c of cover) {
+    if (c.s > cur + OVERLAP_TOL_CM) out.push([curPt, c.s >= L ? to : c.ps]);
+    if (c.e > cur) {
+      cur = c.e;
+      curPt = c.pe;
+    }
+  }
+  if (cur < L - OVERLAP_TOL_CM) out.push([curPt, to]);
+  return out.filter(([a, b]) => Math.hypot(b.x - a.x, b.y - a.y) >= OVERLAP_TOL_CM);
+}
+
+export interface Overlap {
+  /** ściana starsza (wcześniej w projekcie) */
+  keep: Id;
+  /** ściana nałożona na nią */
+  over: Id;
+  /** długość wspólnego odcinka, cm */
+  lengthCm: number;
+}
+
+/** Pary ścian tego samego rodzaju, które leżą w jednej linii i zajmują ten sam odcinek */
+export function findOverlaps(p: Project): Overlap[] {
+  const nodes = nodeMap(p);
+  const out: Overlap[] = [];
+  p.walls.forEach((w, i) => {
+    const A = nodes.get(w.a);
+    const B = nodes.get(w.b);
+    if (!A || !B) return;
+    const L = Math.hypot(B.x - A.x, B.y - A.y);
+    if (L < 1e-6) return;
+    const free = uncoveredParts({ ...p, walls: p.walls.slice(0, i) }, A, B, kindOf(w));
+    const freeLen = free.reduce((s, [a, b]) => s + Math.hypot(b.x - a.x, b.y - a.y), 0);
+    if (L - freeLen <= OVERLAP_TOL_CM) return;
+    // starsza ściana, z którą jest wspólny odcinek
+    for (const o of p.walls.slice(0, i)) {
+      const one = uncoveredParts({ ...p, walls: [o] }, A, B, kindOf(w));
+      const len = L - one.reduce((s, [a, b]) => s + Math.hypot(b.x - a.x, b.y - a.y), 0);
+      if (len > OVERLAP_TOL_CM) out.push({ keep: o.id, over: w.id, lengthCm: len });
+    }
+  });
+  return out;
+}

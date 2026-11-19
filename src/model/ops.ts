@@ -1,6 +1,24 @@
+import { findOverlaps, uncoveredParts } from '../geometry/contacts';
 import { dist, existingRooms, interiorSide, isNewWall, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
+import { wallSystemById } from '../catalog/rigips';
 import { createExistingWall, createWall, uid } from './factory';
 import type { Id, Point, Project, Wall } from './types';
+
+/** Zmiana systemu ściany: płyta, rozstaw i wełna wracają do wartości systemu */
+export function setWallSystem(w: Wall, systemId: string) {
+  const s = wallSystemById(systemId);
+  w.systemId = s.id;
+  w.boardId = s.defaultBoard;
+  w.studSpacing = s.studSpacing;
+  w.insulation = s.insulationDefault;
+  delete w.insulationThickness;
+}
+
+/** System nowych ścian: ustawienia płyty, rozstawu i wełny wracają do wartości systemu */
+export function setDefaultWallSystem(p: Project, systemId: string) {
+  p.settings.defaultWallSystem = wallSystemById(systemId).id;
+  delete p.settings.wallDefaults;
+}
 
 /** Zwraca id istniejącego węzła w pobliżu lub tworzy nowy */
 export function ensureNode(p: Project, pt: Point, tolerance = 1): Id {
@@ -20,6 +38,51 @@ export function addWall(p: Project, from: Point, to: Point, overrides: Partial<W
   const w = overrides.kind === 'existing' ? createExistingWall(p, a, b, overrides) : createWall(p, a, b, overrides);
   p.walls.push(w);
   return w;
+}
+
+/**
+ * Rysowanie ściany z pominięciem odcinków, na których stoi już ściana tego samego rodzaju
+ * (np. drugi pokój narysowany po ścianach pierwszego). Zwraca nowo dodane ściany.
+ */
+export function addWalls(p: Project, from: Point, to: Point, overrides: Partial<Wall> = {}): Wall[] {
+  const kind = overrides.kind === 'existing' ? 'existing' : 'new';
+  const out: Wall[] = [];
+  for (const [a, b] of uncoveredParts(p, from, to, kind)) {
+    const w = addWall(p, a, b, overrides);
+    if (w) out.push(w);
+  }
+  return out;
+}
+
+/**
+ * Po przesunięciu węzłów: ściana bez otworów nałożona na starszą ścianę tego samego rodzaju
+ * zostaje skrócona do odcinków, których jeszcze nie ma (albo usunięta, jeśli cała się pokrywa).
+ * Zwraca liczbę poprawionych ścian.
+ */
+export function removeOverlaps(p: Project): number {
+  let fixed = 0;
+  for (let guard = 0; guard < 50; guard++) {
+    const ov = findOverlaps(p).find((o) => !p.walls.find((w) => w.id === o.over)?.openings.length);
+    if (!ov) break;
+    const w = p.walls.find((x) => x.id === ov.over)!;
+    const [a, b] = wallEnds(p, w);
+    const parts = uncoveredParts(p, a, b, isNewWall(w) ? 'new' : 'existing', w.id);
+    const idx = p.walls.indexOf(w);
+    p.walls.splice(idx, 1);
+    let first = true;
+    for (const [s, e] of parts) {
+      if (dist(s, e) < 10) continue;
+      const na = ensureNode(p, s);
+      const nb = ensureNode(p, e);
+      if (na === nb || p.walls.some((x) => (x.a === na && x.b === nb) || (x.a === nb && x.b === na))) continue;
+      // pierwszy fragment zachowuje id (zaznaczenie, wykończenia połączeń)
+      p.walls.splice(idx, 0, { ...structuredClone(w), id: first ? w.id : uid(), a: na, b: nb });
+      first = false;
+    }
+    fixed++;
+  }
+  removeOrphanNodes(p);
+  return fixed;
 }
 
 export function removeOrphanNodes(p: Project) {

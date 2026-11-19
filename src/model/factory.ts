@@ -28,15 +28,18 @@ export function createProject(name = 'Nowy projekt'): Project {
 
 export function createWall(p: Project, a: string, b: string, overrides: Partial<Wall> = {}): Wall {
   const sys = wallSystemById(overrides.systemId ?? p.settings.defaultWallSystem);
+  // ustawienia nowych ścian z planu dotyczą tylko systemu domyślnego
+  const def = sys.id === p.settings.defaultWallSystem ? (p.settings.wallDefaults ?? {}) : {};
   return {
     id: uid(),
     a,
     b,
     height: p.settings.defaultHeight,
     systemId: sys.id,
-    boardId: sys.defaultBoard,
-    studSpacing: sys.studSpacing,
-    insulation: sys.insulationDefault,
+    boardId: def.boardId ?? sys.defaultBoard,
+    studSpacing: def.studSpacing ?? sys.studSpacing,
+    insulation: def.insulation ?? sys.insulationDefault,
+    ...(def.insulationThickness ? { insulationThickness: def.insulationThickness } : {}),
     endA: 'existing-wall',
     endB: 'existing-wall',
     openings: [],
