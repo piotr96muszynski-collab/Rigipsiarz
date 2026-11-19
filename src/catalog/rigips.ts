@@ -648,6 +648,8 @@ export interface WallSystem {
    * przykręcona do słupków jednego rzędu, liczona w płytach i wkrętach
    */
   midBoard?: string;
+  /** Płyta pośrednia tego samego rodzaju co wybrane poszycie (Knauf W115W) – `midBoard` to wtedy płyta domyślna */
+  midBoardFromFace?: boolean;
   /** Liczba warstw płyty dosztywniającej (brak = 1) */
   midLayers?: number;
   /** Domyślny rozstaw słupków / profili CD, cm */
@@ -791,6 +793,10 @@ export const WALL_SYSTEM_ALIASES: Record<string, string> = {
   'W-CW75-1AQ': 'W-CW75-1AQUAROC',
   'SZ-CW50-2F': 'SZ-CW50-2',
   'SZ-CW75-2F': 'SZ-CW75-2',
+  // Knauf W113+ z Systemfindera = W114.pl z zeszytu technicznego
+  'KN-W113P-CW50': 'KN-W114-CW50',
+  'KN-W113P-CW75': 'KN-W114-CW75',
+  'KN-W113P-CW100': 'KN-W114-CW100',
 };
 
 const CATEGORY_ORDER: WallCategory[] = ['działowa', 'podwójna', 'instalacyjna', 'okładzina', 'szacht', 'atlas'];

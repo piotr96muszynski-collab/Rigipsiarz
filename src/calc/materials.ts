@@ -439,8 +439,10 @@ export function wallRequirement(
   // płyta dosztywniająca między rzędami rusztu (Siniat 168B50…): pełna powierzchnia netto, przykręcona do jednego rzędu
   if (sys.midBoard) {
     const n = sys.midLayers ?? 1;
-    add(req.boardArea, `${sys.midBoard}|${pickBoardLength(sys.midBoard, w.height)}`, net * n);
-    addBoardScrews(req, net, Array(n).fill(sys.midBoard), WALL_SCREWS_OUTER * (0.6 / Math.max(0.2, w.studSpacing / 100)), WALL_SCREWS_INNER);
+    // Knauf W115W: płyta pośrednia jak poszycie (np. Akustik Plus przy poszyciu Akustik Plus)
+    const mid = sys.midBoardFromFace ? w.boardId : sys.midBoard;
+    add(req.boardArea, `${mid}|${pickBoardLength(mid, w.height)}`, net * n);
+    addBoardScrews(req, net, Array(n).fill(mid), WALL_SCREWS_OUTER * (0.6 / Math.max(0.2, w.studSpacing / 100)), WALL_SCREWS_INNER);
   }
   // odpad z wycięć liczymy do płyty zewnętrznej
   if (cutWaste > 0) add(req.boardArea, sheetKey, cutWaste);
