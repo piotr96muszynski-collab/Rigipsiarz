@@ -159,7 +159,7 @@ MIXED_TH = re.compile(r'(\d)x(\d+(?:,\d)?)\s*\+\s*(\d)x(\d+(?:,\d)?)|(\d+,\d)\s*
 
 def mixed_thickness(row):
     """Poszycie z płyt różnej grubości (np. 1x12,5+1x15,0) – silnik liczy jedną grubość w poszyciu."""
-    for t in row[1:]:
+    for t in row:  # pierwsza komórka bywa sklejona z nazwą płyty i poszyciem (102,5AA/UAR75/Ogień+ … 1x12,5+1x15,0)
         m = MIXED_TH.search(t)
         if m and ((m[1] and num(m[2]) != num(m[4])) or (m[5] and num(m[5]) != num(m[6]))):
             return True
@@ -416,38 +416,49 @@ def make_linings():
         groups = OrderedDict()
         for r in lining_rows(ch):
             sysc = r['parts'][0]
+            # rodzaj słupka: C (CW), UA (profil ościeżnicowy UAR, 2 mm), UU (para U w skrzynkę z płytą rdzeniową)
             if ch == '03':
-                m = re.match(r'^(CC|C)(\d+)-', sysc)
-                if not m or (len(r['parts']) > 2 and r['parts'][1] == 'LS'):
-                    skip(sysc, 'okładziny wolnostojące na UA (UAR) i z łącznikami LS')
+                m = re.match(r'^(UARUAR|UAR|CC|C)(\d+)-', sysc)
+                if not m:
+                    skip(r['code'].rsplit('/', 1)[0], 'okładziny wolnostojące z łącznikami stabilizacyjnymi LS (opłytowanie na 3/4 wysokości, karta bez pełnej tabeli parametrów)')
                     continue
-                double, prof = m[1] == 'CC', int(m[2])
+                double, prof, kind_s = m[1] in ('CC', 'UARUAR'), int(m[2]), 'UA' if m[1].startswith('UAR') else 'C'
             else:
                 m = re.match(r'^([\d,]+)(AA|A)(\d+)$', sysc)
-                if not m:
-                    skip(sysc if '/' not in r['code'] else r['code'].rsplit('/', 1)[0], 'obudowy pionów na UA (UAR), UU i bez konstrukcji')
+                mua = re.match(r'^([\d,]+)(AA|A)$', sysc) and len(r['parts']) > 2 and re.match(r'^UAR(\d+)$', r['parts'][1])
+                muu = re.match(r'^([\d,]+)UU(\d+)$', sysc)
+                if m:
+                    double, prof, kind_s = m[2] == 'AA', int(m[3]), 'C'
+                elif mua:
+                    double, prof, kind_s = sysc.endswith('AA'), int(mua[1]), 'UA'
+                elif muu:
+                    double, prof, kind_s = False, int(muu[2]), 'UU'
+                else:
+                    skip(sysc, 'obudowy pionów bez konstrukcji nośnej (płyty samonośne skręcane ze sobą) – inny rodzaj zabudowy niż ruszt')
                     continue
-                double, prof = m[2] == 'AA', int(m[3])
             rest = r['rest']
             # rozstaw: pierwsza wartość 600/400/300 za poszyciem
             sp = next((int(t) // 10 for t in rest[r['ci'] + 1:] if t in ('600', '400', '300')), 60)
             hi, h, ac, mass, ei = tail(rest, r['ci'] + 1)
             woolm = [num(t) for t in rest[r['ci'] + 1:hi] if num(t)]
             wool = int(woolm[-2]) if len(woolm) >= 3 else 0
-            groups.setdefault((prof, r['layers'], '+'.join(r['codes'][:-1])), []).append(
+            groups.setdefault((kind_s, prof, r['layers'], '+'.join(r['codes'][:-1])), []).append(
                 dict(r, double=double, spacing=sp, maxh=h, ac=ac, mass=mass, ei=ei, wool=wool))
-        for (prof, nl, mixed), vs in groups.items():
+        for (kind_s, prof, nl, mixed), vs in groups.items():
             single = [v for v in vs if not v['double']]
             default = min(single or vs, key=lambda v: (PREF.index(v['codes'][-1]), v['th'], -(v['maxh'] or 0)))
             dcode, dth = default['codes'][-1], default['th']
             pfx = 'SN-O' if ch == '03' else 'SN-SZ'
-            sid = f'{pfx}-C{prof}-{nl}' + (f'-{mixed}' if mixed else '')
+            sid = f'{pfx}-{"C" if kind_s == "C" else kind_s}{prof}-{nl}' + (f'-{mixed}' if mixed else '')
+            pname = {'C': f'C{prof}', 'UA': f'UAR{prof}', 'UU': f'UU{prof}'}[kind_s]
             variants = []
             for v in sorted(vs, key=lambda v: (v['double'], PREF.index(v['codes'][-1]), v['th'], v['ei'] or 0)):
                 outer = v['codes'][-1]
                 o = OrderedDict()
                 o['code'] = v['code'].rsplit('/', 1)[0]
-                lab = layer_desc(v['codes'], nl, v['th']) + f' · profile C{prof}{" zdwojone" if v["double"] else ""} co {v["spacing"]} cm'
+                lab = layer_desc(v['codes'], nl, v['th']) + f' · {"słupki" if kind_s == "UU" else "profile"} {pname}{" zdwojone" if v["double"] else ""} co {v["spacing"]} cm'
+                if kind_s == 'UU':
+                    lab += ' · w tym 1 warstwa rdzeniowa w ruszcie'
                 lab += f' · wełna {v["wool"]} mm' if v['wool'] else ''
                 o['label'] = lab
                 o['board'] = board_id(outer, v['th'])
@@ -473,10 +484,13 @@ def make_linings():
             w = OrderedDict()
             w['id'] = sid
             desc = layer_desc(default['codes'], nl, dth) if mixed else f'{nl}×{pl(dth)}'
-            w['name'] = ('Nida Tynk – ' if ch == '03' else 'Nida Szacht – ') + f'{kind.lower()} na C{prof}, {desc}'
+            w['name'] = ('Nida Tynk – ' if ch == '03' else 'Nida Szacht – ') + f'{kind.lower()} na {pname}' + (
+                f' (2×U{prof} skręcone w skrzynkę)' if kind_s == 'UU' else ' (profile UA, 2 mm)' if kind_s == 'UA' else '') + f', {desc}'
             w['category'] = cat
             w['frame'] = 'single'
             w['profile'] = prof
+            if kind_s != 'C':
+                w['studKind'] = kind_s
             w['layers'] = nl
             w['sides'] = 1
             w['defaultBoard'] = board_id(dcode, dth)
@@ -489,10 +503,16 @@ def make_linings():
             w['insulationDefault'] = bool(default['wool'])
             if eis:
                 w['fire'] = f'EI {eis[0]}' if len(eis) == 1 else f'EI {eis[0]} – EI {eis[-1]}'
-            info = [f'Profile C{prof} co {default["spacing"]} cm' + (f' do {pl(default["maxh"] / 100)} m' if default['maxh'] else ''),
+            head = {'C': f'Profile C{prof}', 'UA': f'Profile ościeżnicowe UAR{prof} (blacha 2 mm)', 'UU': f'Słupki z dwóch profili U{prof} skręconych w skrzynkę'}[kind_s]
+            info = [head + f' co {default["spacing"]} cm' + (f' do {pl(default["maxh"] / 100)} m' if default['maxh'] else ''),
                     'bez mocowania do ściany (U góra i dół)' if ch == '03' else 'obudowa jednostronna, U góra i dół']
+            if kind_s == 'UA':
+                info.append(f'na końcu każdego profilu kątownik do UA{prof} ze śrubami M8')
+            if kind_s == 'UU':
+                info.append('para UD 27 wzdłuż słupka trzyma płytę rdzeniową (pierwsza warstwa, osadzona w ruszcie) – aplikacja liczy UD 30, płytę rdzeniową jako warstwę wewnętrzną')
             if any(v['double'] for v in vs):
-                info.append('wyższe odmiany na profilach zdwojonych (' + ('CC' if ch == '03' else 'AA') + ')')
+                info.append('wyższe odmiany na profilach zdwojonych (' + (('UARUAR' if kind_s == 'UA' else 'CC') if ch == '03' else 'AA') + ')'
+                            + (' skręconych śrubami M8' if kind_s == 'UA' else ''))
             if ch == '03':
                 info.append('przyrost izolacyjności ściany masywnej podany jako Rw/RA1 okładziny z kartą (układ z kartą)')
             w['info'] = ' · '.join(info)
@@ -515,13 +535,15 @@ def make_linings():
             hi, h, ac, mass, ei = tail(rest, r['ci'] + 1)
             key = ('CD', 'EL' if el else 'ES', r['layers'], '+'.join(r['codes'][:-1]))
             groups.setdefault(key, []).append(dict(r, bracket=bracket, spacing=sp, maxh=None, ac=ac, mass=mass, ei=ei, double=False))
-        elif re.match(r'^C\d+$', sysc) and len(r['parts']) > 2 and r['parts'][1].startswith(('L-', 'PWA-')):
-            prof = int(sysc[1:])
+        elif re.match(r'^CC?\d+$', sysc) and len(r['parts']) > 2 and r['parts'][1].startswith(('L-', 'PWA-')):
+            prof = int(sysc.lstrip('C'))
             how = r['parts'][1].split('-')[0]
             nums = [num(t) for t in rest[r['ci'] + 1:]]
             ints = [x for x in nums if isinstance(x, int)]
             fix, sp = ints[0] // 10, ints[1] // 10
-            hi, h, ac, mass, ei = tail(rest, r['ci'] + 1)
+            # wysokość szukamy za rozstawem profili (rozstaw kątowników 2500 to nie wysokość)
+            si = next(i for i in range(r['ci'] + 1, len(rest)) if rest[i] in ('600', '400', '300'))
+            hi, h, ac, mass, ei = tail(rest, si + 1)
             double = 'ZDWOJONEJ' in r['title']
             key = (how, prof, r['layers'], '+'.join(r['codes'][:-1]))
             groups.setdefault(key, []).append(dict(r, bracket=fix, spacing=sp, maxh=h, ac=ac, mass=mass, ei=ei, double=double))
@@ -592,8 +614,15 @@ def make_linings():
             if key[1] == 'EL':
                 info.append('uchwyty elastyczne EL60 aplikacja liczy jak ES (ta sama liczba sztuk)')
         else:
+            brackets = {v['bracket'] for v in vs}
+            assert len(brackets) == 1, (key, brackets)
+            w['wallTie'] = OrderedDict([('kind', 'angle' if how == 'L' else 'pwa'), ('spacing', default['bracket'])])
             info = [f'Profile C{key[1]} co {default["spacing"]} cm' + (f' do {pl(default["maxh"] / 100)} m' if default['maxh'] else ''),
-                    f'mocowanie do ściany {"kątownikami stalowymi" if how == "L" else "przewiązkami Nida PWA"} co {default["bracket"]} cm w pionie – aplikacja ich nie liczy, dolicz wg karty']
+                    (f'kotwione do ściany kątownikami stalowymi (do UA{key[1]}) przy posadzce, przy stropie i co {default["bracket"]} cm w pionie'
+                     if how == 'L' else f'kotwione do ściany przewiązkami wibroakustycznymi Nida PWA{key[1]} co {default["bracket"]} cm w pionie')]
+            if any(v['double'] for v in vs):
+                dh = max(v['maxh'] or 0 for v in vs if v['double'])
+                info.append(f'wyższe odmiany na profilach zdwojonych (CC{key[1]}' + (f', do {pl(dh / 100)} m)' if dh else ')'))
         w['info'] = ' · '.join(info)
         w['source'] = ('SRC', f'Siniat – Katalog techniczny, {CHAPTER["02"]}, karty s. ' + ', '.join(str(p) for p in pages))
         w['maker'] = 'siniat'

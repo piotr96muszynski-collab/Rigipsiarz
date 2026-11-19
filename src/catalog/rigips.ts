@@ -41,7 +41,8 @@ export type ProductGroup =
 export const STOCK_LENGTHS: Record<string, number[]> = {
   CW: [3, 2.6, 2.75, 3.5, 4],
   UW: [4, 3],
-  UA: [3, 2.6, 4],
+  // UA: długości handlowe z kalkulatora Rigips (UA 50 do 4,5 m, UA 75/100 do 6,8 m) – słupków UA się nie łączy
+  UA: [3, 2.6, 3.5, 4, 4.5, 5, 5.5, 6, 6.4, 6.8],
   CD: [4, 3],
   UD: [3, 4],
   ...CORNER_STOCK_LENGTHS,
@@ -376,6 +377,8 @@ export const PRODUCTS: Record<string, Product> = {
   UA75: { id: 'UA75', name: 'Profil usztywniający UA 75', group: 'Profile', unit: 'szt.', length: 3 },
   UA100: { id: 'UA100', name: 'Profil usztywniający UA 100', group: 'Profile', unit: 'szt.', length: 3 },
   KATUA: { id: 'KATUA', name: 'Kątownik przyłączeniowy do UA', group: 'Mocowanie', unit: 'szt.' },
+  SRUBA_M8: { id: 'SRUBA_M8', name: 'Śruba M8 z nakrętką (do profili UA)', group: 'Mocowanie', unit: 'szt.' },
+  PWA: { id: 'PWA', name: 'Przewiązka wibroakustyczna (Nida PWA) do kotwienia słupków do ściany', group: 'Mocowanie', unit: 'szt.' },
   // Profile sufitowe
   CD60: { id: 'CD60', name: 'Profil Rigips CD 60', group: 'Profile', unit: 'szt.', length: 4 },
   UD30: { id: 'UD30', name: 'Profil Rigips UD 30', group: 'Profile', unit: 'szt.', length: 3 },
@@ -581,6 +584,18 @@ export interface SystemVariant {
   price?: number;
 }
 
+/**
+ * Kotwienie słupków okładziny do ściany co `spacing` cm w pionie:
+ * - angle: kątownik stalowy przy posadzce, przy stropie i co `spacing` (karta Siniat C100/L:
+ *   0,8 szt./m² przy 10 m i 12 m wysokości = ⌈H/rozstaw⌉ + 1 na słupek),
+ * - pwa: przewiązka wibroakustyczna tylko między U (karta Siniat C/PWA: 1,1 szt./m² przy 2,8 m
+ *   i rozstawie 100 cm = ⌈H/rozstaw⌉ − 1 na słupek).
+ */
+export interface WallTie {
+  kind: 'angle' | 'pwa';
+  spacing: number;
+}
+
 export interface WallSystem {
   id: string;
   /** Oznaczenie systemu Rigips (np. 3.40.05), jeśli jest */
@@ -612,6 +627,16 @@ export interface WallSystem {
   bracketSpacing?: number;
   /** Szerokość przestrzeni między rusztami (ściana instalacyjna), cm */
   gap?: number;
+  /**
+   * Słupki z innych profili niż CW (ruszt `single`):
+   * - UA: profile usztywniające UA (blacha 2 mm), na każdym końcu kątownik UA ze śrubami M8;
+   *   słupki podwójne = dwa UA skręcone śrubami M8 (Siniat UAR/UARUAR),
+   * - UU: para profili U (UW) skręconych w skrzynkę z parą UD 30 trzymającą płytę rdzeniową
+   *   (obudowy szybów typu ShaftWall – Siniat UU, Rigips 3.50.10).
+   */
+  studKind?: 'UA' | 'UU';
+  /** Kotwienie słupków do ściany w pionie: kątowniki (Siniat C100/L) albo przewiązki PWA; rozstaw, cm */
+  wallTie?: WallTie;
   /** Mocowanie punktowe (ATLAS M-SYSTEM 3G): łącznik; rozstaw poziomy = studSpacing */
   fixer?: PointFixer;
   /** Rozstaw łączników w pionie (mocowanie punktowe), cm */
@@ -1059,6 +1084,20 @@ export function ceilingMaxSpan(sys: CeilingSystem): number | undefined {
 /** Okładzina istniejącej ściany (jednostronna, mocowana do muru): CD na ES, klej gipsowy, ATLAS M-System 3G */
 export const isLiningSystem = (sys: WallSystem): boolean =>
   sys.sides === 1 && (sys.frame === 'cd-lining' || sys.frame === 'glued' || sys.frame === 'point-fix');
+
+/** Nazwa słupka ściany do opisów i rysunków, np. „CW 75”, „UA 50”, „2×U 75 (UU)” */
+export function wallStudLabel(sys: WallSystem): string {
+  if (sys.frame === 'cd-lining') return 'CD 60';
+  if (sys.studKind === 'UA') return `UA ${sys.profile}`;
+  if (sys.studKind === 'UU') return `2×U ${sys.profile} (UU)`;
+  return `CW ${sys.profile}`;
+}
+
+/** Liczba kotew (kątowników / przewiązek) na słupku o długości `len` m */
+export function wallTieCount(tie: WallTie, len: number): number {
+  const n = Math.ceil(len / (tie.spacing / 100) - 1e-9);
+  return tie.kind === 'angle' ? n + 1 : Math.max(0, n - 1);
+}
 
 /** Grubość rusztu ściany, mm (bez płyt) */
 export function wallFrameDepth(sys: WallSystem): number {
