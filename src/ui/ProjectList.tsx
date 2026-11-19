@@ -142,7 +142,7 @@ function SwipeRow({
         >
           <strong>{p.name}</strong>
           <span className="muted small">
-            {p.walls.filter((w) => w.kind !== 'existing').length} ścian · {p.ceilings.length} sufitów · {new Date(p.updatedAt).toLocaleDateString('pl-PL')}
+            {p.walls.filter((w) => w.kind !== 'existing').length} ścian · {p.ceilings.length} sufitów{p.attics?.length ? ` · poddasza: ${p.attics.length}` : ''} · {new Date(p.updatedAt).toLocaleDateString('pl-PL')}
           </span>
         </button>
         <button className="icon-btn row-menu" aria-label={`Opcje projektu ${p.name}`} onClick={onMenu}>

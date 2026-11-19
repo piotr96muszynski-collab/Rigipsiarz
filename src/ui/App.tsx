@@ -235,7 +235,7 @@ function Home({
         <div className="start-actions">
           <button className="tile primary" onClick={() => setQuick(true)}>
             <strong>Szybkie wyliczenie</strong>
-            <span>Wpisz wymiary ściany, pomieszczenia lub sufitu</span>
+            <span>Wpisz wymiary ściany, pomieszczenia, sufitu lub poddasza</span>
           </button>
           <button className="tile" onClick={() => onOpen(createProject())}>
             <strong>Nowy projekt</strong>
@@ -307,7 +307,7 @@ function ProjectView({
   onDelete: () => void;
 }) {
   const { project, update, commit, undo, redo, canUndo, canRedo } = useHistory(initial, withLiningBacking);
-  const [startTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'plan');
+  const [startTab] = useState<Tab>(initial.walls.length + initial.ceilings.length + (initial.attics?.length ?? 0) ? 'list' : 'plan');
   const [tab, setTab] = useState<Tab>(startTab);
   // catalogVersion: przelicz po zmianie systemów własnych
   // długość płyt tego projektu – wyliczenia, rysunki i 3D biorą ją z modułu boardLength
@@ -430,7 +430,13 @@ function ProjectView({
           <strong>{fmtNum(s.ceilingAreaM2, 1)} m²</strong>
           <small>{project.ceilings.length} szt.</small>
         </div>
-        {s.liningAreaM2 > 0 ? (
+        {s.atticAreaM2 > 0 ? (
+          <div>
+            <span>Poddasza</span>
+            <strong>{fmtNum(s.atticAreaM2, 1)} m²</strong>
+            <small>skosy i sufity</small>
+          </div>
+        ) : s.liningAreaM2 > 0 ? (
           <div>
             <span>Okładziny</span>
             <strong>{fmtNum(s.liningAreaM2, 1)} m²</strong>

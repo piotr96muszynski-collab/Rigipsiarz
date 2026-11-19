@@ -1,6 +1,6 @@
 import { boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { maxCeilingHeight } from '../calc/ceilingLevels';
-import type { Ceiling, Lining, Opening, OpeningKind, Point, Project, Wall } from './types';
+import type { Attic, Ceiling, Lining, Opening, OpeningKind, Point, Project, Wall } from './types';
 
 export const uid = () =>
   (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).slice(0, 12);
@@ -91,6 +91,37 @@ export function createCeiling(p: Project, points: Point[], overrides: Partial<Ce
 export function fitCeilingHeight(c: Ceiling) {
   c.slabHeight ??= c.height;
   c.height = Math.min(c.height, maxCeilingHeight(c.slabHeight, ceilingSystemById(c.systemId), c.boardId));
+}
+
+/** Nowa zabudowa poddasza: dach dwuspadowy 40°, krokwie 8×18 co 90 cm, jętka na 2,60 m, system Rigips 4.70.06 */
+export function createAttic(overrides: Partial<Attic> = {}): Attic {
+  const sys = ceilingSystemById(overrides.systemId ?? 'S-PODD-1');
+  return {
+    id: uid(),
+    roof: 'gable',
+    width: 800,
+    length: 1000,
+    kneeLeft: 100,
+    kneeRight: 100,
+    pitch: 40,
+    collarHeight: 260,
+    rafterSpacing: 90,
+    rafterWidth: 8,
+    rafterHeight: 18,
+    firstRafter: 10,
+    systemId: sys.id,
+    boardId: sys.defaultBoard,
+    woolBetween: 150,
+    woolUnder: 50,
+    ...overrides,
+  };
+}
+
+/** Szybkie wyliczenie: sama zabudowa poddasza */
+export function quickAtticProject(a: Attic): Project {
+  const p = createProject(`Poddasze ${a.width / 100}×${a.length / 100} m`);
+  p.attics = [a];
+  return p;
 }
 
 /** Projekt przykładowy – pokój z działówką i drzwiami */
