@@ -246,6 +246,18 @@ export function interiorSide(p: Project, w: Wall, rooms: Point[][] = existingRoo
   return 0;
 }
 
+/**
+ * Strona lica istniejącej ściany, od której linia na planie wyznacza mur (mur leży po stronie
+ * przeciwnej). Jak `interiorSide`, a przy ścianie poza zamkniętym obrysem – strona jedynej
+ * okładziny (np. mur postawiony automatycznie za okładziną ATLAS M-System lub CD 60).
+ */
+export function masonrySide(p: Project, w: Wall, rooms: Point[][] = existingRooms(p)): 1 | -1 | 0 {
+  const inner = interiorSide(p, w, rooms);
+  if (inner) return inner;
+  const sides = new Set((w.linings ?? []).map((l) => l.side));
+  return sides.size === 1 ? [...sides][0] : 0;
+}
+
 /** Zamknięte obrysy utworzone przez istniejące ściany (ściany zewnętrzne mieszkania) */
 export function existingRooms(p: Project): Point[][] {
   const nodes = nodeMap(p);

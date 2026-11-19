@@ -20,6 +20,7 @@ import { UpdatePrompt } from './UpdatePrompt';
 import { useBack, useExitHint } from './back';
 import { useImmersive } from './fullscreen';
 import { useHistory } from './useHistory';
+import { withLiningBacking } from '../model/backing';
 import { fmtNum } from './wallStyle';
 
 // three.js ładujemy dopiero przy otwarciu widoku 3D (mniejszy start aplikacji; offline działa z pamięci podręcznej)
@@ -260,7 +261,7 @@ function ProjectView({
   onClose: () => void;
   onDelete: () => void;
 }) {
-  const { project, update, commit, undo, redo, canUndo, canRedo } = useHistory(initial);
+  const { project, update, commit, undo, redo, canUndo, canRedo } = useHistory(initial, withLiningBacking);
   const [startTab] = useState<Tab>(initial.walls.length + initial.ceilings.length ? 'list' : 'plan');
   const [tab, setTab] = useState<Tab>(startTab);
   // catalogVersion: przelicz po zmianie systemów własnych

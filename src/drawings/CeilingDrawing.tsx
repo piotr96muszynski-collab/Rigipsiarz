@@ -1,5 +1,5 @@
 import { ceilingBoardLayout, hangerPositions, splicePositions } from '../calc/layout';
-import { ceilingGrid, type CeilingGridLine } from '../calc/materials';
+import { ceilingFixerGrid, ceilingGrid, type CeilingGridLine } from '../calc/materials';
 import { ceilingSystemById } from '../catalog/rigips';
 import { bbox, pointInPolygon } from '../geometry/geometry';
 import type { Ceiling } from '../model/types';
@@ -202,6 +202,59 @@ export function CeilingBoardsDrawing({ c, title }: { c: Ceiling; title: string }
         Płyty dłuższą krawędzią poprzecznie do profili montażowych. Styki poprzeczne zawsze na profilu, w sąsiednich rzędach
         przesunięte o {stagger} cm (min. 40 cm). {sys.layers > 1 ? 'Druga warstwa: styki przesunięte względem pierwszej o rozstaw profili. ' : ''}
         Przy nieregularnym kształcie elementy docinasz do obrysu.
+      </figcaption>
+    </figure>
+  );
+}
+
+/** Rzut sufitu ATLAS M-System 3G: łączniki talerzykowe w siatce z łańcuchami wymiarowymi */
+export function CeilingFixersDrawing({ c, title }: { c: Ceiling; title: string }) {
+  const sys = ceilingSystemById(c.systemId);
+  const { bb, w, h, f, vb } = frame(c);
+  const g = ceilingFixerGrid(c, sys);
+  const clip = `clip-fx-${c.id}`;
+  const disc = '#e07a2a';
+  const name = `łącznik ATLAS M-System 3G ${(sys.fixer?.product ?? 'ATLAS_3G_L100').replace('ATLAS_3G_', '')}${sys.fixer?.extension ? ` + przedłużka ${sys.fixer.extension.replace('ATLAS_PLUS_', '')}` : ''}`;
+  const sx = c.direction === 0 ? sys.mainSpacing : sys.secondarySpacing;
+  const sy = c.direction === 0 ? sys.secondarySpacing : sys.mainSpacing;
+  return (
+    <figure className="drawing">
+      <Paper viewBox={vb} title={title}>
+        <defs>
+          <clipPath id={clip}>
+            <polygon points={poly(c)} />
+          </clipPath>
+        </defs>
+        <polygon points={poly(c)} fill={C.concrete} fillOpacity={0.35} />
+        <g clipPath={`url(#${clip})`}>
+          {g.xs.map((x) => (
+            <line key={`x${x}`} x1={x} y1={bb.minY} x2={x} y2={bb.maxY} stroke={disc} strokeWidth={0.6} strokeDasharray="2 5" {...nss} />
+          ))}
+          {g.ys.map((y) => (
+            <line key={`y${y}`} x1={bb.minX} y1={y} x2={bb.maxX} y2={y} stroke={disc} strokeWidth={0.6} strokeDasharray="2 5" {...nss} />
+          ))}
+        </g>
+        <polygon points={poly(c)} fill="none" stroke={INK} strokeWidth={1.4} {...nss} />
+        {g.points.map((q, i) => (
+          <g key={i}>
+            <circle cx={q.x} cy={q.y} r={6} fill={disc} fillOpacity={0.85} stroke={INK} strokeWidth={0.6} {...nss} />
+            <circle cx={q.x} cy={q.y} r={1.2} fill={INK} />
+          </g>
+        ))}
+        <ChainH xs={[bb.minX, ...g.xs, bb.maxX]} y={bb.minY} off={-f * 2} f={f * 0.8} color={disc} />
+        <ChainV ys={[bb.minY, ...g.ys, bb.maxY]} x={bb.minX} off={-f * 2} f={f * 0.8} color={disc} />
+        <Dim x1={bb.minX} y1={bb.maxY} x2={bb.maxX} y2={bb.maxY} off={f * 2} f={f} label={`${cm(w)} cm`} />
+        <Dim x1={bb.maxX} y1={bb.minY} x2={bb.maxX} y2={bb.maxY} off={f * 2} f={f} label={`${cm(h)} cm`} />
+      </Paper>
+      <Legend
+        items={[
+          { color: disc, label: `${name} – talerzyk ø 12 cm (${g.points.length} szt.)` },
+          { color: disc, dashed: true, label: `siatka ${cm(sx)} × ${cm(sy)} cm` },
+        ]}
+      />
+      <figcaption className="muted small">
+        Wymiary w cm. Łańcuchy wymiarowe: osie rzędów łączników od krawędzi sufitu. Skrajne łączniki przy obwodzie, 1 cm od
+        ściany w osi siatki – talerzyk podpiera krawędź płyty. Talerzyki wypoziomuj laserem przed montażem płyt.
       </figcaption>
     </figure>
   );
