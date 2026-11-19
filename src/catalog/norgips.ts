@@ -2841,6 +2841,8 @@ export const NORGIPS_CEILING_SYSTEMS: CeilingSystem[] = [
       woodScrews: 2,
       maxUnderMm: 277,
       maxUnderWhy: 'tabela Norgips: zabudowa do 290 mm',
+      hangerSizes: [{ name: 'L-180', reachMm: 110 }, { name: 'L-270', reachMm: 200 }, { name: 'L-350', reachMm: 277 }],
+      hangerSizesNote: 'Wieszak płaski L-180, L-270 albo L-350 dobrany do zabudowy pod krokwią; przyjęto ok. 7 cm zakładu wieszaka na bok krokwi – strona Norgips podaje tylko łączny zakres zabudowy.',
     },
     variants: [
       { label: '1×12,5 GKB (A) · wieszak płaski L · CD co 50 cm · zabudowa 43–290 mm', board: 'NG-GKB12.5', thickness: 43, mass: 9 },
@@ -2948,6 +2950,8 @@ export const NORGIPS_CEILING_SYSTEMS: CeilingSystem[] = [
       woodScrews: 2,
       maxUnderMm: 280,
       maxUnderWhy: 'tabela Norgips: zabudowa do 305 mm',
+      hangerSizes: [{ name: 'L-180', reachMm: 110 }, { name: 'L-270', reachMm: 200 }, { name: 'L-350', reachMm: 280 }],
+      hangerSizesNote: 'Wieszak płaski L-180, L-270 albo L-350 dobrany do zabudowy pod krokwią; przyjęto ok. 7 cm zakładu wieszaka na bok krokwi – strona Norgips podaje tylko łączny zakres zabudowy.',
     },
     variants: [
       { label: '2×12,5 GKB (A) · wieszak płaski L · CD co 50 cm · zabudowa 55–305 mm', board: 'NG-GKB12.5', thickness: 55, mass: 16 },

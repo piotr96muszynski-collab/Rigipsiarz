@@ -348,6 +348,9 @@ for (const [gid, layers] of [[22, 1], [24, 2]]) {
     atticFrame: {
       mount: 'hanger', profile: 'CD60', profileLabel: 'profil CD 60', profileMm: 27, edge: 'UD30', hanger: 'WIESZAK_PLASKI', hangerLabel: 'wieszak płaski L', hangerLn9: 1, joiner: 'LACZNIK_WZDL',
       woodScrews: 2, maxUnderMm: maxL - Math.round(12.5 * layers), maxUnderWhy: `tabela Norgips: zabudowa do ${maxL} mm`,
+      // wieszak mocowany do boku krokwi: zasięg = długość minus ok. 7 cm zakładu (założenie); L-350 daje zabudowę z tabeli
+      hangerSizes: [{ name: 'L-180', reachMm: 110 }, { name: 'L-270', reachMm: 200 }, { name: 'L-350', reachMm: maxL - Math.round(12.5 * layers) }],
+      hangerSizesNote: 'Wieszak płaski L-180, L-270 albo L-350 dobrany do zabudowy pod krokwią; przyjęto ok. 7 cm zakładu wieszaka na bok krokwi – strona Norgips podaje tylko łączny zakres zabudowy.',
     },
     info: `Skosy i jętki: CD 60 co 50 cm na wieszakach płaskich L-180 / L-270 lub wieszakach do poddaszy L-350 (kalkulator Norgips: ok. 3 szt./m²), zabudowa do ${maxL} mm – miejsce na grubą wełnę pod krokwiami · ${ZP_COMMON}` });
 }
