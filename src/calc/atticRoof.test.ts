@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { atticRequirement } from './atticMaterials';
 import { allCeilingSystems } from '../catalog/rigips';
 import { createAttic, createLining } from '../model/factory';
-import { atticRoof, faceCdLines, hasRoofCorners } from './atticRoof';
+import { atticRoof, faceCdLines, faceContains, faceOutlines, hasRoofCorners, polyArea, sideTowardFace } from './atticRoof';
 
 const base = { width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 45, collarHeight: undefined };
 const total = (r: ReturnType<typeof atticRoof>) => r.faces.reduce((s, f) => s + f.areaM2, 0);
@@ -81,11 +81,72 @@ describe('zestawienie poddasza z narożnikami i koszami', () => {
     expect(r.areaM2).toBeCloseTo(104 / Math.cos(Math.PI / 4), 1);
     expect(r.assumptions.some((x) => x.includes('kosz'))).toBe(true);
   });
-  it('system z widoczną więźbą: narożniki pominięte z ostrzeżeniem', () => {
-    const sys = allCeilingSystems().find((s) => s.atticFrame?.mount === 'between')!;
-    const r = atticRequirement(createAttic({ ...base, ends: ['hip', 'gable'], systemId: sys.id, woolUnder: 0 }), sys);
-    expect(r.grid.roof).toBeUndefined();
-    expect(r.warnings.some((w) => w.startsWith('Narożniki dachu i kosze nie są liczone'))).toBe(true);
+});
+
+describe('ruszt krzyżowy przy narożnikach i koszach', () => {
+  const sys = allCeilingSystems().find((s) => s.atticFrame?.carrier?.cross)!;
+  const carrier = sys.atticFrame!.carrier!;
+  const wing = { id: 'w', side: 'left' as const, at: 500, width: 600, length: 400, end: 'gable' as const };
+  const r = atticRequirement(createAttic({ ...base, ends: ['hip', 'gable'], wings: [wing], systemId: sys.id, woolUnder: 0 }), sys);
+  const roof = r.grid.roof!;
+  it('liczy dach z koszami zamiast ostrzeżenia', () => {
+    expect(roof).toBeDefined();
+    expect(r.warnings.some((w) => w.startsWith('Narożniki dachu i kosze nie są liczone'))).toBe(false);
+    expect(r.assumptions.some((x) => x.startsWith('Ruszt krzyżowy przy narożnikach'))).toBe(true);
+  });
+  it('profil nośny pod każdą krokwią kulawą, skrócony do narożnika / kosza', () => {
+    const hip = roof.faces.find((g) => g.face.key === 'hip0')!;
+    expect(hip.carriers!.length).toBe(hip.face.rafters.length);
+    const lens = hip.carriers!.map((c) => c.s1 - c.s0);
+    // krokiew środkowa w osi kalenicy najdłuższa, skrajne krótsze
+    expect(Math.max(...lens)).toBeGreaterThan(lens[0] + 50);
+    for (const c of hip.carriers!) {
+      expect(c.fix.length).toBeGreaterThanOrEqual(1);
+      for (const x of c.fix) expect(x >= c.s0 - 0.1 && x <= c.s1 + 0.1).toBe(true);
+    }
+  });
+  it('ilości: nośne, wieszaki tylko na nośnych, łącznik na skrzyżowaniach i końcach', () => {
+    const carriers = roof.faces.flatMap((g) => g.carriers ?? []);
+    const lines = roof.lineProfiles;
+    const cdM = roof.faces.flatMap((g) => g.cd).reduce((s, l) => s + l.t1 - l.t0, 0) / 100;
+    const same = carrier.product === r.grid.profile;
+    const carrierM = carriers.reduce((s, c) => s + (c.s1 - c.s0), 0) / 100 + lines.reduce((s, l) => s + l.line.len, 0) / 100 + (same ? cdM : 0);
+    const got = (r.req.pieces[carrier.product] ?? []).reduce((s, x) => s + x, 0);
+    expect(got).toBeCloseTo(carrierM, 1);
+    const hangers = carriers.reduce((s, c) => s + c.fix.length, 0) + lines.reduce((s, l) => s + l.fix.length, 0);
+    expect(r.hangers).toBe(hangers);
+    const cd = roof.faces.flatMap((g) => g.cd);
+    const crossings = cd.reduce((s, l) => s + l.fix.length + [l.end0, l.end1].filter((k) => k === 'hip' || k === 'valley').length, 0);
+    expect(r.req.counts[carrier.cross!]).toBe(crossings);
+    // profile pod płyty krzyżują się z każdą krokwią w swoim zakresie
+    for (const g of roof.faces) for (const l of g.cd) expect(l.fix.length).toBe(g.face.rafters.filter((t) => t > l.t0 + 1 && t < l.t1 - 1).length);
+  });
+});
+
+describe('więźba widoczna przy narożnikach i koszach', () => {
+  const sys = allCeilingSystems().find((s) => s.atticFrame?.mount === 'between')!;
+  const a = createAttic({ ...base, ends: ['hip', 'hip'], systemId: sys.id, woolUnder: 0, woolBetween: 0 });
+  const r = atticRequirement(a, sys);
+  const roof = r.grid.roof!;
+  it('płyty tylko w polach między krokwiami', () => {
+    expect(roof).toBeDefined();
+    expect(r.warnings.some((w) => w.startsWith('Narożniki dachu i kosze nie są liczone'))).toBe(false);
+    const face = roof.faces.reduce((s, g) => s + g.face.areaM2, 0);
+    expect(r.areaM2).toBeLessThan(face * (1 - (a.rafterWidth - 1) / a.rafterSpacing));
+    expect(r.areaM2).toBeGreaterThan(face * 0.75);
+    for (const g of roof.faces) expect(g.boardPieces!.length).toBeGreaterThanOrEqual(g.face.rafters.length);
+  });
+  it('poprzeczki w polach bez mocowań pośrednich, elementy wzdłuż obu boków krokwi', () => {
+    for (const g of roof.faces) {
+      expect(g.sides!.length).toBe(2 * g.face.rafters.length);
+      for (const l of g.cd) {
+        expect(l.fix).toEqual([]);
+        // żadna poprzeczka nie przechodzi przez krokiew
+        for (const t of g.face.rafters) expect(l.t1 <= t - a.rafterWidth / 2 + 0.5 || l.t0 >= t + a.rafterWidth / 2 - 0.5).toBe(true);
+      }
+    }
+    expect(roof.lineProfiles.every((l) => l.fix.length === 0)).toBe(true);
+    expect(r.hangers).toBe(0);
   });
 });
 
@@ -106,5 +167,39 @@ describe('okładziny ścian poddasza z narożnikami i koszami', () => {
     // lewa: 2 odcinki obok dobudówki, prawa: cała, połać narożna: 1, dobudówka: 2 boki
     expect(knees.length).toBe(6);
     expect(r.wallAreaM2).toBeGreaterThan(0);
+  });
+});
+
+// układ ze zgłoszenia: 10×8 m, narożnik przy 1. szczycie, dobudówka 4,8 m z koszami, sufit pod jętkami na 4 m
+describe('dach kopertowy z dobudówką (T) i sufitem pod jętkami', () => {
+  const a = createAttic({ ...base, pitch: 40, collarHeight: 400, ends: ['hip', 'gable'], wings: [{ id: 'w', side: 'left', at: 500, width: 480, length: 300, end: 'gable' }] });
+  const r = atticRoof(a);
+  it('długości narożników i koszy jak na rzucie (587,9 / 394,6 / 394,7)', () => {
+    expect(r.lines.filter((l) => l.kind === 'hip').map((l) => l.len.toFixed(1))).toEqual(['587.9', '587.9']);
+    expect(r.lines.filter((l) => l.kind === 'valley').map((l) => l.len.toFixed(1))).toEqual(['394.6', '394.7']);
+  });
+  it('obrys połaci w całości: bez wewnętrznych styków kawałków, pole jak suma kawałków', () => {
+    for (const f of r.faces) {
+      const loops = faceOutlines(f);
+      const sum = f.pieces.reduce((s, pc) => s + Math.abs(polyArea(pc)), 0);
+      expect(loops.reduce((s, l) => s + polyArea(l), 0)).toBeCloseTo(sum, 0);
+      expect(loops.every((l) => polyArea(l) > 0)).toBe(true);
+    }
+    // skos lewy: jeden wielokąt wklęsły z wcięciem dobudówki (kosze) i ścięciem narożnika
+    const left = faceOutlines(r.faces.find((f) => f.key === 'left')!);
+    expect(left).toHaveLength(1);
+    const pts = left[0].map((p) => `${Math.round(p.u)},${Math.round(p.v)}`);
+    expect(pts).toEqual(['0,0', '260,0', '500,240', '740,0', '1000,0', '1000,358', '358,358']);
+  });
+  it('profile wzdłuż koszy i narożników leżą na swojej płaszczyźnie (nie po drugiej stronie linii)', () => {
+    for (const l of r.lines.filter((x) => x.kind === 'hip' || x.kind === 'valley'))
+      for (const fi of l.faces) {
+        const f = r.faces[fi];
+        const s = sideTowardFace(f, l.p, l.q);
+        for (const k of [0.2, 0.5, 0.8]) {
+          const p = { u: l.p.u + (l.q.u - l.p.u) * k + s.u * 5, v: l.p.v + (l.q.v - l.p.v) * k + s.v * 5 };
+          expect(faceContains(f, p)).toBe(true);
+        }
+      }
   });
 });

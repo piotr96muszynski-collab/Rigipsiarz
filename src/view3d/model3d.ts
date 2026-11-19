@@ -90,13 +90,15 @@ export interface CylPart {
   owner: string;
 }
 
-/** Płaski wielokąt wypukły w dowolnej płaszczyźnie (płyty i folia na połaciach z narożnikami / koszami) */
+/** Płaski wielokąt (także wklęsły) w dowolnej płaszczyźnie (płyty i folia na połaciach z narożnikami / koszami, mur) */
 export interface FacePart {
   type: 'face';
   layer: Layer3D;
   mat: MatKey;
-  /** Wierzchołki, m */
+  /** Wierzchołki obrysu, m */
   pts: [number, number, number][];
+  /** Otwory w obrysie, m */
+  holes?: [number, number, number][][];
   /** Kierunek grubości (od `pts`), dowolna długość */
   normal: [number, number, number];
   thickness: number;

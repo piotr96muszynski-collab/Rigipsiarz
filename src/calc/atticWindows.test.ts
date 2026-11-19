@@ -118,14 +118,64 @@ describe('okna dachowe – materiały', () => {
   });
 });
 
-describe('okna dachowe – dach z narożnikami', () => {
-  it('okna pominięte z ostrzeżeniem, zestawienie bez kołnierza', () => {
-    const a = { ...attic(), ends: ['hip', 'hip'] as ['hip', 'hip'] };
-    const g = atticWindowGeometry(a);
+describe('okna dachowe – dach z narożnikami i koszami', () => {
+  const roof = (wins: Partial<RoofWindow>[], o: Partial<ReturnType<typeof createAttic>> = {}) =>
+    createAttic({ width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 45, collarHeight: undefined, ends: ['hip', 'hip'], windows: wins.map((w, i) => win({ id: `w${i}`, ...w })), ...o });
+
+  it('okno w skosie głównym: ta sama geometria glifów co w poddaszu prostokątnym', () => {
+    const a = roof([{ u: 505, sill: 160 }]);
+    const grid = atticGrid(a);
+    const [x] = atticWindowGeometry(a, grid).list;
+    const plain = atticWindowGeometry({ ...a, ends: undefined }).list[0];
+    expect(x.face).toBe(grid.roof!.faces.findIndex((f) => f.face.key === 'left'));
+    expect(x.s0).toBeCloseTo(plain.s0, 1);
+    expect(x.s1).toBeCloseTo(plain.s1, 1);
+    expect(x.lower).toBeCloseTo(plain.lower, 6);
+    expect(x.warnings).toEqual([]);
+  });
+
+  it('okno w połaci narożnej: krokwie kulawe po bokach, otwór odjęty, glify i kołnierz w zestawieniu', () => {
+    // krokwie kulawe co 90 cm symetrycznie od osi kalenicy (400): 310, 400, 490 – okno między 310 a 400
+    const a = roof([{ face: 'hip0', u: 355, sill: 160 }]);
+    const grid = atticGrid(a);
+    const [x] = atticWindowGeometry(a, grid).list;
+    expect(grid.roof!.faces[x.face!].face.key).toBe('hip0');
+    expect(x.flank).toEqual([310, 400]);
+    expect(x.cutRafters).toEqual([]);
+    expect(x.interrupted.length).toBeGreaterThan(0);
+    const r0 = atticRequirement({ ...a, windows: [] });
+    const r1 = atticRequirement(a);
+    expect(r1.windows.list).toHaveLength(1);
+    expect(r1.warnings.some((t) => /pominięto/.test(t))).toBe(false);
+    expect(r1.areaM2).toBeCloseTo(r0.areaM2 - ((x.u1 - x.u0) * (x.s1 - x.s0)) / 10000, 3);
+    expect(r1.windows.revealM2).toBeGreaterThan(0);
+    expect(r1.req.counts.KOLNIERZ_PARO).toBe(1);
+    // otwór w rozkładzie płyt: elementy z wycięciem
+    const fb = r1.boards.roof!.faces.find((f) => f.key === 'hip0')!;
+    expect(fb.layers[0].pieces.some((p) => p.notches?.length)).toBe(true);
+  });
+
+  it('okno przecinające narożnik albo kosz: ostrzeżenie', () => {
+    const hip = atticWindowGeometry(roof([{ face: 'hip0', u: 150, sill: 160 }]));
+    expect(hip.warnings.some((t) => /przecina narożnik dachu/.test(t))).toBe(true);
+    const a = createAttic({
+      width: 800,
+      length: 1000,
+      kneeLeft: 100,
+      kneeRight: 100,
+      pitch: 45,
+      collarHeight: undefined,
+      wings: [{ id: 'k', side: 'left', at: 500, width: 600, length: 400, end: 'gable' }],
+      // kosz od narożnika ściany okapowej (u = 200) w górę – okno tuż przy nim na skosie głównym
+      windows: [win({ u: 215, sill: 140 })],
+    });
+    const v = atticWindowGeometry(a);
+    expect(v.warnings.some((t) => /przecina kosz/.test(t))).toBe(true);
+  });
+
+  it('połać, której nie ma: okno pominięte z ostrzeżeniem', () => {
+    const g = atticWindowGeometry(roof([{ face: 'w3a' }]));
     expect(g.list).toEqual([]);
     expect(g.warnings[0]).toMatch(/pominięto/);
-    const r = atticRequirement(a);
-    expect(r.warnings.some((t) => /Okna dachowe \(1\) pominięto/.test(t))).toBe(true);
-    expect(r.req.counts.KOLNIERZ_PARO).toBeUndefined();
   });
 });

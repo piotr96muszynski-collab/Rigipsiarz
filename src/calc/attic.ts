@@ -7,7 +7,7 @@
 import { ceilingSystemById, type AtticCarrier, type AtticFrame, type CeilingSystem } from '../catalog/rigips';
 import { ceilingBoardsMm, ceilingDepth } from './ceilingLevels';
 import type { Attic } from '../model/types';
-import { atticRoof, faceCdLines, hasRoofCorners, type AtticRoof, type RoofCdLine, type RoofFace, type RoofLine } from './atticRoof';
+import { atticRoof, faceBays, faceCdLines, faceRafterSpans, hasRoofCorners, piecesAreaM2, type AtticRoof, type P2, type RoofCdLine, type RoofFace, type RoofLine } from './atticRoof';
 
 export interface SecPt {
   x: number;
@@ -293,8 +293,24 @@ export interface AtticGrid {
 /** Ruszt na jednej płaszczyźnie dachu z narożnikami / koszami */
 export interface AtticRoofFaceGrid {
   face: RoofFace;
-  /** Odcinki profili pod płyty z mocowaniami do krokwi */
+  /** Odcinki profili pod płyty z mocowaniami do krokwi (ruszt krzyżowy: skrzyżowania z profilami nośnymi; więźba widoczna: bez mocowań pośrednich) */
   cd: RoofCdLine[];
+  /** Ruszt krzyżowy: profile nośne pod każdą krokwią (kulawą) z wieszakami */
+  carriers?: RoofRafterLine[];
+  /** Więźba widoczna: elementy wzdłuż obu boków każdej krokwi */
+  sides?: RoofRafterLine[];
+  /** Więźba widoczna: części płaszczyzny między krokwiami, na których leżą płyty; inaczej undefined (całe `face.pieces`) */
+  boardPieces?: P2[][];
+  /** Powierzchnia płyt na płaszczyźnie, m² */
+  boardAreaM2: number;
+}
+
+/** Odcinek wzdłuż krokwi na płaszczyźnie: t wzdłuż `e`, s0–s1 po skosie, mocowania `fix` (s), cm */
+export interface RoofRafterLine {
+  t: number;
+  s0: number;
+  s1: number;
+  fix: number[];
 }
 
 /** Profil wzdłuż krokwi narożnej albo koszowej po jednej stronie linii */
@@ -315,11 +331,6 @@ export interface AtticRoofGrid {
   lineProfiles: AtticRoofLineProfile[];
 }
 
-/** Czy ruszt systemu da się policzyć na dachu z narożnikami i koszami (jednopoziomowy, pod krokwiami) */
-export function roofCornersSupported(sys: CeilingSystem): boolean {
-  const f = atticFrameOf(sys);
-  return f.mount !== 'between' && !f.carrier;
-}
 
 /** Mocowania profilu wzdłuż linii długości `len`: oba końce i pośrednie co max `spacing`, cm */
 export function lineFixes(len: number, spacing: number): number[] {
@@ -456,35 +467,50 @@ export function atticGrid(a: Attic, sys: CeilingSystem = ceilingSystemById(a.sys
 
   let roof: AtticRoofGrid | undefined;
   if (hasRoofCorners(a)) {
-    if (!roofCornersSupported(sys))
-      warnings.push(
-        `Narożniki dachu i kosze nie są liczone dla ${between ? 'systemu z widoczną więźbą' : 'rusztu krzyżowego'} – zestawienie i rysunki pokazują poddasze prostokątne ze ścianami szczytowymi.`,
-      );
-    else {
-      const lining = atticRoof(a, depthMm / 10);
-      const struct = atticRoof(a, 0);
-      warnings.push(...lining.warnings);
-      const every = frame.mount === 'direct';
-      const faces = lining.faces.map((face) => ({ face, cd: faceCdLines(face, cdSpacing, ATTIC_CD_EDGE, maxHanger, every) }));
-      // profil wzdłuż krokwi narożnej / koszowej po obu stronach linii: podparcie końców profili i krawędzi płyt
-      const lineProfiles: AtticRoofLineProfile[] = lining.lines
-        .filter((l) => l.kind === 'hip' || l.kind === 'valley')
-        .flatMap((line) => line.faces.map((fi) => ({ line, face: fi, fix: lineFixes(line.len, maxHanger) })));
-      roof = { roof: lining, structure: struct, faces, lineProfiles };
-      // przy połaci narożnej nie ma ściany szczytowej
-      if (a.ends?.every((e) => e === 'hip')) for (let i = warnings.length - 1; i >= 0; i--) if (warnings[i].startsWith('Skrajna krokiew')) warnings.splice(i, 1);
-      const hips = lining.lines.filter((l) => l.kind === 'hip').length;
-      const valleys = lining.lines.filter((l) => l.kind === 'valley').length;
-      assumptions.push(
-        `Dach z ${[hips ? `narożnikami (${hips})` : '', valleys ? `koszami (${valleys})` : ''].filter(Boolean).join(' i ')}: karty producentów nie mają detali narożników ani koszy – przyjęto, że ${label} dochodzą do linii narożnika / kosza przycięte pod kątem, a wzdłuż krokwi narożnej i koszowej po obu stronach biegnie ${label} ${frame.mount === 'direct' ? 'przykręcony' : `na ${frame.hangerLabel ?? 'wieszakach'}`} co max ${maxHanger} cm; końce profili przykręcone do niego (2 wkręty).`,
-        'Połać narożna ma ten sam kąt co skosy, a ścianka kolankowa pod nią tę samą wysokość co z lewej strony; krokwie kulawe co rozstaw krokwi, symetrycznie od osi kalenicy.',
-        ...(valleys ? ['Dobudówka: ten sam kąt, ścianka kolankowa i jętki co po tej stronie poddasza; krokwie od końca dobudówki co rozstaw krokwi.'] : []),
-        ...(valleys ? ['Kosz od środka to krawędź zewnętrzna pod kątem rozwartym – wykończenie jak „Krawędzie zewnętrzne pod kątem nietypowym” w ustawieniach wykończenia.'] : []),
-        ...(hips ? ['Narożnik dachu od środka to kąt wewnętrzny rozwarty – wykończenie jak „Kąty wewnętrzne pod kątem nietypowym” w ustawieniach wykończenia.'] : []),
-      );
-      const i = assumptions.findIndex((x) => x.startsWith('Płyty i wełna liczone'));
-      if (i >= 0) assumptions[i] = 'Płyty i wełna liczone po licu zabudowy, bez okien dachowych i ścian szczytowych; płyty przy narożnikach i koszach cięte pod kątem z całych arkuszy (bez osobnego odpadu ponad naddatek).';
-    }
+    const lining = atticRoof(a, depthMm / 10);
+    const struct = atticRoof(a, 0);
+    warnings.push(...lining.warnings);
+    // ruszt krzyżowy: profil pod płyty krzyżuje się z profilem nośnym pod każdą krokwią
+    const every = frame.mount === 'direct' || !!carrier;
+    const half = a.rafterWidth / 2;
+    const faces: AtticRoofFaceGrid[] = lining.faces.map((face) => {
+      if (between) {
+        // więźba widoczna: płyty i poprzeczki w polach między krokwiami, elementy wzdłuż obu boków krokwi
+        const boardPieces = faceBays(face, a.rafterWidth);
+        const sides = faceRafterSpans(face, face.rafters.flatMap((t) => [t - half, t + half]), face.pieces).map((sp) => ({ ...sp, fix: [] }));
+        return { face, cd: faceCdLines(face, cdSpacing, ATTIC_CD_EDGE, maxHanger, false, boardPieces), sides, boardPieces, boardAreaM2: piecesAreaM2(face, boardPieces) };
+      }
+      const cd = faceCdLines(face, cdSpacing, ATTIC_CD_EDGE, maxHanger, every);
+      // profil nośny pod każdą krokwią kulawą: od krawędzi do krawędzi płaszczyzny, wieszaki jak w zwykłym ruszcie krzyżowym
+      const carriers = carrier ? faceRafterSpans(face).map((sp) => ({ ...sp, fix: cdLinePositions(sp.s1 - sp.s0, maxHanger).map((x) => Math.round((sp.s0 + x) * 10) / 10) })) : undefined;
+      return { face, cd, carriers, boardAreaM2: face.areaM2 };
+    });
+    // wzdłuż krokwi narożnej / koszowej po obu stronach linii: podparcie końców profili i krawędzi płyt
+    // (ruszt krzyżowy – profil nośny, więźba widoczna – element wzdłuż boku krokwi)
+    const lineProfiles: AtticRoofLineProfile[] = lining.lines
+      .filter((l) => l.kind === 'hip' || l.kind === 'valley')
+      .flatMap((line) => line.faces.map((fi) => ({ line, face: fi, fix: between ? [] : lineFixes(line.len, maxHanger) })));
+    roof = { roof: lining, structure: struct, faces, lineProfiles };
+    // przy połaci narożnej nie ma ściany szczytowej
+    if (a.ends?.every((e) => e === 'hip')) for (let i = warnings.length - 1; i >= 0; i--) if (warnings[i].startsWith('Skrajna krokiew')) warnings.splice(i, 1);
+    const hips = lining.lines.filter((l) => l.kind === 'hip').length;
+    const valleys = lining.lines.filter((l) => l.kind === 'valley').length;
+    const along = between
+      ? `wzdłuż boków krokwi narożnej i koszowej biegnie ${(frame.edge ? 'profil przyścienny' : label)} przykręcony do krokwi, poprzeczki w polach dochodzą do niego przycięte pod kątem`
+      : carrier
+        ? `${label} dochodzą do linii narożnika / kosza przycięte pod kątem, a wzdłuż krokwi narożnej i koszowej po obu stronach biegnie ${carrier.label} na ${frame.hangerLabel ?? 'wieszakach'} co max ${maxHanger} cm; końce profili pod płyty połączone z nim ${carrier.cross ? (carrier.crossLabel ?? 'łącznikiem krzyżowym') : 'wkrętami'}`
+        : `${label} dochodzą do linii narożnika / kosza przycięte pod kątem, a wzdłuż krokwi narożnej i koszowej po obu stronach biegnie ${label} ${frame.mount === 'direct' ? 'przykręcony' : `na ${frame.hangerLabel ?? 'wieszakach'}`} co max ${maxHanger} cm; końce profili przykręcone do niego (2 wkręty)`;
+    assumptions.push(
+      `Dach z ${[hips ? `narożnikami (${hips})` : '', valleys ? `koszami (${valleys})` : ''].filter(Boolean).join(' i ')}: karty producentów nie mają detali narożników ani koszy – przyjęto, że ${along}.`,
+      ...(carrier ? [`Ruszt krzyżowy przy narożnikach i koszach: ${carrier.label} pod każdą krokwią kulawą, skrócony do krokwi narożnej / koszowej.`] : []),
+      'Połać narożna ma ten sam kąt co skosy, a ścianka kolankowa pod nią tę samą wysokość co z lewej strony; krokwie kulawe co rozstaw krokwi, symetrycznie od osi kalenicy.',
+      ...(valleys ? ['Dobudówka: ten sam kąt, ścianka kolankowa i jętki co po tej stronie poddasza; krokwie od końca dobudówki co rozstaw krokwi.'] : []),
+      ...(valleys ? ['Kosz od środka to krawędź zewnętrzna pod kątem rozwartym – wykończenie jak „Krawędzie zewnętrzne pod kątem nietypowym” w ustawieniach wykończenia.'] : []),
+      ...(hips ? ['Narożnik dachu od środka to kąt wewnętrzny rozwarty – wykończenie jak „Kąty wewnętrzne pod kątem nietypowym” w ustawieniach wykończenia.'] : []),
+    );
+    const i = assumptions.findIndex((x) => x.startsWith('Płyty i wełna liczone'));
+    if (i >= 0)
+      assumptions[i] = `Płyty i wełna liczone po licu zabudowy${between ? ' w polach między krokwiami (bez krokwi kulawych, narożnych i koszowych)' : ''}, bez okien dachowych i ścian szczytowych; płyty przy narożnikach i koszach cięte pod kątem z całych arkuszy (bez osobnego odpadu ponad naddatek).`;
   }
   return { section, structure, rafters, surfaces, depthMm, boardsMm, cdSpacing, frame, carrier, hangerNeedMm, hangerSize, profile, profileMm, bays, warnings, assumptions, roof };
 }
