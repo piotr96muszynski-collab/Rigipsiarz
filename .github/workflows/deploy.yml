@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -20,7 +20,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # Pełna historia: numer wydania = liczba commitów na main (vite.config.ts)
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -30,6 +33,13 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+          APP_RELEASE: '1'
+      # Znacznik v1.<numer> w repo – na GitHubie widać, który commit to które wydanie
+      - name: Oznacz wydanie
+        run: |
+          tag="v1.$(git rev-list --count HEAD)"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then echo "$tag już istnieje"; exit 0; fi
+          git tag "$tag" && git push origin "$tag"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

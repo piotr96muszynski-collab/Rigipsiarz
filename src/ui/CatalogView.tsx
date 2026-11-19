@@ -8,6 +8,7 @@ import {
   allCeilingSystems,
   allWallSystems,
   boardById,
+  layerBoards,
   ceilingMaxSpan,
   PRODUCTS,
   customSystems,
@@ -152,9 +153,21 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 maker={makerOf(s)}
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
-                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : s.frame === 'hat-lining' ? 'kapeluszowy 15/48, bez UD' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
-                  ['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
-                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix'
+                    ? []
+                    : s.frame === 'panel'
+                      ? ([
+                          ['Profil', `${wallStudLabel(s)} ${s.panel?.edgeSides === 'all' ? 'po obwodzie (ściany, posadzka, strop)' : 'przy ścianach po obu stronach'}, kołki co ${s.panel?.anchorSpacing} cm`],
+                          ['Maks. szerokość', `${fmtNum((s.panel?.maxWidth ?? 0) / 100)} m (płyta w jednym kawałku od ściany do ściany)`],
+                        ] as [string, string][])
+                      : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : s.frame === 'hat-lining' ? 'kapeluszowy 15/48, bez UD' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
+                  ...(s.sideB?.length && s.sides === 2
+                    ? ([
+                        ['Płyty strony A', layerBoards(s, s.defaultBoard).map((id) => boardById(id).name).join(' + ') + ' (od rusztu)'],
+                        ['Płyty strony B', s.sideB.map((id) => boardById(id).name).join(' + ') + ' (od rusztu)'],
+                      ] as [string, string][])
+                    : ([['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix' || s.frame === 'panel' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
                   ...(s.frame === 'point-fix'
                     ? ([
                         ['Łącznik', fixerLabel(s.fixer)],
@@ -630,7 +643,7 @@ function WallEditor({ initial, onSave, onCancel }: { initial: WallSystem; onSave
             label="Ruszt"
             value={s.frame}
             mode="sheet"
-            options={(Object.keys(WALL_FRAME_LABEL) as WallFrame[]).map((f) => ({ value: f, label: WALL_FRAME_LABEL[f] }))}
+            options={(Object.keys(WALL_FRAME_LABEL) as WallFrame[]).filter((f) => f !== 'panel').map((f) => ({ value: f, label: WALL_FRAME_LABEL[f] }))}
             onChange={(v) => set({ frame: v })}
           />
         </div>

@@ -13,6 +13,7 @@ import { RIGIPS_CEILINGS, RIGIPS_WALLS } from './rigips.gen';
 import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
 import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
 import { KNAUF_BOARDS, KNAUF_CEILING_SYSTEMS, KNAUF_WALL_SYSTEMS } from './knauf';
+import { RIGIPS_PANEL_SHAFTS } from './rigipsPanel';
 import { SINIAT_BOARDS, SINIAT_CEILING_SYSTEMS, SINIAT_WALL_SYSTEMS } from './siniat';
 import { HAT_CEILING_SYSTEMS, HAT_WALL_SYSTEMS } from './hat.gen';
 
@@ -119,6 +120,8 @@ export interface Board {
   hard?: boolean;
   /** Wkręty inne niż TN (wg kalkulatora Rigips): Habito, HartFix (Duraline, Aku), Rigidur, Glasroc F Ridurit, Aquaroc (X Ocean) */
   screws?: 'habito' | 'hartfix' | 'rigidur' | 'ridurit' | 'aquaroc';
+  /** Grubość okładziny ołowianej, mm (płyty osłonowe RTG – ochrona przed promieniowaniem) */
+  leadMm?: number;
 }
 
 export const BOARDS: Board[] = [
@@ -377,9 +380,17 @@ export const PRODUCTS: Record<string, Product> = {
   UA50: { id: 'UA50', name: 'Profil usztywniający UA 50', group: 'Profile', unit: 'szt.', length: 3 },
   UA75: { id: 'UA75', name: 'Profil usztywniający UA 75', group: 'Profile', unit: 'szt.', length: 3 },
   UA100: { id: 'UA100', name: 'Profil usztywniający UA 100', group: 'Profile', unit: 'szt.', length: 3 },
+  // obudowy szachtów z samych płyt (Rigips 3.50.14/19/22, 3.80.15): kątownik po obwodzie szachtu, dł. 2,0 m
+  KAT_SZYB: { id: 'KAT_SZYB', name: 'Kątownik ściany szybu 40×40×1 (lub 40×20×1)', group: 'Profile', unit: 'szt.', length: 2 },
+  // okładziny wolnostojące Siniat C/LS: łącznik stabilizacyjny słupka ze ścianą nad opłytowaniem
+  LS50: { id: 'LS50', name: 'Łącznik stabilizacyjny Nida LS 50', group: 'Mocowanie', unit: 'szt.' },
+  LS75: { id: 'LS75', name: 'Łącznik stabilizacyjny Nida LS 75', group: 'Mocowanie', unit: 'szt.' },
+  LS100: { id: 'LS100', name: 'Łącznik stabilizacyjny Nida LS 100', group: 'Mocowanie', unit: 'szt.' },
   KATUA: { id: 'KATUA', name: 'Kątownik przyłączeniowy do UA', group: 'Mocowanie', unit: 'szt.' },
   SRUBA_M8: { id: 'SRUBA_M8', name: 'Śruba M8 z nakrętką (do profili UA)', group: 'Mocowanie', unit: 'szt.' },
   PWA: { id: 'PWA', name: 'Przewiązka wibroakustyczna (Nida PWA) do kotwienia słupków do ściany', group: 'Mocowanie', unit: 'szt.' },
+  // ściany kinowe Siniat SLA: rzędy rusztu połączone łącznikami akustycznymi
+  PHONI_SL: { id: 'PHONI_SL', name: 'Łącznik akustyczny Phoni SL (do łączenia rzędów rusztu)', group: 'Mocowanie', unit: 'szt.' },
   // Profile sufitowe
   CD60: { id: 'CD60', name: 'Profil Rigips CD 60', group: 'Profile', unit: 'szt.', length: 4 },
   UD30: { id: 'UD30', name: 'Profil Rigips UD 30', group: 'Profile', unit: 'szt.', length: 3 },
@@ -511,6 +522,7 @@ export const PRODUCTS: Record<string, Product> = {
   // gładź (Q2+) – poza zakresem wyliczeń (spoinowanie liczone do Q1), zostaje dla porównań z kartami
   MASA_WYK: { id: 'MASA_WYK', name: 'Masa szpachlowa wykończeniowa (gotowa)', group: 'Wykończenie', unit: 'kg', pack: 20, packUnit: 'opak.' },
   MASA_AQ: { id: 'MASA_AQ', name: 'Masa do spoinowania płyt Aquaroc', group: 'Wykończenie', unit: 'kg', pack: 20, packUnit: 'worek' },
+  TASMA_OLOW: { id: 'TASMA_OLOW', name: 'Taśma z ołowiem Nida RTG, samoprzylepna (grubość jak ołów w płycie)', group: 'Izolacja', unit: 'mb' },
   TASMA_AQ: { id: 'TASMA_AQ', name: 'Taśma z siatki do płyt Aquaroc', group: 'Wykończenie', unit: 'mb', pack: 50, packUnit: 'rolka' },
   KLEJ: { id: 'KLEJ', name: 'Klej gipsowy do płyt g-k', group: 'Mocowanie', unit: 'kg', pack: 25, packUnit: 'worek' },
   // Izolacja
@@ -544,7 +556,7 @@ export type WallCategory = 'działowa' | 'podwójna' | 'instalacyjna' | 'okładz
  * - hat-lining: okładzina na profilach kapeluszowych 15/48 przykręconych (kołkowanych) wprost do ściany,
  *   bez UD i bez uchwytów – kołki w dwóch rzędach (na obu półkach profilu)
  */
-export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix' | 'hat-lining';
+export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix' | 'hat-lining' | 'panel';
 
 export const WALL_CATEGORY_LABEL: Record<WallCategory, string> = {
   działowa: 'Ściany działowe – pojedynczy ruszt',
@@ -563,6 +575,7 @@ export const WALL_FRAME_LABEL: Record<WallFrame, string> = {
   glued: 'płyta klejona (bez rusztu)',
   'point-fix': 'łączniki ATLAS M-SYSTEM 3G (bez profili)',
   'hat-lining': 'profile kapeluszowe 15/48 kołkowane do ściany',
+  panel: 'płyty samonośne między ścianami (bez słupków, profil po obwodzie)',
 };
 
 /** Wysokość profilu kapeluszowego 15/48 (odstęp płyty od podłoża), mm */
@@ -570,7 +583,8 @@ export const HAT_MM = 15;
 /** Szerokość profilu kapeluszowego z półkami, m (na rysunkach i w 3D) */
 export const HAT_W = 0.08;
 
-export type StudSpacing = 60 | 40 | 30;
+/** Rozstaw słupków, cm (62,5 – pod płyty szer. 625 mm, np. Siniat RTG) */
+export type StudSpacing = 62.5 | 60 | 40 | 30;
 
 /** Producent systemu (brak pola = Rigips; systemy ATLAS mają kategorię „atlas”) */
 export type Maker = 'rigips' | 'norgips' | 'knauf' | 'siniat' | 'atlas';
@@ -591,6 +605,8 @@ export interface SystemVariant {
   board?: string;
   /** Płyty dopuszczone na warstwy wewnętrzne (systemy z dwoma rodzajami płyt), od najtańszej */
   innerBoards?: string[];
+  /** Płyty strony 2 od rusztu, gdy ta odmiana ma inne niż system (np. RTG z inną grubością ołowiu) */
+  sideB?: string[];
   /** Rozstaw słupków / profili, cm; brak = jak w systemie */
   studSpacing?: StudSpacing;
   /** Słupki podwójne (2×CW zespolone) */
@@ -599,6 +615,8 @@ export interface SystemVariant {
   maxHeight?: number;
   /** Płyta pośrednia tej odmiany, gdy zależy od poszycia (Knauf W635: F15 → F13, HF15 → HF13) */
   midBoard?: string;
+  /** Maksymalna szerokość (rozpiętość) obudowy z samych płyt, cm */
+  maxWidth?: number;
   /** Klasa odporności ogniowej EI w minutach (brak = nieokreślona) */
   fire?: number;
   /** Izolacyjność akustyczna, dB */
@@ -626,6 +644,26 @@ export interface WallTie {
   spacing: number;
 }
 
+/**
+ * Obudowa szachtu z samych płyt (ruszt `panel`): płyty ułożone poziomo, na całą szerokość szachtu,
+ * skręcone warstwami ze sobą i przykręcone do profilu / kątownika przykołkowanego do ścian
+ * (Siniat „bez konstrukcji nośnej”, Rigips 3.50.14/19/22 i 3.80.15).
+ */
+export interface PanelSpec {
+  /** Profil obwodowy: id produktu (KAT_SZYB – kątownik ściany szybu 40×40×1, CW50 – profil C) */
+  edge: string;
+  /** Gdzie profil: walls – przy ścianach po obu stronach, all – po całym obwodzie (też posadzka i strop) */
+  edgeSides: 'walls' | 'all';
+  /** Największy rozstaw kołków w profilu obwodowym, cm */
+  anchorSpacing: number;
+  /** Największa szerokość obudowy (rozpiętość między ścianami), cm */
+  maxWidth: number;
+  /** Wkręty wg karty, szt./m² obudowy (łączą warstwy ze sobą i z profilem obwodowym) */
+  screws: { product: string; perM2: number }[];
+  /** Grubości wełny dopuszczone w karcie, mm (brak = bez wełny) */
+  wool?: number[];
+}
+
 export interface WallSystem {
   id: string;
   /** Oznaczenie systemu Rigips (np. 3.40.05), jeśli jest */
@@ -640,6 +678,12 @@ export interface WallSystem {
   /** 2 = ściana działowa, 1 = obudowa / okładzina jednostronna */
   sides: 1 | 2;
   defaultBoard: string;
+  /**
+   * Inne poszycie strony 2 niż strony 1: płyty kolejnych warstw od rusztu (ściany RTG z płytą
+   * ołowianą z jednej strony, ściany kinowe 15+15+18 / 15+18+18, płyta cementowa z jednej strony).
+   * Strona 1 to `layers` / `defaultBoard` / `innerBoard`. Brak = obie strony jednakowe.
+   */
+  sideB?: string[];
   /** Inna płyta na warstwach wewnętrznych (np. PRO pod Habito); liczba tych warstw w `innerLayers` */
   innerBoard?: string;
   innerLayers?: number;
@@ -669,6 +713,11 @@ export interface WallSystem {
   /** Szerokość przestrzeni między rusztami (ściana instalacyjna), cm */
   gap?: number;
   /**
+   * Rzędy rusztu rozsuniętego połączone łącznikami zamiast pasków płyty (Siniat SLA – łączniki akustyczne
+   * Phoni SL): produkt i zużycie na m² ściany wg karty, zależnie od rozstawu słupków. Wełna w obu rzędach.
+   */
+  rowTie?: { product: string; perM2: Partial<Record<StudSpacing, number>> };
+  /**
    * Słupki z innych profili niż CW (ruszt `single`):
    * - UA: profile usztywniające UA (blacha 2 mm), na każdym końcu kątownik UA ze śrubami M8;
    *   słupki podwójne = dwa UA skręcone śrubami M8 (Siniat UAR/UARUAR),
@@ -678,6 +727,13 @@ export interface WallSystem {
   studKind?: 'UA' | 'UU' | 'UW2';
   /** Kotwienie słupków do ściany w pionie: kątowniki (Siniat C100/L) albo przewiązki PWA; rozstaw, cm */
   wallTie?: WallTie;
+  /**
+   * Okładzina wolnostojąca z łącznikami stabilizacyjnymi Nida LS (Siniat C/LS): płyty tylko na dolnej
+   * części wysokości (`boarded` – ułamek, karta: min. 3/4), nad nimi każdy słupek trzyma łącznik LS kołkowany do ściany
+   */
+  ls?: { boarded: number };
+  /** Obudowa z samych płyt (ruszt `panel`) */
+  panel?: PanelSpec;
   /** Mocowanie punktowe (ATLAS M-SYSTEM 3G): łącznik; rozstaw poziomy = studSpacing */
   fixer?: PointFixer;
   /** Rozstaw łączników w pionie (mocowanie punktowe), cm */
@@ -695,6 +751,103 @@ export interface WallSystem {
 }
 
 /** Systemy opisane ręcznie: bez karty Rigips (wartości orientacyjne) oraz ATLAS M-System */
+/**
+ * Ściany Rigips 3.37.021–3.37.023 (+AKU) do pomieszczeń mokrych: strona A 2×12,5 płyta gipsowo-kartonowa,
+ * strona B 1×12,5 płyta cementowa AQUAROC (karta). Wartości z karty i kalkulatora zużycia rigips.pl
+ * (data/rigips-systemy.json); kalkulator podaje w zestawieniu Glasroc X Ocean 12,5 zamiast Aquaroc – obie do wyboru.
+ */
+/** Krótkie nazwy płyt do opisów odmian (boardById jest zdefiniowane niżej w pliku) */
+const SHORT: Record<string, string> = {
+  'RBI12.5': 'GKBI',
+  'RB12.5': 'GKB',
+  'RF12.5': 'GKF',
+  'RFP12.5': 'Fire+',
+  'RFI12.5': 'GKFI',
+  'AKU12.5': 'Aku',
+  'AKUF12.5': 'Aku Fire+ H',
+  'AQUAROC12.5': 'Aquaroc',
+  'XOCEAN12.5': 'X Ocean',
+};
+
+const rigipsWetWall = (o: { code: string; profile: 50 | 75 | 100; aku?: boolean; maxHeight: number; thickness: number; mass: number; ra1?: number; slug: string }): WallSystem => {
+  const boards = o.aku ? ['AKU12.5', 'AKUF12.5'] : ['RBI12.5', 'RB12.5', 'RF12.5', 'RFP12.5', 'RFI12.5'];
+  const variants: SystemVariant[] = boards.flatMap((board) =>
+    (['AQUAROC12.5', 'XOCEAN12.5'] as const).map((b) => ({
+      code: o.code,
+      label: `2×12,5 ${SHORT[board]} / 1×12,5 ${SHORT[b]}${b === 'XOCEAN12.5' ? ' (wg kalkulatora Rigips)' : ''} · słupki co 60 cm`,
+      board,
+      sideB: [b],
+      studSpacing: 60 as const,
+      maxHeight: o.maxHeight,
+      ...(o.ra1 ? { ra1: o.ra1 } : {}),
+      wool: o.profile,
+      thickness: o.thickness,
+      mass: o.mass,
+    })),
+  );
+  return {
+    id: `W-CW${o.profile}-2${o.aku ? 'AKU' : ''}-AQ1`,
+    code: o.code,
+    name: `Ściana CW ${o.profile} do pomieszczeń mokrych, 2×12,5 ${o.aku ? 'PRO Aku' : 'PRO'} / 1×12,5 Aquaroc`,
+    category: 'działowa',
+    frame: 'single',
+    profile: o.profile,
+    layers: 2,
+    sides: 2,
+    defaultBoard: boards[0],
+    sideB: ['AQUAROC12.5'],
+    studSpacing: 60,
+    maxHeight: { 60: o.maxHeight },
+    insulationDefault: true,
+    ...(o.ra1 ? { acoustic: `RA1 ${o.ra1} dB` } : {}),
+    info:
+      `Grubość ${String(o.thickness).replace('.', ',')} mm · strona A: 2 warstwy płyty gipsowo-kartonowej, strona B (strefa mokra, pod płytki): 1 warstwa płyty cementowej Aquaroc · ` +
+      `do ${String(o.maxHeight / 100).replace('.', ',')} m przy słupkach co 60 cm · karta: profile CW/UW Hydroprofil (z powłoką antykorozyjną) – aplikacja liczy zwykłe CW/UW, ` +
+      'na płycie cementowej wkręty Aquaroc, taśma i masa do Aquaroc · klasa EI nieokreślona',
+    source: { label: `Karta systemu Rigips ${o.code}`, url: `https://www.rigips.pl/system/sciany-dzialowe-do-pomieszczen-wilgotnych-mokrych/${o.slug}` },
+    variants,
+  };
+};
+
+const RIGIPS_SIDE_B_WALLS: WallSystem[] = [
+  rigipsWetWall({ code: '3.37.021', profile: 50, maxHeight: 300, thickness: 87.5, mass: 40, slug: '3_37_021' }),
+  rigipsWetWall({ code: '3.37.022', profile: 75, maxHeight: 450, thickness: 112.5, mass: 40, ra1: 51, slug: '3_37_022' }),
+  rigipsWetWall({ code: '3.37.023', profile: 100, maxHeight: 500, thickness: 137.5, mass: 40, ra1: 53, slug: '3_37_023' }),
+  rigipsWetWall({ code: '3.37.023 AKU', profile: 100, aku: true, maxHeight: 500, thickness: 137.5, mass: 44, ra1: 58, slug: '3_37_023_aku' }),
+  // 3.41.021 AKU: podwójny ruszt CW 75 Aku, 2×12,5 PRO Aku z każdej strony + 1×12,5 PRO Aku między profilami
+  // (kalkulator: płyty 500 m² na 100 m², CW 75 Aku 360 mb, UW 75 140 mb – dwa rzędy co 60 cm)
+  {
+    id: 'W-2CW75AKU-2AKU-PD',
+    code: '3.41.021 AKU',
+    name: 'Ściana na podwójnym ruszcie CW 75 Aku, 2×12,5 PRO Aku obustronnie + płyta między rzędami',
+    category: 'podwójna',
+    frame: 'double',
+    profile: 75,
+    layers: 2,
+    sides: 2,
+    defaultBoard: 'AKU12.5',
+    midBoard: 'AKU12.5',
+    akuStuds: true,
+    studSpacing: 60,
+    maxHeight: { 60: 600 },
+    insulationDefault: true,
+    acoustic: 'RA1 64 dB',
+    info: 'Grubość 215 mm · dwa rzędy CW 75 Aku co 60 cm, między nimi płyta PRO Aku 12,5 (liczona w płytach i wkrętach) · wełna 2×75 mm · do 6,0 m · klasa EI nieokreślona',
+    source: { label: 'Karta systemu Rigips 3.41.021 AKU', url: 'https://www.rigips.pl/system/sciany-dzialowe/3_41_021_aku' },
+    variants: (['AKU12.5', 'AKUF12.5'] as const).map((board) => ({
+      code: '3.41.021 AKU',
+      label: `2×12,5 ${SHORT[board]} obustronnie + 1×12,5 między profilami · słupki co 60 cm · wełna 2×75 mm`,
+      board,
+      studSpacing: 60 as const,
+      maxHeight: 600,
+      ra1: 64,
+      wool: 75,
+      thickness: 215,
+      mass: 69,
+    })),
+  },
+];
+
 const HAND_WALLS: WallSystem[] = [
   // --- pojedynczy ruszt ---
   {
@@ -763,6 +916,7 @@ const HAND_WALLS: WallSystem[] = [
     info: 'Niewielkie obudowy rur w narożniku – profile CD z UD 30',
     source: APPROX,
   },
+  ...RIGIPS_PANEL_SHAFTS,
   ...ATLAS_WALL_SYSTEMS,
   ...NORGIPS_WALL_SYSTEMS,
   ...KNAUF_WALL_SYSTEMS,
@@ -824,7 +978,7 @@ const byKey = (a: number[], b: number[]) => {
  * Katalog ścian: konstrukcje z kart Rigips (src/catalog/rigips.gen.ts – generowane z danych rigips.pl)
  * oraz systemy opisane ręcznie. Kolejność: kategoria, podstawowe, płyty standardowe, profil, liczba warstw.
  */
-export const WALL_SYSTEMS: WallSystem[] = [...RIGIPS_WALLS, ...HAND_WALLS]
+export const WALL_SYSTEMS: WallSystem[] = [...RIGIPS_WALLS, ...RIGIPS_SIDE_B_WALLS, ...HAND_WALLS]
   .map((s) => (BASIC_WALLS.has(s.id) ? { ...s, basic: true } : s))
   .map((s, i) => ({ s, k: [...(s.maker && s.maker !== 'rigips' ? [CATEGORY_ORDER.indexOf(s.category), MAKER_ORDER.indexOf(s.maker)] : wallOrder(s)), i] }))
   .sort((a, b) => byKey(a.k, b.k))
@@ -888,6 +1042,13 @@ export interface AtticFrame {
   /** Największa zabudowa pod krokwią (zasięg wieszaka), mm, i skąd ta wartość */
   maxUnderMm?: number;
   maxUnderWhy?: string;
+  /**
+   * Długości wieszaka od najkrótszej: nazwa i zasięg, czyli największy odstęp spodu krokwi od płyt
+   * (przy ruszcie krzyżowym – od profilu nośnego), mm. Aplikacja dobiera najkrótszy, który wystarcza.
+   */
+  hangerSizes?: { name: string; reachMm: number }[];
+  /** Skąd zasięgi w `hangerSizes` – trafia do założeń wyliczeń */
+  hangerSizesNote?: string;
   /** Przekroje łat z największym rozstawem mocowania (krokwi) z karty, cm */
   battens?: { product: string; size: string; mm: number; maxFix: number }[];
   /** Największy rozstaw mocowania elementów wzdłuż krokwi (ruszt między krokwiami), cm */
@@ -1180,6 +1341,22 @@ export function ceilingMaxSpan(sys: CeilingSystem): number | undefined {
   return undefined;
 }
 
+/** Profil obwodowy obudowy z samych płyt, np. „kątownik 40×40×1” */
+export function panelEdgeLabel(sys: WallSystem): string {
+  const e = sys.panel?.edge;
+  return e === 'KAT_SZYB' ? 'kątownik 40×40×1' : e?.startsWith('CW') ? `profil C ${e.slice(2)}` : 'profil obwodowy';
+}
+
+/**
+ * Największa szerokość obudowy z samych płyt (cm) dla płyty `board` – karty Siniat podają ją
+ * osobno dla płyt (np. Twarda 200 cm, bo arkusz ma 200 cm: płyta idzie w jednym kawałku od ściany do ściany)
+ */
+export function wallMaxWidth(sys: WallSystem, board?: string): number | undefined {
+  if (!sys.panel) return undefined;
+  const v = sys.variants?.filter((x) => x.board === (board ?? sys.defaultBoard) && x.maxWidth);
+  return v?.length ? Math.max(...v.map((x) => x.maxWidth!)) : sys.panel.maxWidth;
+}
+
 /** Sufit zawieszony na wieszakach / uchwytach (rozstaw wieszaków ma znaczenie) */
 export const isHungCeiling = (kind: CeilingKind): boolean => kind === 'two-level' || kind === 'one-level' || kind === 'parallel' || kind === 'direct';
 
@@ -1211,12 +1388,43 @@ export function wallMidBoard(sys: WallSystem, boardId: string): string | undefin
   return sys.variants?.find((v) => v.board === boardId && v.midBoard)?.midBoard ?? sys.midBoard;
 }
 
+/** Płyty ściany potrzebne do wyliczeń poszycia (ściana albo okładzina) */
+export interface WallBoarding {
+  boardId: string;
+  innerBoardId?: string;
+  /** Płyty strony 2 od rusztu (systemy z innym poszyciem stron; brak = wg odmiany / systemu) */
+  sideBBoards?: string[];
+}
+
+/**
+ * Płyty kolejnych warstw strony `side` (0 = strona 1, 1 = strona 2), od rusztu. Strona 2 ma własne
+ * płyty w systemach z `sideB`, w pozostałych jest taka jak strona 1; okładzina jednostronna nie ma strony 2.
+ */
+export function sideBoards(sys: WallSystem, w: WallBoarding, side: 0 | 1): string[] {
+  if (side === 1) {
+    if (sys.sides < 2) return [];
+    if (sys.sideB?.length) return w.sideBBoards?.length ? w.sideBBoards : sys.sideB;
+  }
+  return layerBoards(sys, w.boardId, w.innerBoardId);
+}
+
+/** Grubość płyt jednej strony ściany, mm */
+export const sideStackMm = (sys: WallSystem, w: WallBoarding, side: 0 | 1): number =>
+  sideBoards(sys, w, side).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
+
+/** Grubość płyt obu stron ściany razem, mm */
+export const wallBoardsMm = (sys: WallSystem, w: WallBoarding): number => sideStackMm(sys, w, 0) + sideStackMm(sys, w, 1);
+
+/** Liczba warstw płyt na stronie 0 i 1 */
+export const sideLayers = (sys: WallSystem): [number, number] => [sys.layers, sys.sides < 2 ? 0 : sys.sideB?.length || sys.layers];
+
 /** Grubość płyty dosztywniającej między rzędami rusztu, mm */
 export const midBoardMm = (sys: WallSystem): number => (sys.midBoard ? (sys.midLayers ?? 1) * boardById(sys.midBoard).thickness : 0);
 
 /** Nazwa słupka ściany do opisów i rysunków, np. „CW 75”, „UA 50”, „2×U 75 (UU)” */
 export function wallStudLabel(sys: WallSystem): string {
   if (sys.frame === 'cd-lining') return 'CD 60';
+  if (sys.frame === 'panel') return panelEdgeLabel(sys);
   if (sys.frame === 'hat-lining') return 'kapeluszowy 15/48';
   if (sys.studKind === 'UA') return `UA ${sys.profile}`;
   if (sys.studKind === 'UU') return `2×U ${sys.profile} (UU)`;
@@ -1243,6 +1451,8 @@ export function wallFrameDepth(sys: WallSystem): number {
       return HAT_MM;
     case 'glued':
       return 10;
+    case 'panel':
+      return 0;
     case 'point-fix':
       // średni odstęp płyty od podłoża dla wybranego łącznika
       return sys.fixer ? Math.round((sys.fixer.standoff[0] + sys.fixer.standoff[1]) / 2) : 30;

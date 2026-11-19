@@ -117,7 +117,7 @@ describe('katalog – spójność danych', () => {
     for (const s of [...WALL_SYSTEMS, ...CEILING_SYSTEMS]) if (s.code) expect(s.source.url, s.id).toMatch(/^https:\/\/www\.rigips\.pl\//);
   });
   it('katalog obejmuje wszystkie rodzaje ścian i sufitów', () => {
-    expect(new Set(WALL_SYSTEMS.map((s) => s.frame))).toEqual(new Set(['single', 'double', 'separate', 'cd-lining', 'glued', 'point-fix', 'hat-lining']));
+    expect(new Set(WALL_SYSTEMS.map((s) => s.frame))).toEqual(new Set(['single', 'double', 'separate', 'cd-lining', 'glued', 'point-fix', 'hat-lining', 'panel']));
     expect(new Set(WALL_SYSTEMS.map((s) => s.category)).size).toBe(6);
     expect(new Set(CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'parallel', 'direct', 'ua-span', 'cw-span', 'point-fix']));
   });

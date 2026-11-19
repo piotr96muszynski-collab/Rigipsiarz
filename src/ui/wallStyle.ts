@@ -1,11 +1,11 @@
-import { boardById, boardStackMm, wallFrameDepth, wallSystemById } from '../catalog/rigips';
+import { boardById, boardStackMm, wallBoardsMm, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import type { Lining, Wall } from '../model/types';
 
 /** Grubość ściany w cm (profil + płyty) */
 export function wallThickness(w: Wall): number {
   if (w.kind === 'existing') return w.thickness ?? 25;
   const sys = wallSystemById(w.systemId);
-  return (wallFrameDepth(sys) + sys.sides * boardStackMm(sys, w.boardId, w.innerBoardId)) / 10;
+  return (wallFrameDepth(sys) + wallBoardsMm(sys, w)) / 10;
 }
 
 export const wallColor = (w: Wall) => boardById(w.boardId).color;

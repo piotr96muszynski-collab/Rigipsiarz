@@ -224,6 +224,7 @@ export function WallEditor({
       studSpacing={wall.studSpacing}
       doubleStuds={wall.doubleStuds}
       innerBoardId={wall.innerBoardId}
+      sideBBoards={wall.sideBBoards}
       heightCm={wall.height}
       onApply={(pick) => edit((w) => applyWallChoice(w, pick))}
       onDouble={(on) =>
@@ -233,10 +234,16 @@ export function WallEditor({
         })
       }
       onInner={(id) => edit((w) => void (w.innerBoardId = id))}
+      onSideB={(boards) =>
+        edit((w) => {
+          if (boards.join('+') === (sys.sideB ?? []).join('+')) delete w.sideBBoards;
+          else w.sideBBoards = boards;
+        })
+      }
     />
   );
   const summary = wallMoreSummary({
-    spacing: wall.studSpacing,
+    spacing: sys.frame === 'panel' ? undefined : wall.studSpacing,
     pointFix: sys.frame === 'point-fix',
     cw: sys.frame === 'single' || sys.frame === 'double' || sys.frame === 'separate',
     doubleStuds: wall.doubleStuds,
@@ -275,10 +282,12 @@ export function WallEditor({
       <OpeningsEditor wall={wall} L={L} edit={edit} activeOpeningId={activeOpeningId} />
 
       <MoreOptions kind="wall" summary={summary}>
-        <div className="field">
-          <label htmlFor={`sp-${wall.id}`}>{spacingLabel}</label>
-          <Picker id={`sp-${wall.id}`} label={spacingLabel} value={wall.studSpacing} options={SPACING_OPTIONS} onChange={(v) => edit((w) => void (w.studSpacing = v))} />
-        </div>
+        {sys.frame !== 'panel' && (
+          <div className="field">
+            <label htmlFor={`sp-${wall.id}`}>{spacingLabel}</label>
+            <Picker id={`sp-${wall.id}`} label={spacingLabel} value={wall.studSpacing} options={SPACING_OPTIONS} onChange={(v) => edit((w) => void (w.studSpacing = v))} />
+          </div>
+        )}
         {variant('options')}
         <WoolField
           id={`wool-${wall.id}`}
