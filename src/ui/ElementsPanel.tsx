@@ -11,7 +11,8 @@ import {
   type ProjectCalc,
 } from '../calc/materials';
 import { bbox, dist, interiorSide, isNewWall, wallEnds } from '../geometry/geometry';
-import { createCeiling, createLining, createOpening } from '../model/factory';
+import { createCeiling, createLining, createOpening, fitCeilingHeight } from '../model/factory';
+import { ceilingLevels, ceilingSlab, maxCeilingHeight } from '../calc/ceilingLevels';
 import { addWall, applyWallChoice, deleteWall, setWallLength, setWallSystem } from '../model/ops';
 import { WallVariantInfo } from './VariantInfo';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
@@ -401,12 +402,12 @@ export function CeilingEditor({
   return (
     <div className="editor">
       {rect && (
-        <div className="grid-3">
+        <div className="grid-2">
           <DimInput label="Długość" unit="m" value={b.maxX - b.minX} min={20} onChange={(v) => resize(v, b.maxY - b.minY)} />
           <DimInput label="Szerokość" unit="m" value={b.maxY - b.minY} min={20} onChange={(v) => resize(b.maxX - b.minX, v)} />
-          <DimInput label="Wysokość" unit="m" value={ceiling.height} min={50} max={1000} onChange={(v) => edit((c) => void (c.height = v))} />
         </div>
       )}
+      <CeilingHeights ceiling={ceiling} edit={edit} />
       <div className="grid-2">
         <div className="field">
           <label htmlFor={`cs-${ceiling.id}`}>System</label>
@@ -418,6 +419,7 @@ export function CeilingEditor({
                 const s = ceilingSystemById(id);
                 c.systemId = s.id;
                 c.boardId = s.defaultBoard;
+                fitCeilingHeight(c);
               })
             }
             spanCm={Math.min(b.maxX - b.minX, b.maxY - b.minY)}
@@ -425,6 +427,7 @@ export function CeilingEditor({
               edit((c) => {
                 c.systemId = pick.system.id;
                 c.boardId = pick.boardId;
+                fitCeilingHeight(c);
               })
             }
           />
@@ -432,7 +435,10 @@ export function CeilingEditor({
         </div>
         <div className="field">
           <label htmlFor={`cb-${ceiling.id}`}>Płyta</label>
-          <Picker id={`cb-${ceiling.id}`} label="Płyta" value={ceiling.boardId} options={BOARD_OPTIONS()} onChange={(v) => edit((c) => void (c.boardId = v))} />
+          <Picker id={`cb-${ceiling.id}`} label="Płyta" value={ceiling.boardId} options={BOARD_OPTIONS()} onChange={(v) => edit((c) => {
+            c.boardId = v;
+            fitCeilingHeight(c);
+          })} />
         </div>
       </div>
       <Warnings items={r?.warnings} />
@@ -669,5 +675,55 @@ function LiningEditor({
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Strop i sufit: dwie wysokości od posadzki. Sufit nie może wejść w minimalną wysokość zabudowy
+ * systemu (z karty albo założenie), więc pole sufitu ma górną granicę liczoną ze stropu.
+ */
+function CeilingHeights({ ceiling, edit }: { ceiling: Ceiling; edit: (fn: (c: Ceiling) => void) => void }) {
+  const sys = ceilingSystemById(ceiling.systemId);
+  const lv = ceilingLevels(ceiling, sys);
+  const slab = ceilingSlab(ceiling);
+  const top = maxCeilingHeight(slab, sys, ceiling.boardId);
+  const hung = sys.kind === 'two-level' || sys.kind === 'one-level' || sys.kind === 'direct';
+  return (
+    <>
+      <div className="grid-2">
+        <DimInput
+          label="Strop (istniejący)"
+          unit="m"
+          value={slab}
+          min={100}
+          max={1000}
+          onChange={(v) =>
+            edit((c) => {
+              // pierwsza edycja starego projektu: zachowaj sufit tam, gdzie był
+              if (c.slabHeight === undefined) c.height = lv.ceiling;
+              c.slabHeight = v;
+              fitCeilingHeight(c);
+            })
+          }
+        />
+        <DimInput
+          label="Sufit (spód płyt)"
+          unit="m"
+          value={lv.ceiling}
+          min={50}
+          max={top}
+          onChange={(v) =>
+            edit((c) => {
+              c.slabHeight ??= slab;
+              c.height = Math.min(v, top);
+            })
+          }
+        />
+      </div>
+      <small className="hint">
+        Min. {Math.round(lv.depth.minMm / 10)} cm od stropu do spodu płyt ({lv.depth.source}) · sufit najwyżej na {fmtNum(top / 100)} m
+        {hung ? ` · zwieszenie od wierzchu rusztu do stropu ${fmtNum(Math.round(lv.hangerGap * 10) / 10)} cm` : ''}
+      </small>
+    </>
   );
 }

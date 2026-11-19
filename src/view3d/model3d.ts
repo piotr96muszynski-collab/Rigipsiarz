@@ -4,6 +4,7 @@
 
 import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
+import { ceilingLevels } from '../calc/ceilingLevels';
 import { hangerPositions, liningLayout, pieceArea, pieceOutline, pointFixGrid, splicePositions, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
@@ -465,7 +466,10 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
   const sys = ceilingSystemById(c.systemId);
   const board = boardById(c.boardId);
   const bt = board.thickness / 1000;
-  const yb = c.height / 100;
+  // te same poziomy co w ilościach i na przekroju: spód płyt, ruszt, zwieszenie do stropu
+  const lv = ceilingLevels(c, sys);
+  const yb = lv.ceiling / 100;
+  const gap = lv.hangerGap / 100;
   const pts = c.points.map((q) => ({ x: q.x / 100, y: q.y / 100 }));
 
   for (let layer = 0; layer < sys.layers; layer++) {
@@ -480,7 +484,7 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
     });
   }
 
-  const yFrame = yb + bt * sys.layers;
+  const yFrame = lv.frameBottom / 100;
   const twoLevel = sys.kind === 'two-level';
   const lineBox = (axis: 'x' | 'y', at: number, s0: number, s1: number, y0: number, mat: FrameMat, w = CD_W, h = CD_H) => {
     const a = at / 100;
@@ -515,7 +519,8 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
       if (!isMain || !hung) continue;
       // wieszaki na profilach nośnych – te same miejsca co na rysunku (tu wiercimy w stropie)
       const top = y0 + CD_H;
-      const rod = sys.kind === 'direct' ? 0.08 : 0.35;
+      // wieszak sięga stropu (tam kotwa); uchwyt bezpośredni min. 1 cm, żeby był widoczny
+      const rod = Math.max(sys.kind === 'direct' ? 0.01 : 0.03, gap);
       for (const along of hangerPositions(s0, s1, sys.hangerSpacing)) lineBox(g.axis, g.at, along - 0.4, along + 0.4, top, 'hanger', 0.008, rod);
     }
   }
@@ -541,7 +546,7 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
 
   // ATLAS M-System 3G: zamiast profili łączniki – talerzyk nad płytą, trzpień do stropu
   if (sys.kind === 'point-fix') {
-    const standoff = sys.fixer ? (sys.fixer.standoff[0] + sys.fixer.standoff[1]) / 2000 : 0.03;
+    const standoff = Math.max(0.005, lv.slab / 100 - yFrame);
     for (const q of ceilingFixerGrid(c, sys).points) {
       // podłoże = strop nad płytą; walec rysujemy od płyty w górę, więc baza to strop, kierunek w dół
       parts.push(...fixerParts('ceilingFrame', [q.x / 100, yFrame + standoff, q.y / 100], [0, -1, 0], standoff, c.id));

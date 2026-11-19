@@ -233,7 +233,7 @@ export function DrawingsPanel({ project, calc }: Props) {
           return (
             <div key={c.id}>
               <h4>{sys.name}</h4>
-              <CeilingSection sys={sys} board={boardById(c.boardId)} wool={ceilingInsulation(c)} />
+              <CeilingSection sys={sys} board={boardById(c.boardId)} wool={ceilingInsulation(c)} levels={calc.ceilings.get(c.id)?.levels} />
             </div>
           );
         })}
