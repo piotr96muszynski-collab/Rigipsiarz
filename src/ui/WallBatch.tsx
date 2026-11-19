@@ -45,7 +45,7 @@ export function WallDefaultsEditor({ project, update }: { project: Project; upda
         <Picker id="def-sp" label={spacingLabel} value={def.studSpacing ?? sys.studSpacing} options={SPACING_OPTIONS} onChange={(v) => set((x) => void (x.studSpacing = v))} />
       </div>
       <div className="grid-2">
-        <DimInput label="Wysokość" unit="m" value={st.defaultHeight} min={30} max={1000} onChange={(v) => update((d) => void (d.settings.defaultHeight = v))} />
+        <DimInput label="Wysokość (do stropu)" unit="m" value={st.defaultHeight} min={30} max={1000} onChange={(v) => update((d) => void (d.settings.defaultHeight = v))} />
         <label className="check">
           <input type="checkbox" checked={def.insulation ?? sys.insulationDefault} onChange={(e) => set((x) => void (x.insulation = e.target.checked))} />
           Wełna mineralna

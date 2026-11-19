@@ -114,7 +114,7 @@ describe('model 3D sufitu', () => {
       { x: 400, y: 0 },
       { x: 400, y: 300 },
       { x: 0, y: 300 },
-    ], { height: 250 });
+    ], { height: 250, slabHeight: 300 });
     p.ceilings = [c];
     const parts = buildModel3D(p).parts;
     const segs = ceilingGrid(c).reduce((s, g) => s + g.segments.length, 0);

@@ -1,6 +1,7 @@
 // Wszystkie wymiary w modelu są w centymetrach.
 
 import type { FinishingSettings } from '../catalog/finishing';
+import type { BoardLengthPref } from '../calc/boardLength';
 import type { WoolChoice } from '../catalog/insulation';
 
 export type Id = string;
@@ -97,8 +98,13 @@ export interface Ceiling {
   insulationThickness?: number;
   /** Kierunek profili nośnych: 0 = wzdłuż osi X, 90 = wzdłuż osi Y */
   direction: 0 | 90;
-  /** Wysokość sufitu od posadzki (do widoku 3D), cm */
+  /** Wysokość sufitu podwieszanego: spód płyt od posadzki, cm */
   height: number;
+  /**
+   * Spód istniejącego stropu od posadzki, cm. Brak = projekt sprzed zmiany: `height` było wtedy
+   * wysokością pomieszczenia, a sufit wisi najbliżej stropu, jak pozwala system.
+   */
+  slabHeight?: number;
 }
 
 /** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */
@@ -115,7 +121,10 @@ export interface ProjectSettings {
   wasteEnabled: boolean;
   /** Naddatek na odpady, % */
   waste: number;
+  /** Wysokość do stropu, cm: nowe ściany (dochodzą do stropu) i strop nad nowymi sufitami */
   defaultHeight: number;
+  /** Wysokość nowych sufitów podwieszanych (spód płyt), cm; brak = najbliżej stropu wg systemu */
+  ceilingHeight?: number;
   defaultWallSystem: string;
   /** Ustawienia nowych ścian rysowanych na planie (płyta, rozstaw, wełna); brak = wartości domyślne systemu */
   wallDefaults?: WallDefaults;
@@ -125,6 +134,8 @@ export interface ProjectSettings {
   wool?: Record<string, WoolChoice>;
   /** Spoinowanie (Q1) i domyślne wykończenie narożników i styków; brak = wartości domyślne */
   finishing?: Partial<FinishingSettings>;
+  /** Długość arkuszy płyt w tym projekcie, cm ('auto' = dopasowana do wysokości); brak = jak w ustawieniach aplikacji */
+  boardLength?: BoardLengthPref;
 }
 
 /**

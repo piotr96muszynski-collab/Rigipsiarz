@@ -64,7 +64,7 @@ export function QuickForm({ onCreate, onCancel }: Props) {
         <DimInput label={q.mode === 'wall' ? 'Długość ściany' : 'Długość'} unit="m" value={q.length} onChange={(v) => set({ length: v })} min={20} />
         {q.mode !== 'wall' && <DimInput label="Szerokość" unit="m" value={q.width} onChange={(v) => set({ width: v })} min={20} />}
         <DimInput
-          label={q.mode === 'ceiling' ? 'Wysokość sufitu' : 'Wysokość'}
+          label={q.mode === 'wall' ? 'Wysokość' : 'Wysokość do stropu'}
           unit="m"
           value={q.height}
           onChange={(v) => set({ height: v })}

@@ -1,4 +1,5 @@
 import { boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
+import { maxCeilingHeight } from '../calc/ceilingLevels';
 import type { Ceiling, Lining, Opening, OpeningKind, Point, Project, Wall } from './types';
 
 export const uid = () =>
@@ -64,18 +65,32 @@ export function createOpening(kind: OpeningKind, offset: number, overrides: Part
     : { id: uid(), kind, offset, width: 120, height: 120, sill: 90, reinforced: false, ...overrides };
 }
 
+/**
+ * Nowy sufit: strop na wysokości `defaultHeight` (tam kończą się ściany), spód płyt na `ceilingHeight`
+ * z ustawień, ale nie wyżej, niż pozwala minimalna wysokość zabudowy systemu.
+ */
 export function createCeiling(p: Project, points: Point[], overrides: Partial<Ceiling> = {}): Ceiling {
   const sys = ceilingSystemById(overrides.systemId ?? p.settings.defaultCeilingSystem);
+  const boardId = overrides.boardId ?? boardById(sys.defaultBoard).id;
+  const slabHeight = overrides.slabHeight ?? p.settings.defaultHeight;
+  const top = maxCeilingHeight(slabHeight, sys, boardId);
   return {
     id: uid(),
     points,
     systemId: sys.id,
-    boardId: boardById(sys.defaultBoard).id,
+    boardId,
     insulation: false,
     direction: 0,
-    height: p.settings.defaultHeight,
     ...overrides,
+    slabHeight,
+    height: Math.min(overrides.height ?? p.settings.ceilingHeight ?? top, top),
   };
+}
+
+/** Po zmianie stropu, systemu lub płyty: sufit nie może wejść w minimalną wysokość zabudowy */
+export function fitCeilingHeight(c: Ceiling) {
+  c.slabHeight ??= c.height;
+  c.height = Math.min(c.height, maxCeilingHeight(c.slabHeight, ceilingSystemById(c.systemId), c.boardId));
 }
 
 /** Projekt przykładowy – pokój z działówką i drzwiami */
@@ -154,7 +169,7 @@ export function quickProject(q: QuickInput): Project {
         distributeOpenings(w, len, dd, ww);
       });
     }
-    if (q.mode === 'ceiling' || q.withCeiling) p.ceilings = [createCeiling(p, rect, { height: q.height })];
+    if (q.mode === 'ceiling' || q.withCeiling) p.ceilings = [createCeiling(p, rect, { slabHeight: q.height })];
   }
   return p;
 }

@@ -14,6 +14,7 @@ import {
   type WallSystem,
   type Unit,
 } from '../catalog/rigips';
+import { pickBoardLengthCm } from './boardLength';
 import { FIXERS } from '../catalog/atlas';
 import {
   analyzeJunctions,
@@ -32,6 +33,7 @@ import type { Ceiling, Lining, Point, Project, Wall } from '../model/types';
 import { createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
+import { ceilingLevels, ceilingWallWarnings, hangerGapClass, layerBoards, type CeilingLevels } from './ceilingLevels';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
 import { OFFCUT_MIN, bracketPositions, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
 
@@ -56,6 +58,10 @@ export interface Requirement {
   kg: Record<string, number>;
   /** m² (wełna) */
   area: Record<string, number>;
+  /** Uwagi do pozycji zestawienia (id produktu → teksty), np. odstęp uchwytów ES od stropu */
+  notes?: Record<string, string[]>;
+  /** Wieszaki noniuszowe wg zwieszenia: długość w cm (w górę do 5 cm) → sztuki */
+  hangerGaps?: Record<string, number>;
 }
 
 const fmtLen = (m: number) => m.toFixed(2).replace('.', ',');
@@ -70,11 +76,8 @@ const addPiece = (req: Requirement, product: string, len: number) => {
   (req.pieces[product] ??= []).push(len);
 };
 
-/** Dobór długości arkusza: najkrótszy ≥ wysokości, inaczej najdłuższy (z dostawką) */
-export function pickBoardLength(boardId: string, heightCm: number): number {
-  const lens = [...boardById(boardId).lengths].sort((a, b) => a - b);
-  return lens.find((l) => l >= heightCm) ?? lens[lens.length - 1];
-}
+/** Dobór długości arkusza wg ustawienia aplikacji / projektu, cm */
+export const pickBoardLength = (boardId: string, heightCm: number) => pickBoardLengthCm(boardId, heightCm);
 
 const TAPE_FOR_PROFILE: Record<number, string> = { 50: 'TASMA_USZ50', 75: 'TASMA_USZ70', 100: 'TASMA_USZ95' };
 
@@ -114,14 +117,7 @@ export function screwForBoard(depthMm: number, layer: Board, outer: Board = laye
   return kind === 'aquaroc' ? (len <= 25 ? 'AQ25' : 'AQ35') : `${prefix}${len}`;
 }
 
-/**
- * Płyty kolejnych warstw jednej strony, od rusztu: `innerLayers` warstw z płyty wewnętrznej
- * (systemy z dwoma rodzajami płyt, np. PRO pod Habito), reszta z płyty wybranej w elemencie.
- */
-export function layerBoards(sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): string[] {
-  const inner = sys.innerBoard ? Math.min(sys.layers - 1, sys.innerLayers ?? sys.layers - 1) : 0;
-  return Array.from({ length: sys.layers }, (_, i) => (i < inner ? (innerBoardId ?? sys.innerBoard!) : boardId));
-}
+export { layerBoards };
 
 /** Wkręty do kolejnych warstw płyt: wewnętrzne rzadziej, zewnętrzna gęsto */
 function addBoardScrews(req: Requirement, area: number, boards: string[], outerPerM2: number, innerPerM2: number) {
@@ -650,7 +646,14 @@ export interface CeilingResult {
   areaM2: number;
   perimeterM: number;
   warnings: string[];
+  /** Strop, spód płyt, ruszt i zwieszenie – te same wartości co w 3D i na przekroju */
+  levels?: CeilingLevels;
 }
+
+const addNote = (req: Requirement, pid: string, text: string) => {
+  const list = ((req.notes ??= {})[pid] ??= []);
+  if (!list.includes(text)) list.push(text);
+};
 
 export function ceilingRequirement(
   c: Ceiling,
@@ -661,8 +664,14 @@ export function ceilingRequirement(
   const A = polygonArea(c.points) / 10000;
   const edges = polygonPerimeterEdges(c.points).map((e) => e / 100);
   const P = edges.reduce((a, b) => a + b, 0);
-  const warnings: string[] = [];
-  if (sys.kind === 'point-fix') return pointFixCeiling(c, sys, A, P);
+  const levels = ceilingLevels(c, sys);
+  const warnings: string[] = [...levels.warnings];
+  if (sys.kind === 'point-fix') {
+    const r = pointFixCeiling(c, sys, A, P);
+    return { ...r, warnings: [...warnings, ...r.warnings], levels };
+  }
+  // zwieszenie (wierzch rusztu – strop) do zestawienia: górna część noniusza / odgięcie uchwytu
+  const gap = hangerGapClass(levels.hangerGap);
 
   // obwodowe UD 30 (w suficie na CW: UW o szerokości profilu)
   const cwSpan = sys.kind === 'cw-span';
@@ -698,11 +707,14 @@ export function ceilingRequirement(
       }
       const hangers = Math.max(2, Math.ceil(run / (sys.hangerSpacing / 100) - 1e-9));
       if (sys.kind === 'direct') {
-        add(req.counts, sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : sys.hangerType === 'attic' ? 'WIESZAK_PODD' : 'WIESZAK_ES', hangers);
+        const pid = sys.hangerType === 'elastic' ? 'UCHWYT_ELAST' : sys.hangerType === 'attic' ? 'WIESZAK_PODD' : 'WIESZAK_ES';
+        add(req.counts, pid, hangers);
         add(req.counts, 'LN9', hangers * 4);
+        addNote(req, pid, `sufit: odstęp CD od stropu ok. ${Math.round(levels.hangerGap * 10)} mm`);
       } else {
         add(req.counts, 'WIESZAK_NONIUSZ', hangers);
         add(req.counts, 'ZAWLECZKA', hangers * 2);
+        add((req.hangerGaps ??= {}), String(gap), hangers);
       }
       add(req.counts, 'KOTWA', hangers);
     }
@@ -731,7 +743,7 @@ export function ceilingRequirement(
   const ins = ceilingInsulation(c);
   if (ins) add(req.area, `WELNA${ins.thickness}`, A * ins.layers);
 
-  return { req, areaM2: A, perimeterM: P, warnings };
+  return { req, areaM2: A, perimeterM: P, warnings, levels };
 }
 
 // ---------------------------------------------------------------------------
@@ -842,6 +854,15 @@ function boardNote(area: number, cut: number): string {
   return cut >= 0.05 ? `${m2(area - cut)} m² netto + ${m2(cut)} m² odpadu z wycięć L/U przy otworach` : `${m2(area)} m² netto`;
 }
 
+/** Uwaga do wieszaków noniuszowych: ile sztuk na jakie zwieszenie (wierzch rusztu – strop) */
+export function hangerGapNote(gaps: Record<string, number>): string {
+  const list = Object.entries(gaps)
+    .map(([l, n]) => [Number(l), Math.ceil(n - 1e-9)] as const)
+    .sort((a, b) => a[0] - b[0]);
+  const parts = list.map(([l, n]) => (list.length > 1 ? `${n} szt. do ${l} cm` : `do ${l} cm`));
+  return `zwieszenie od wierzchu rusztu do stropu: ${parts.join(', ')} – dobierz długość górnej części`;
+}
+
 export function summarize(reqs: Requirement[], wastePct: number, opts: SummarizeOptions = {}): MaterialLine[] {
   const waste = 1 + wastePct / 100;
   const lines: MaterialLine[] = [];
@@ -851,6 +872,8 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
     for (const key of ['boardArea', 'counts', 'meters', 'kg', 'area'] as const)
       for (const [k, v] of Object.entries(r[key])) add(merged[key], k, v);
     for (const [k, v] of Object.entries(r.boardCutWaste ?? {})) add((merged.boardCutWaste ??= {}), k, v);
+    for (const [k, list] of Object.entries(r.notes ?? {})) (merged.notes ??= {})[k] = [...new Set([...((merged.notes ?? {})[k] ?? []), ...list])];
+    for (const [k, v] of Object.entries(r.hangerGaps ?? {})) add((merged.hangerGaps ??= {}), k, v);
   }
 
   // płyty
@@ -893,6 +916,9 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
   const withPacks = (pid: string, qty: number, unit: Unit): MaterialLine => {
     const product = PRODUCTS[pid];
     const line: MaterialLine = { key: pid, group: product.group, name: product.name, qty, unit };
+    const notes = merged.notes?.[pid];
+    if (notes?.length) line.note = notes.join('; ');
+    if (pid === 'WIESZAK_NONIUSZ' && merged.hangerGaps) line.note = hangerGapNote(merged.hangerGaps);
     if (product.pack && product.packUnit) {
       line.packs = Math.ceil(qty / product.pack - 1e-9);
       line.packUnit = product.packUnit;
@@ -981,6 +1007,7 @@ export function calculateProject(p: Project): ProjectCalc {
   for (const c of p.ceilings) {
     if (c.points.length < 3) continue;
     const r = ceilingRequirement(c, undefined, resolveFinishing(p.settings.finishing));
+    if (r.levels && ceilingSystemById(c.systemId).kind !== 'point-fix') r.warnings.push(...ceilingWallWarnings(p, c, r.levels));
     ceilings.set(c.id, r);
     ceilingAreaM2 += r.areaM2;
   }

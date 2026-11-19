@@ -7,6 +7,7 @@ import { boardById, ceilingSystemById, wallSystemById, type WallFrame } from '..
 import { buildContacts, cornerStudPositions, partRange, type ContactModel, type WallEndContacts } from '../geometry/contacts';
 import { bbox, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
+import { pickBoardLengthCm, rowSegments } from './boardLength';
 
 // ---------------------------------------------------------------------------
 // Ściany
@@ -334,19 +335,8 @@ export function boardFace(
     if (H <= sheetLen + 0.001) {
       pieces.push({ x0, x1, y0: 0, y1: H, cut: narrow || H < sheetLen - 0.005 });
     } else {
-      // pełny arkusz + dostawka, styki poziome na przemian
-      let y = 0;
-      const rows: [number, number][] = [];
-      if (bottomFirst ? bottomFirst(i, x0, x1) : i % 2 === 1) {
-        const first = H - Math.floor(H / sheetLen) * sheetLen || sheetLen;
-        rows.push([0, first]);
-        y = first;
-      }
-      while (y < H - 0.001) {
-        const y1 = Math.min(H, y + sheetLen);
-        rows.push([y, y1]);
-        y = y1;
-      }
+      // pełne arkusze + dostawka, styki poziome na przemian (bez wąskich pasków – patrz rowSegments)
+      const rows = rowSegments(H, sheetLen, bottomFirst ? bottomFirst(i, x0, x1) : i % 2 === 1);
       for (const [y0, y1] of rows) pieces.push({ x0, x1, y0, y1, cut: narrow || y1 - y0 < sheetLen - 0.005 });
     }
   }
@@ -697,10 +687,9 @@ function rowPattern(i: number, c0: number, c1: number, H: number, sheetLen: numb
     .flatMap((o) => [o.sill, o.top].filter((y) => y > 0.01 && y < H - 0.01));
   if (!edges.length) return def;
   const seams = (bottom: boolean) => {
-    const out: number[] = [];
-    let y = bottom ? H - Math.floor(H / sheetLen) * sheetLen || sheetLen : sheetLen;
-    for (; y < H - 0.001; y += sheetLen) out.push(y);
-    return out;
+    return rowSegments(H, sheetLen, bottom)
+      .slice(1)
+      .map(([y]) => y);
   };
   const ok = (bottom: boolean) => seams(bottom).every((y) => edges.every((e) => Math.abs(y - e) >= OPENING_JOINT_MIN - EPS));
   if (ok(def)) return def;
@@ -836,11 +825,8 @@ function clipPieces(pieces: BoardPiece[], x0: number, x1: number): BoardPiece[] 
     .filter((b) => b.x1 - b.x0 > 0.001);
 }
 
-/** Dobór długości arkusza: najkrótszy ≥ wysokości, inaczej najdłuższy (z dostawką), cm */
-export function pickBoardLengthCm(boardId: string, heightCm: number): number {
-  const lens = [...boardById(boardId).lengths].sort((a, b) => a - b);
-  return lens.find((l) => l >= heightCm) ?? lens[lens.length - 1];
-}
+/** Dobór długości arkusza (ustawienie aplikacji / projektu), cm */
+export { pickBoardLengthCm };
 
 // ---------------------------------------------------------------------------
 // Sufity (cm)
