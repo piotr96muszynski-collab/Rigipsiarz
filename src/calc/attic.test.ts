@@ -4,6 +4,8 @@ import { createProject } from '../model/factory';
 import { atticGrid, atticSection, cdLinePositions, hangerRafters, pitchForRidge, rafterPositions, ridgeHeightFor } from './attic';
 import { atticRequirement } from './atticMaterials';
 import { calculateProject } from './materials';
+import { CEILING_SYSTEMS } from '../catalog/rigips';
+import { recommendCeilings } from './recommend';
 
 const attic = (o: Partial<Attic> = {}): Attic => ({
   id: 'a1',
@@ -210,5 +212,98 @@ describe('materiały poddasza', () => {
     expect(names).toMatch(/150 mm/);
     // projekt bez poddaszy działa jak dotąd
     expect(calculateProject(createProject()).attics.size).toBe(0);
+  });
+});
+
+describe('ruszty poddaszy inne niż CD 60 na uchwytach (karty Rigips 4.70.01–4.71.12, Norgips ZP)', () => {
+  const sum = (v: number[] | undefined) => (v ?? []).reduce((s, x) => s + x, 0);
+  const lines = (g: ReturnType<typeof atticGrid>) => g.surfaces.reduce((n, s) => n + s.cd.length, 0);
+
+  it('katalog ma wszystkie systemy poddaszy ze strony Rigips i odmiany Norgips', () => {
+    const codes = new Set(CEILING_SYSTEMS.filter((s) => s.attic && !s.maker).map((s) => s.code));
+    for (const c of ['4.70.01', '4.70.02', '4.70.03', '4.70.04', '4.70.05', '4.70.06', '4.70.07', '4.70.08', '4.70.81', '4.71.11', '4.71.12']) expect(codes, c).toContain(c);
+    const ng = CEILING_SYSTEMS.filter((s) => s.attic && s.maker === 'norgips').map((s) => s.id);
+    expect(ng).toEqual(expect.arrayContaining(['NG-ZP-1', 'NG-ZP-2', 'NG-ZP-L-1', 'NG-ZP-L-2', 'NG-ZP-KAP-1', 'NG-ZP-KAP-2']));
+    // systemy tylko do poddaszy nie trafiają do doboru zwykłych sufitów
+    expect(recommendCeilings({ mount: 'attic', room: 'dry', fire: 0 }).some((p) => p.system.atticFrame)).toBe(false);
+  });
+
+  it('4.70.02 profile kapeluszowe: wprost do każdej krokwi, zabudowa 28 mm, bez wieszaków', () => {
+    const r = atticRequirement(attic({ systemId: 'S-4.70.02-1' }));
+    const n = lines(r.grid);
+    expect(r.grid.depthMm).toBe(28);
+    expect(r.grid.surfaces[0].hangerU).toEqual(r.grid.rafters);
+    expect(sum(r.req.pieces.KAPELUSZ)).toBeCloseTo(n * 10, 6);
+    expect(r.req.pieces.CD60).toBeUndefined();
+    expect(r.req.counts.WIESZAK_ES ?? r.req.counts.UCHWYT_ELAST).toBeUndefined();
+    expect(r.req.counts.WKRET_DREWNO).toBe(n * r.grid.rafters.length * 2);
+    expect(sum(r.req.pieces.UD30)).toBeGreaterThan(0);
+    // wełna pod krokwiami nie mieści się pod profilem 15 mm
+    expect(atticGrid(attic({ systemId: 'S-4.70.02-1', woolUnder: 50 })).warnings.join(' ')).toMatch(/nie zmieści się/);
+  });
+
+  it('4.70.01 łaty: przekrój z karty wg rozstawu krokwi, wkręty TD do płyt', () => {
+    const r = atticRequirement(attic({ systemId: 'S-4.70.01-1', rafterSpacing: 80 }));
+    expect(r.grid.profile).toBe('LATA5030');
+    expect(r.grid.depthMm).toBe(43);
+    expect(r.req.counts.TD35).toBeCloseTo(r.areaM2 * 20, 6);
+    expect(r.req.counts.TN25).toBeUndefined();
+    expect(r.req.pieces.UD30).toBeUndefined();
+    // krokwie co 90 cm: łata 50×30 (max 85 cm) nie wystarcza, karta podaje 60×40 do 100 cm
+    const g90 = atticGrid(attic({ systemId: 'S-4.70.01-1', rafterSpacing: 90 }));
+    expect(g90.profile).toBe('LATA6040');
+    expect(g90.depthMm).toBe(53);
+    expect(g90.warnings.join(' ')).not.toMatch(/rozstaw mocowania/);
+    expect(atticGrid(attic({ systemId: 'S-4.70.01-1', rafterSpacing: 130 })).warnings.join(' ')).toMatch(/dopuszczalny rozstaw mocowania 1,2/);
+  });
+
+  it('4.70.03 Klick-Fix i 4.70.08 C RIGISTIL na uchwytach GL: własne wieszaki i profile', () => {
+    const k = atticRequirement(attic({ systemId: 'S-4.70.03-1' }));
+    expect(k.req.counts.WIESZAK_KLICK).toBe(k.hangers);
+    expect(k.req.counts.LN9).toBeUndefined();
+    expect(sum(k.req.pieces.CD60)).toBeGreaterThan(0);
+    const g = atticRequirement(attic({ systemId: 'S-4.70.08-1' }));
+    expect(g.req.counts.UCHWYT_GL).toBe(g.hangers);
+    expect(g.req.counts.LN9).toBe(g.hangers * 4);
+    expect(sum(g.req.pieces.C_RIGISTIL)).toBeCloseTo(lines(g.grid) * 10, 6);
+    expect(sum(g.req.pieces.U_RIGISTIL)).toBeGreaterThan(0);
+    expect(g.req.counts.LACZNIK_GL3).toBeGreaterThan(0);
+    expect(g.req.pieces.CD60 ?? g.req.pieces.UD30).toBeUndefined();
+    const w = atticRequirement(attic({ systemId: 'S-4.70.07-1' }));
+    expect(w.req.counts.WIESZAK_RIGISTIL).toBe(w.hangers);
+  });
+
+  it('4.71.11 więźba widoczna: płyty między krokwiami, ruszt w każdym polu, 3 mb taśmy na m²', () => {
+    const a = attic({ systemId: 'S-4.71.11-1', rafterSpacing: 80 });
+    const r = atticRequirement(a);
+    const full = atticRequirement(attic({ rafterSpacing: 80 }));
+    expect(r.grid.depthMm).toBeLessThan(0);
+    expect(r.hangers).toBe(0);
+    expect(r.grid.bays.length).toBeGreaterThanOrEqual(r.grid.rafters.length - 1);
+    expect(r.grid.bays.length).toBeLessThanOrEqual(r.grid.rafters.length + 1);
+    // powierzchnia płyt bez pasów pod krokwiami
+    expect(r.areaM2).toBeLessThan(full.areaM2 * 0.95);
+    expect(r.areaM2).toBeGreaterThan(full.areaM2 * 0.8);
+    const battens = sum(r.req.pieces.LATA5030);
+    expect(battens / r.areaM2).toBeGreaterThan(4.5);
+    expect(battens / r.areaM2).toBeLessThan(6.5);
+    expect(Object.values(r.req.meters).some((v) => Math.abs(v - r.areaM2 * 3) < 1e-6)).toBe(true);
+    expect(r.req.area.WELNA150).toBeCloseTo(r.areaM2, 6);
+    // 4.71.12: poprzeczki C RIGISTIL w profilach U RIGISTIL wzdłuż krokwi
+    const c = atticRequirement(attic({ systemId: 'S-4.71.12-1', rafterSpacing: 80 }));
+    expect(c.req.pieces.U_RIGISTIL).toHaveLength(c.grid.bays.length * 2 * c.grid.surfaces.length);
+    expect(sum(c.req.pieces.C_RIGISTIL)).toBeGreaterThan(0);
+  });
+
+  it('Norgips ZP: profile kapeluszowe i wieszaki płaskie L', () => {
+    const k = atticRequirement(attic({ systemId: 'NG-ZP-KAP-1', boardId: 'NG-GKB12.5' }));
+    expect(sum(k.req.pieces.KAPELUSZ)).toBeCloseTo(lines(k.grid) * 10, 6);
+    expect(k.grid.cdSpacing).toBe(50);
+    expect(k.req.pieces.UD30).toBeUndefined();
+    const l = atticRequirement(attic({ systemId: 'NG-ZP-L-1', boardId: 'NG-GKB12.5', woolUnder: 150 }));
+    expect(l.req.counts.WIESZAK_PLASKI).toBe(l.hangers);
+    expect(l.req.counts.LN9).toBe(l.hangers);
+    // wieszak L sięga do 290 mm – 150 mm wełny pod krokwiami mieści się bez ostrzeżenia
+    expect(l.warnings.join(' ')).not.toMatch(/nie zmieści się/);
   });
 });

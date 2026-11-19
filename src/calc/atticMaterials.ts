@@ -7,7 +7,7 @@
 import { boardById, ceilingSystemById, type CeilingSystem } from '../catalog/rigips';
 import { resolveFinishing, type FinishingSettings } from '../catalog/finishing';
 import type { Attic } from '../model/types';
-import { atticGrid, type AtticGrid } from './attic';
+import { atticFrameOf, atticGrid, type AtticGrid } from './attic';
 import { layerBoards } from './ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
 import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, pickBoardLength, type Requirement } from './materials';
@@ -17,9 +17,9 @@ export interface AtticResult {
   grid: AtticGrid;
   /** Powierzchnia zabudowy (skosy + sufit), m² */
   areaM2: number;
-  /** Długość UD 30 na ścianach, m */
+  /** Długość profilu przyściennego na ścianach, m */
   perimeterM: number;
-  /** Liczba wieszaków */
+  /** Liczba mocowań rusztu do krokwi (wieszaki albo punkty przykręcenia profilu / łaty) */
   hangers: number;
   warnings: string[];
   assumptions: string[];
@@ -28,12 +28,6 @@ export interface AtticResult {
 /** Grubości wełny do wyboru między krokwiami i pod krokwiami, mm */
 export const ATTIC_WOOL_BETWEEN = [0, 100, 150, 180, 200];
 export const ATTIC_WOOL_UNDER = [0, 50, 75, 100, 150];
-
-const HANGER_PRODUCT: Record<string, string> = { es: 'WIESZAK_ES', elastic: 'UCHWYT_ELAST', attic: 'WIESZAK_PODD' };
-/** Wkręty „pchełki” łączące wieszak z profilem CD (wieszak do poddaszy zatrzaskuje się na profilu – karta 4.70.04 ich nie podaje) */
-const HANGER_LN9: Record<string, number> = { es: 4, elastic: 4, attic: 0 };
-/** Wkręty do drewna na jeden wieszak (karty Rigips 4.70: 8 szt. na 4 wieszaki; Norgips ZP: 6 szt. na 3 wieszaki) */
-const WOOD_SCREWS_PER_HANGER = 2;
 
 export function atticRequirement(
   a: Attic,
@@ -45,15 +39,17 @@ export function atticRequirement(
   const warnings = [...grid.warnings];
   const assumptions = [...grid.assumptions];
   const L = a.length / 100;
-  const hangerType = sys.hangerType ?? 'es';
-  const hangerPid = HANGER_PRODUCT[hangerType] ?? 'WIESZAK_ES';
+  const frame = atticFrameOf(sys);
+  const between = frame.mount === 'between';
+  const sideProduct = frame.edge ?? grid.profile;
+  const sideFixM = (frame.sideFix ?? 100) / 100;
 
   let areaM2 = 0;
   let hangers = 0;
   let perimeterM = 0;
-  const ud = (lenM: number) => {
-    if (lenM <= 0.05) return;
-    addPiece(req, 'UD30', lenM);
+  const edge = (lenM: number) => {
+    if (!frame.edge || lenM <= 0.05) return;
+    addPiece(req, frame.edge, lenM);
     add(req.counts, 'KOLEK', anchorsFor(lenM, 0.8));
     perimeterM += lenM;
   };
@@ -61,46 +57,68 @@ export function atticRequirement(
 
   for (const g of grid.surfaces) {
     const A = g.areaM2;
+    const run = g.surface.run / 100;
     areaM2 += A;
-    // profile CD wzdłuż kalenicy, na całej długości pomieszczenia
-    for (let i = 0; i < g.cd.length; i++) {
-      addPiece(req, 'CD60', L);
-      add(req.counts, 'LACZNIK_WZDL', Math.max(0, Math.ceil(L / 4 - 1e-9) - 1));
+    if (between) {
+      // więźba widoczna: w każdym polu dwa elementy wzdłuż krokwi i poprzeczki między nimi
+      for (const bay of grid.bays) {
+        for (let k = 0; k < 2; k++) {
+          addPiece(req, sideProduct, run);
+          add(req.counts, 'WKRET_DREWNO', anchorsFor(run, sideFixM) * frame.woodScrews);
+        }
+        for (let i = 0; i < g.cd.length; i++) addPiece(req, grid.profile, bay.w / 100);
+        // każda poprzeczka mocowana na obu końcach
+        add(req.counts, 'WKRET_DREWNO', g.cd.length * 2);
+      }
+    } else {
+      // elementy rusztu wzdłuż kalenicy, na całej długości pomieszczenia
+      for (let i = 0; i < g.cd.length; i++) {
+        addPiece(req, grid.profile, L);
+        if (frame.joiner) add(req.counts, frame.joiner, Math.max(0, Math.ceil(L / 4 - 1e-9) - 1));
+      }
+      const n = g.cd.length * g.hangerU.length;
+      hangers += n;
+      if (frame.hanger) add(req.counts, frame.hanger, n);
+      add(req.counts, 'WKRET_DREWNO', n * frame.woodScrews);
+      if (frame.hanger && frame.hangerLn9) add(req.counts, 'LN9', n * frame.hangerLn9);
+      // profil przyścienny na obu ścianach szczytowych wzdłuż tej płaszczyzny
+      edge(run);
+      edge(run);
     }
-    const n = g.cd.length * g.hangerU.length;
-    hangers += n;
-    add(req.counts, hangerPid, n);
-    add(req.counts, 'WKRET_DREWNO', n * WOOD_SCREWS_PER_HANGER);
-    add(req.counts, 'LN9', n * (HANGER_LN9[hangerType] ?? 4));
-    // UD 30 na obu ścianach szczytowych wzdłuż tej płaszczyzny
-    ud(g.surface.run / 100);
-    ud(g.surface.run / 100);
 
     const sheetLen = pickBoardLength(a.boardId, Math.min(Math.max(g.surface.run, 200), 300));
     for (const id of boards) add(req.boardArea, `${id}|${id === a.boardId ? sheetLen : pickBoardLength(id, 300)}`, A);
-    addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
-    addJointing(req, A, sys.layers, a.boardId, 1.4, fin);
+    // do łat drewnianych płyty kręci się wkrętami TD 3,5×35 (karty Rigips 4.70.01, 4.70.81, 4.71.11)
+    if (grid.profile.startsWith('LATA')) add(req.counts, 'TD35', A * sys.screwsOuter);
+    else addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
+    // więźba widoczna: płyty cięte na pasy między krokwiami – karty 4.71.11 i 4.71.12 podają 3 mb taśmy na m²
+    addJointing(req, A, sys.layers, a.boardId, between ? 3 : 1.4, fin);
   }
 
-  // UD 30 wzdłuż ścianek kolankowych i ściany wysokiej (dach jednospadowy)
+  // profil przyścienny wzdłuż ścianek kolankowych i ściany wysokiej (dach jednospadowy)
   const slopes = grid.section.surfaces.filter((s) => s.kind === 'slope');
-  for (const s of slopes) if (s.a.z > 1) ud(L);
-  const collar = grid.section.surfaces.find((s) => s.kind === 'collar');
-  if (a.roof === 'mono') ud(L);
-  else if (collar && !slopes.some((s) => s.id === 'right')) ud(L);
-  if (collar && !slopes.some((s) => s.id === 'left')) ud(L);
-  add(req.meters, 'TASMA_USZ30', perimeterM);
-  if (slopes.some((s) => s.a.z > 1)) assumptions.push('UD 30 także wzdłuż ścianek kolankowych, pod dolną krawędzią skosu.');
+  if (!between && frame.edge) {
+    for (const s of slopes) if (s.a.z > 1) edge(L);
+    const collar = grid.section.surfaces.find((s) => s.kind === 'collar');
+    if (a.roof === 'mono') edge(L);
+    else if (collar && !slopes.some((s) => s.id === 'right')) edge(L);
+    if (collar && !slopes.some((s) => s.id === 'left')) edge(L);
+    add(req.meters, 'TASMA_USZ30', perimeterM);
+    if (slopes.some((s) => s.a.z > 1)) assumptions.push('Profil przyścienny także wzdłuż ścianek kolankowych, pod dolną krawędzią skosu.');
+  }
 
-  const gapMm = Math.max(0, grid.depthMm - boards.reduce((t, id) => t + boardById(id).thickness, 0) - 27);
-  addNote(req, hangerPid, `poddasze: profil CD ok. ${Math.round(gapMm)} mm pod krokwią`);
+  if (frame.hanger) {
+    const gapMm = Math.max(0, grid.depthMm - boards.reduce((t, id) => t + boardById(id).thickness, 0) - grid.profileMm);
+    addNote(req, frame.hanger, `poddasze: ${frame.profileLabel} ok. ${Math.round(gapMm)} mm pod krokwią`);
+  }
 
   // wełna: między krokwiami (pasy o 1–2 cm szersze niż światło – wytyczne Isover/Rigips) i pod krokwiami na całej powierzchni
   if (a.woolBetween > 0) {
     const clear = Math.min(1, Math.max(0, (a.rafterSpacing - a.rafterWidth + 1.5) / a.rafterSpacing));
-    add(req.area, `WELNA${a.woolBetween}`, areaM2 * clear);
+    // przy widocznej więźbie powierzchnia płyt jest już bez krokwi
+    add(req.area, `WELNA${a.woolBetween}`, between ? areaM2 : areaM2 * clear);
   }
-  if (a.woolUnder > 0) add(req.area, `WELNA${a.woolUnder}`, areaM2);
+  if (a.woolUnder > 0 && !between) add(req.area, `WELNA${a.woolUnder}`, areaM2);
 
   // paroizolacja pod płytami na całej zabudowie – wspólne wyliczenie folii i taśm
   const vapor = ceilingVaporSpec(sys);

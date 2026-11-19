@@ -30,7 +30,7 @@ import {
 } from '../geometry/geometry';
 import { WOOL_THICKNESSES, resolveWool, woolThicknessOf, type WoolChoice } from '../catalog/insulation';
 import type { Ceiling, Lining, Point, Project, Wall } from '../model/types';
-import { createCeiling, createProject, createWall } from '../model/factory';
+import { createAttic, createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
 import { atticRequirement, type AtticResult } from './atticMaterials';
@@ -1122,6 +1122,11 @@ export function wallConsumption(sys: WallSystem, studSpacing = sys.studSpacing, 
 
 /** Zużycie na 1 m² sufitu dla wybranego systemu */
 export function ceilingConsumption(sys: CeilingSystem, insulation = false): ConsumptionLine[] {
+  // ruszty tylko do poddaszy (łaty, profile kapeluszowe…) liczymy na poddaszu wzorcowym
+  if (sys.atticFrame) {
+    const r = atticRequirement(createAttic({ systemId: sys.id, boardId: sys.defaultBoard, woolBetween: insulation ? 150 : 0, woolUnder: 0, vaporBarrier: false }), sys);
+    return perM2(r.req, r.areaM2);
+  }
   const p = createProject();
   const { lengthCm: l, widthCm: w } = REF_CEILING;
   // sufit przęsłowy liczymy na pasie o dopuszczalnej rozpiętości

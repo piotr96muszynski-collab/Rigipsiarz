@@ -1,0 +1,203 @@
+{
+ "NG-SD-CW50-1": [],
+ "NG-SD-CW50-2": [],
+ "NG-SD-CW50-3": [
+  "CW50",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SDM-2CW50-2": [
+  "TASMA_USZ50"
+ ],
+ "NG-SDM-2CW50-3": [
+  "CW50",
+  "TASMA_USZ50",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SDM-AS-2CW50": [
+  "TN25"
+ ],
+ "NG-SDI-2CW50-2": [],
+ "NG-SDI-2CW50-3": [
+  "CW50",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SD-CW75-1": [],
+ "NG-SD-CW75-2": [],
+ "NG-SD-CW75-3": [
+  "CW75",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SDM-2CW75-2": [],
+ "NG-SDM-2CW75-3": [
+  "CW75",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SDM-AS-2CW75": [
+  "TN25"
+ ],
+ "NG-SDI-2CW75-2": [],
+ "NG-SDI-2CW75-3": [
+  "CW75",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SD-CW100-1": [],
+ "NG-SD-CW100-2": [],
+ "NG-SD-CW100-3": [
+  "CW100",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SDM-2CW100-2": [],
+ "NG-SDM-2CW100-3": [
+  "CW100",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SDM-AS-2CW100": [
+  "TN25"
+ ],
+ "NG-SDI-2CW100-2": [],
+ "NG-SDI-2CW100-3": [
+  "CW100",
+  "TN35",
+  "MASA"
+ ],
+ "NG-SO-CW50-1": [],
+ "NG-SO-CW75-1": [],
+ "NG-SO-CW100-1": [],
+ "NG-SO-CW50-2": [],
+ "NG-SO-CW75-2": [],
+ "NG-SO-CW100-2": [],
+ "NG-SO-CW50-3": [
+  "CW50",
+  "MASA"
+ ],
+ "NG-SO-CW75-3": [
+  "CW75",
+  "MASA"
+ ],
+ "NG-SO-CW100-3": [
+  "CW100",
+  "MASA"
+ ],
+ "NG-SO-CW50-4": [
+  "CW50"
+ ],
+ "NG-SO-CW75-4": [
+  "CW75"
+ ],
+ "NG-SO-CW100-4": [
+  "CW100"
+ ],
+ "NG-OS-CD-1": [
+  "WIESZAK_ES",
+  "TASMA_USZ30",
+  "LN9"
+ ],
+ "NG-OS-CD-2": [
+  "WIESZAK_ES",
+  "TASMA_USZ30",
+  "LN9"
+ ],
+ "NG-OS-CD-3": [
+  "CD60",
+  "WIESZAK_ES",
+  "TASMA_USZ30",
+  "LN9",
+  "MASA"
+ ],
+ "NG-OS-CD-4": [
+  "CD60",
+  "WIESZAK_ES",
+  "TASMA_USZ30",
+  "LN9",
+  "KOLEK"
+ ],
+ "NG-SP-1": [
+  "UD30",
+  "TASMA_USZ30",
+  "KOLEK"
+ ],
+ "NG-SPJ-1": [
+  "LACZNIK_JEDNO"
+ ],
+ "NG-SP-2": [
+  "UD30",
+  "TASMA_USZ30",
+  "KOLEK"
+ ],
+ "NG-SPJ-2": [
+  "LACZNIK_JEDNO"
+ ],
+ "NG-SP-3": [
+  "UD30",
+  "TASMA_USZ30",
+  "KOLEK",
+  "MASA"
+ ],
+ "NG-SPJ-3": [
+  "MASA"
+ ],
+ "NG-SP-4": [
+  "UD30",
+  "TASMA_USZ30",
+  "KOLEK"
+ ],
+ "NG-SPJ-4": [],
+ "NG-OSF-1": [
+  "UD30",
+  "LN9",
+  "KOLEK"
+ ],
+ "NG-OSF-2": [
+  "UD30",
+  "LN9",
+  "KOLEK"
+ ],
+ "NG-OSF-3": [
+  "UD30",
+  "KOLEK",
+  "MASA"
+ ],
+ "NG-OSF-4": [
+  "UD30",
+  "KOLEK"
+ ],
+ "NG-ZP-1": [
+  "UD30",
+  "LN9"
+ ],
+ "NG-ZP-2": [
+  "UD30",
+  "LN9"
+ ],
+ "__noRef": [
+  "NG-SDM-2CW50-3",
+  "NG-OS-CD-1",
+  "NG-OS-CD-3"
+ ],
+ "NG-ZP-L-1": [
+  "KOLEK",
+  "LN9",
+  "UD30",
+  "WKRET_DREWNO"
+ ],
+ "NG-ZP-KAP-1": [
+  "WKRET_DREWNO"
+ ],
+ "NG-ZP-L-2": [
+  "KOLEK",
+  "LN9",
+  "UD30",
+  "WKRET_DREWNO"
+ ],
+ "NG-ZP-KAP-2": [
+  "WKRET_DREWNO"
+ ]
+}

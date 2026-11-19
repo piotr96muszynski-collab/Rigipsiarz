@@ -622,25 +622,46 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
     parts.push({ type: 'box', layer, mat, c: [x, y, z], s, rotY: 0, rotX: f.rotX, owner: a.id });
   };
 
+  // ruszt: CD 60, profil kapeluszowy, C RIGISTIL albo łata – wysokość z katalogu, szerokość wg produktu
+  const fr = grid.frame;
+  const between = fr.mount === 'between';
+  const timber = grid.profile.startsWith('LATA');
+  const pH = grid.profileMm / 1000;
+  const pW = timber ? (grid.profile === 'LATA5030' ? 0.05 : 0.06) : grid.profile === 'KAPELUSZ' ? 0.08 : CD_W;
+  const pMat: MatKey = timber ? 'timber' : 'cdMain';
+  const cdShape = !timber && grid.profile !== 'KAPELUSZ' ? { profile: profileFor('cdMain', 'along', 'a-') } : {};
+  // więźba widoczna: płyty i ruszt osobno w każdym polu między krokwiami
+  const spans = between ? grid.bays.map((bay) => ({ x: (bay.u + bay.w / 2) / 100, w: bay.w / 100 })) : [{ x: L / 2, w: L }];
+
   for (const g of grid.surfaces) {
     const f = frame(g.surface.a, g.surface.b);
     // płyty: kolejne warstwy od lica w stronę rusztu
     let h = 0;
     for (const b of [...boards].reverse()) {
-      tilted('ceilingBoards', `board:${b.id}`, f, L / 2, f.run / 2, h + b.t / 2, [L, b.t, f.run]);
+      for (const sp of spans) tilted('ceilingBoards', `board:${b.id}`, f, sp.x, f.run / 2, h + b.t / 2, [sp.w, b.t, f.run]);
       h += b.t;
     }
-    if (vapor) tilted('ceilingFrame', 'vapor', f, L / 2, f.run / 2, tb + VAPOR_T / 2, [L, VAPOR_T, f.run]);
+    if (vapor) for (const sp of spans) tilted('ceilingFrame', 'vapor', f, sp.x, f.run / 2, tb + VAPOR_T / 2, [sp.w, VAPOR_T, f.run]);
     for (const s of g.cd) {
       const k = (f.flipped ? g.surface.run - s : s) / 100;
-      const [y, z] = f.at(k, tb + CD_H / 2);
-      parts.push({ type: 'box', layer: 'ceilingFrame', mat: 'cdMain', c: [L / 2, y, z], s: [L, CD_H, CD_W], rotY: 0, rotX: f.rotX, owner: a.id, profile: profileFor('cdMain', 'along', 'a-') });
-      // wieszak przy boku krokwi: od profilu CD do krokwi
-      const hh = Math.max(0.03, depth - tb + 0.04);
-      for (const u of g.hangerU) tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + hh / 2, [0.004, hh, ES_W]);
+      const [y, z] = f.at(k, tb + pH / 2);
+      for (const sp of spans)
+        parts.push({ type: 'box', layer: 'ceilingFrame', mat: pMat, c: [sp.x, y, z], s: [sp.w, pH, pW], rotY: 0, rotX: f.rotX, owner: a.id, ...cdShape });
+      // wieszak przy boku krokwi: od profilu do krokwi
+      if (fr.hanger) {
+        const hh = Math.max(0.03, depth - tb + 0.04);
+        for (const u of g.hangerU) tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + hh / 2, [0.004, hh, ES_W]);
+      }
     }
-    // UD 30 na ścianach szczytowych
-    for (const x of [UD_W / 2, L - UD_W / 2]) tilted('ceilingFrame', 'ud', f, x, f.run / 2, tb + CD_H / 2, [UD_W, CD_H, f.run]);
+    if (between) {
+      // elementy wzdłuż krokwi po obu stronach pola
+      const sW = fr.edge ? UD_W : pW;
+      for (const sp of spans)
+        for (const x of [sp.x - sp.w / 2 + sW / 2, sp.x + sp.w / 2 - sW / 2]) tilted('ceilingFrame', fr.edge ? 'ud' : pMat, f, x, f.run / 2, tb + pH / 2, [sW, pH, f.run]);
+    } else if (fr.edge) {
+      // profil przyścienny na ścianach szczytowych
+      for (const x of [UD_W / 2, L - UD_W / 2]) tilted('ceilingFrame', 'ud', f, x, f.run / 2, tb + pH / 2, [UD_W, pH, f.run]);
+    }
   }
 
   // konstrukcja dachu: krokwie od ścianki kolankowej do kalenicy, jętki nad sufitem

@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { allCeilingSystems, ceilingSystemById } from '../catalog/rigips';
 import { isAtticSystem } from '../calc/recommend';
-import { atticGrid, pitchForRidge, ridgeHeightFor, type AtticGrid } from '../calc/attic';
+import { ATTIC_REVEAL, atticFrameOf, atticGrid, pitchForRidge, ridgeHeightFor, type AtticGrid } from '../calc/attic';
 import { ATTIC_WOOL_BETWEEN, ATTIC_WOOL_UNDER, type AtticResult } from '../calc/atticMaterials';
 import type { Attic } from '../model/types';
 import { DimInput } from './DimInput';
@@ -79,8 +79,9 @@ export function AtticEditor({ attic, edit, result }: Props) {
     <div className="editor attic-editor">
       <AtticSectionPreview attic={attic} grid={grid} />
       <p className="muted small attic-summary" role="status">
-        {fmtNum(area, 1)} m² zabudowy · {grid.rafters.length} krokwi · {grid.surfaces.reduce((n, g) => n + g.cd.length, 0)} linii CD co {grid.cdSpacing} cm · {hangers} wieszaków ·
-        zabudowa {grid.depthMm} mm pod krokwią
+        {fmtNum(area, 1)} m² zabudowy · {grid.rafters.length} krokwi · {grid.surfaces.reduce((n, g) => n + g.cd.length, 0)} linii rusztu (
+        {grid.frame.profileLabel}) co {grid.cdSpacing} cm{hangers ? ` · ${hangers} ${grid.frame.hanger ? 'wieszaków' : 'mocowań do krokwi'}` : ''} ·{' '}
+        {grid.depthMm < 0 ? `płyty ${-grid.depthMm} mm nad spodem krokwi` : `zabudowa ${grid.depthMm} mm pod krokwią`}
       </p>
 
       <div className="field">
@@ -171,6 +172,9 @@ export function AtticEditor({ attic, edit, result }: Props) {
                 const s = ceilingSystemById(id);
                 a.systemId = s.id;
                 a.boardId = s.defaultBoard;
+                // ruszt przykręcony do krokwi albo między krokwiami nie zostawia miejsca na wełnę pod krokwiami
+                const fr = atticFrameOf(s);
+                if (fr.mount === 'between' || (fr.mount === 'direct' && a.woolUnder > (fr.battens?.[fr.battens.length - 1].mm ?? fr.profileMm))) a.woolUnder = 0;
               })
             }
           />
@@ -184,11 +188,25 @@ export function AtticEditor({ attic, edit, result }: Props) {
           <label htmlFor={`aw1-${attic.id}`}>Wełna między krokwiami</label>
           <Picker id={`aw1-${attic.id}`} label="Wełna między krokwiami" value={attic.woolBetween} mode="sheet" options={mmOptions(ATTIC_WOOL_BETWEEN)} onChange={(v) => edit((a) => void (a.woolBetween = v))} />
         </div>
-        <div className="field">
-          <label htmlFor={`aw2-${attic.id}`}>Wełna pod krokwiami</label>
-          <Picker id={`aw2-${attic.id}`} label="Wełna pod krokwiami" value={attic.woolUnder} mode="sheet" options={mmOptions(ATTIC_WOOL_UNDER)} onChange={(v) => edit((a) => void (a.woolUnder = v))} />
-          <small className="hint">druga warstwa w poprzek krokwi, obniża zabudowę</small>
-        </div>
+        {grid.frame.mount === 'between' ? (
+          <DimInput
+            label="Widoczna część krokwi"
+            unit="cm"
+            value={attic.reveal ?? ATTIC_REVEAL}
+            min={0}
+            max={Math.max(0, attic.rafterHeight - 4)}
+            hint="od lica płyt do spodu krokwi"
+            onChange={(v) => edit((a) => void (a.reveal = v))}
+          />
+        ) : (
+          <div className="field">
+            <label htmlFor={`aw2-${attic.id}`}>Wełna pod krokwiami</label>
+            <Picker id={`aw2-${attic.id}`} label="Wełna pod krokwiami" value={attic.woolUnder} mode="sheet" options={mmOptions(ATTIC_WOOL_UNDER)} onChange={(v) => edit((a) => void (a.woolUnder = v))} />
+            <small className="hint">
+              {grid.frame.mount === 'direct' ? `ruszt leży na krokwiach: mieści się najwyżej ${Math.round(grid.profileMm)} mm` : 'druga warstwa w poprzek krokwi, obniża zabudowę'}
+            </small>
+          </div>
+        )}
       </div>
 
       <VaporField spec={ceilingVaporSpec(sys)} enabled={vaporBarrierOn(attic.vaporBarrier, ceilingVaporSpec(sys))} areaM2={area} onToggle={(on) => edit((a) => void (a.vaporBarrier = on))} />

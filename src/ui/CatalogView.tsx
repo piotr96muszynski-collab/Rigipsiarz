@@ -208,6 +208,15 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
     out.push(['Profile nośne CD 60', `co ${s.mainSpacing} cm`]);
     out.push(['Profile montażowe CD 60', `co ${s.secondarySpacing} cm`]);
     out.push(['Wieszaki', `${HANGER_LABEL[s.hangerType ?? 'noniusz']} co ${s.hangerSpacing} cm`]);
+  } else if (s.atticFrame) {
+    const fr = s.atticFrame;
+    const name = fr.profileLabel.charAt(0).toUpperCase() + fr.profileLabel.slice(1);
+    out.push([name, `co ${s.secondarySpacing} cm`]);
+    out.push([
+      'Mocowanie',
+      fr.mount === 'hanger' ? `${fr.hangerLabel} co max ${s.hangerSpacing} cm` : fr.mount === 'direct' ? `wprost do krokwi, co max ${s.hangerSpacing} cm` : 'między krokwiami – więźba widoczna',
+    ]);
+    if (fr.battens) out.push(['Łaty', fr.battens.map((b) => `${b.size} mm do ${b.maxFix} cm`).join(' · ')]);
   } else if (s.kind === 'direct') {
     out.push(['Profile CD 60', `co ${s.secondarySpacing} cm`]);
     out.push(['Mocowanie', `${HANGER_LABEL[s.hangerType ?? 'es']} co ${s.hangerSpacing} cm`]);

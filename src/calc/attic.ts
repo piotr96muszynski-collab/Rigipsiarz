@@ -4,7 +4,7 @@
 // Układ przekroju: x w poprzek kalenicy od lica lewej ściany okapowej, z w górę od posadzki (cm).
 // Oś „u” biegnie wzdłuż kalenicy od lica ściany szczytowej (cm).
 
-import { ceilingSystemById, type CeilingSystem } from '../catalog/rigips';
+import { ceilingSystemById, type AtticFrame, type CeilingSystem } from '../catalog/rigips';
 import { ceilingBoardsMm, ceilingDepth } from './ceilingLevels';
 import type { Attic } from '../model/types';
 
@@ -167,11 +167,44 @@ export const ATTIC_MAX_UNDER_MM: Record<string, { mm: number; why: string }> = {
   attic: { mm: 150, why: 'wieszak do poddaszy (karta 4.70.04: do 150 mm pod krokwiami)' },
 };
 
+const CD_HANGER: Record<string, { product: string; label: string; ln9: number }> = {
+  es: { product: 'WIESZAK_ES', label: 'uchwyt ES', ln9: 4 },
+  elastic: { product: 'UCHWYT_ELAST', label: 'uchwyt elastyczny', ln9: 4 },
+  // wieszak do poddaszy zatrzaskuje się na profilu – karta 4.70.04 nie podaje „pchełek”
+  attic: { product: 'WIESZAK_PODD', label: 'wieszak do poddaszy', ln9: 0 },
+};
+
+/** Ruszt poddasza danego systemu: z katalogu albo domyślny – CD 60 na wieszakach wg `hangerType` */
+export function atticFrameOf(sys: CeilingSystem): AtticFrame {
+  if (sys.atticFrame) return sys.atticFrame;
+  const type = sys.hangerType && CD_HANGER[sys.hangerType] ? sys.hangerType : 'es';
+  const h = CD_HANGER[type];
+  const limit = ATTIC_MAX_UNDER_MM[type];
+  return {
+    mount: 'hanger',
+    profile: 'CD60',
+    profileLabel: 'profil CD 60',
+    profileMm: 27,
+    edge: 'UD30',
+    hanger: h.product,
+    hangerLabel: h.label,
+    hangerLn9: h.ln9,
+    joiner: 'LACZNIK_WZDL',
+    // karty Rigips 4.70: 8 szt. na 4 wieszaki; Norgips ZP: 6 szt. na 3 wieszaki
+    woodScrews: 2,
+    maxUnderMm: limit.mm,
+    maxUnderWhy: limit.why,
+  };
+}
+
+/** Widoczna część krokwi w systemach z więźbą widoczną, cm – założenie, karty jej nie podają */
+export const ATTIC_REVEAL = 6;
+
 export interface AtticSurfaceGrid {
   surface: AtticSurface;
-  /** Linie profili CD: odległość od dolnej / lewej krawędzi płaszczyzny, cm */
+  /** Linie elementów rusztu pod płyty (CD, kapeluszowe, łaty): odległość od dolnej / lewej krawędzi płaszczyzny, cm */
   cd: number[];
-  /** Osie krokwi (jętek) z wieszakami, cm od ściany szczytowej */
+  /** Osie krokwi (jętek) z mocowaniem rusztu, cm od ściany szczytowej; puste przy ruszcie między krokwiami */
   hangerU: number[];
   /** Powierzchnia płyt, m² */
   areaM2: number;
@@ -183,60 +216,121 @@ export interface AtticGrid {
   structure: AtticSection;
   rafters: number[];
   surfaces: AtticSurfaceGrid[];
-  /** Grubość zabudowy: spód krokwi – lico płyt, mm */
+  /** Grubość zabudowy: spód krokwi – lico płyt, mm (ujemna, gdy płyty są między krokwiami) */
   depthMm: number;
-  /** Rozstaw profili CD, cm */
+  /** Rozstaw elementów rusztu pod płyty, cm */
   cdSpacing: number;
+  /** Ruszt systemu */
+  frame: AtticFrame;
+  /** Produkt elementu rusztu (dobrany przekrój łaty) i jego wysokość, mm */
+  profile: string;
+  profileMm: number;
+  /** Pola między krokwiami (ruszt między krokwiami): początek i szerokość w świetle, cm od ściany szczytowej */
+  bays: { u: number; w: number }[];
   warnings: string[];
   /** Założenia aplikacji, których nie ma w kartach producentów */
   assumptions: string[];
 }
 
+/** Przekrój łaty dobrany do rozstawu krokwi: najmniejszy, którego rozstaw mocowania z karty wystarcza */
+export function atticBatten(frame: AtticFrame, rafterSpacing: number) {
+  if (!frame.battens?.length) return undefined;
+  return frame.battens.find((b) => b.maxFix + 0.5 >= rafterSpacing) ?? frame.battens[frame.battens.length - 1];
+}
+
+/** Pola między krokwiami w świetle (także skrajne, do ścian szczytowych), cm */
+export function atticBays(a: Pick<Attic, 'length' | 'rafterWidth'>, rafters: number[]): { u: number; w: number }[] {
+  const out: { u: number; w: number }[] = [];
+  const half = a.rafterWidth / 2;
+  const edges = [0, ...rafters.flatMap((r) => [r - half, r + half]), a.length];
+  for (let i = 0; i < edges.length; i += 2) {
+    const w = edges[i + 1] - edges[i];
+    if (w > 10) out.push({ u: Math.round(edges[i] * 10) / 10, w: Math.round(w * 10) / 10 });
+  }
+  return out;
+}
+
 /** Grubość zabudowy pod krokwiami, mm: minimum z karty systemu albo wełna pod krokwiami + płyty */
 export function atticDepthMm(a: Attic, sys: CeilingSystem = ceilingSystemById(a.systemId)): number {
+  const frame = atticFrameOf(sys);
+  const boards = ceilingBoardsMm(sys, a.boardId);
+  // więźba widoczna: płyty cofnięte między krokwie
+  if (frame.mount === 'between') return -Math.round((a.reveal ?? ATTIC_REVEAL) * 10);
+  // ruszt przykręcony wprost do krokwi: wysokość profilu lub łaty + płyty, bez regulacji
+  if (frame.mount === 'direct') return Math.round((atticBatten(frame, a.rafterSpacing)?.mm ?? frame.profileMm) + boards);
   const min = ceilingDepth(sys, a.boardId).minMm;
-  return Math.max(min, Math.round((a.woolUnder || 0) + ceilingBoardsMm(sys, a.boardId)));
+  return Math.max(min, Math.round((a.woolUnder || 0) + boards));
 }
 
 export function atticGrid(a: Attic, sys: CeilingSystem = ceilingSystemById(a.systemId)): AtticGrid {
+  const frame = atticFrameOf(sys);
+  const batten = atticBatten(frame, a.rafterSpacing);
+  const profile = batten?.product ?? frame.profile;
+  const profileMm = batten?.mm ?? frame.profileMm;
+  const label = frame.profileLabel;
   const depthMm = atticDepthMm(a, sys);
   const structure = atticSection(a, 0);
   const section = atticSection(a, depthMm / 10);
   const warnings = [...structure.warnings];
   const rafters = rafterPositions(a);
   const cdSpacing = sys.mainSpacing;
-  const maxHanger = sys.hangerSpacing || 100;
-  const hangerU = hangerRafters(rafters, maxHanger);
+  const maxHanger = batten?.maxFix ?? (sys.hangerSpacing || 100);
+  const between = frame.mount === 'between';
+  const hangerU = between ? [] : frame.mount === 'direct' ? [...rafters] : hangerRafters(rafters, maxHanger);
+  const bays = between ? atticBays(a, rafters) : [];
+  const boardsMm = ceilingBoardsMm(sys, a.boardId);
 
   if (rafters.length < 2) warnings.push('Na tej długości mieści się mniej niż 2 krokwie – sprawdź rozstaw i położenie pierwszej krokwi.');
-  if (a.rafterSpacing > maxHanger + 0.5)
+  if (!between && a.rafterSpacing > maxHanger + 0.5)
     warnings.push(
-      `Rozstaw krokwi ${fmtM(a.rafterSpacing)} m jest większy niż dopuszczalny rozstaw wieszaków ${fmtM(maxHanger)} m w tym systemie – potrzebny ruszt dwupoziomowy albo dodatkowe podparcie między krokwiami.`,
+      frame.mount === 'direct'
+        ? `Rozstaw krokwi ${fmtM(a.rafterSpacing)} m jest większy niż dopuszczalny rozstaw mocowania ${fmtM(maxHanger)} m (${label}${batten ? ` ${batten.size}` : ''}) – wybierz system na wieszakach albo dodaj podparcie między krokwiami.`
+        : `Rozstaw krokwi ${fmtM(a.rafterSpacing)} m jest większy niż dopuszczalny rozstaw wieszaków ${fmtM(maxHanger)} m w tym systemie – potrzebny ruszt dwupoziomowy albo dodatkowe podparcie między krokwiami.`,
     );
+  if (between && a.rafterSpacing - a.rafterWidth > maxHanger + 0.5)
+    warnings.push(`Światło między krokwiami ${fmtM(a.rafterSpacing - a.rafterWidth)} m jest większe niż dopuszczalna rozpiętość elementów poprzecznych ${fmtM(maxHanger)} m w tym systemie.`);
   const firstGap = rafters[0] ?? 0;
   const lastGap = a.length - (rafters[rafters.length - 1] ?? 0);
-  if (Math.max(firstGap, lastGap) > ATTIC_FIRST_HANGER + 0.5)
+  if (!between && Math.max(firstGap, lastGap) > ATTIC_FIRST_HANGER + 0.5)
     warnings.push(
-      `Skrajna krokiew jest ${fmtM(Math.max(firstGap, lastGap))} m od ściany szczytowej, a pierwszy wieszak powinien być nie dalej niż ${fmtM(ATTIC_FIRST_HANGER)} m – koniec profilu CD oprzyj w UD 30 na ścianie szczytowej i dodaj mocowanie przy ścianie.`,
+      frame.edge
+        ? `Skrajna krokiew jest ${fmtM(Math.max(firstGap, lastGap))} m od ściany szczytowej, a pierwsze mocowanie powinno być nie dalej niż ${fmtM(ATTIC_FIRST_HANGER)} m – koniec profilu oprzyj w profilu przyściennym na ścianie szczytowej i dodaj mocowanie przy ścianie.`
+        : `Skrajna krokiew jest ${fmtM(Math.max(firstGap, lastGap))} m od ściany szczytowej, a pierwsze mocowanie powinno być nie dalej niż ${fmtM(ATTIC_FIRST_HANGER)} m – dodaj przy ścianie szczytowej krokiew, łatę lub inne podparcie końców rusztu.`,
     );
-  const limit = ATTIC_MAX_UNDER_MM[sys.hangerType ?? 'es'];
-  if (limit && a.woolUnder > limit.mm)
-    warnings.push(`Wełna ${a.woolUnder} mm pod krokwiami nie zmieści się na tym wieszaku (${limit.why}) – zmniejsz grubość albo wybierz system na innych wieszakach.`);
-  if (a.woolBetween > a.rafterHeight * 10 + 0.5)
-    warnings.push(`Wełna ${a.woolBetween} mm między krokwiami jest grubsza niż krokiew ${Math.round(a.rafterHeight * 10)} mm – nadmiar trzeba zmieścić pod krokwiami albo nadbić krokwie.`);
+  if (frame.mount === 'hanger' && frame.maxUnderMm && a.woolUnder > frame.maxUnderMm)
+    warnings.push(`Wełna ${a.woolUnder} mm pod krokwiami nie zmieści się na tym wieszaku (${frame.maxUnderWhy ?? `do ${frame.maxUnderMm} mm`}) – zmniejsz grubość albo wybierz system na innych wieszakach.`);
+  if (frame.mount === 'direct' && a.woolUnder > profileMm)
+    warnings.push(
+      `Wełna ${a.woolUnder} mm pod krokwiami nie zmieści się: ${label} leży wprost na krokwiach i daje tylko ${Math.round(profileMm)} mm – ustaw 0 albo wybierz system na wieszakach.`,
+    );
+  if (between && a.woolUnder > 0) warnings.push('W systemie z widoczną więźbą nie ma wełny pod krokwiami – ustaw 0.');
+  const roomMm = between ? a.rafterHeight * 10 + depthMm - profileMm - boardsMm : a.rafterHeight * 10;
+  if (a.woolBetween > roomMm + 0.5)
+    warnings.push(
+      between
+        ? `Wełna ${a.woolBetween} mm nie zmieści się między krokwiami: przy widocznych ${Math.round(-depthMm / 10)} cm krokwi nad rusztem zostaje ${Math.max(0, Math.round(roomMm))} mm – nadbij krokwie albo ociepl dach od góry.`
+        : `Wełna ${a.woolBetween} mm między krokwiami jest grubsza niż krokiew ${Math.round(a.rafterHeight * 10)} mm – nadmiar trzeba zmieścić pod krokwiami albo nadbić krokwie.`,
+    );
 
+  const clear = between ? bays.reduce((t, b) => t + b.w, 0) : a.length;
   const surfaces: AtticSurfaceGrid[] = section.surfaces.map((s) => ({
     surface: s,
     cd: cdLinePositions(s.run, cdSpacing),
     hangerU,
-    areaM2: (s.run * a.length) / 10000,
+    areaM2: (s.run * clear) / 10000,
   }));
 
+  const Label = label.charAt(0).toUpperCase() + label.slice(1);
   const assumptions = [
-    `Profile CD 60 biegną w poprzek krokwi, skrajne ${ATTIC_CD_EDGE} cm od ścian i od załamań skos/sufit (karty podają tylko rozstaw; wytyczne Rigips dla sufitów: do 15 cm od ściany).`,
-    'Końce profili CD przy ścianach szczytowych wchodzą w UD 30 biegnący po skosie i suficie.',
-    ...(section.hasCollar ? ['Sufit poziomy: jętka przy każdej parze krokwi, wieszaki mocowane do jętek.'] : []),
+    between
+      ? `${Label}: elementy poprzeczne między krokwiami, skrajne ${ATTIC_CD_EDGE} cm od ścian i od załamań skos/sufit; elementy wzdłuż krokwi po obu stronach każdego pola.`
+      : `${Label}: elementy biegną w poprzek krokwi, skrajne ${ATTIC_CD_EDGE} cm od ścian i od załamań skos/sufit (karty podają tylko rozstaw; wytyczne Rigips dla sufitów: do 15 cm od ściany).`,
+    ...(between ? [`Widoczna część krokwi ${Math.round(-depthMm / 10)} cm poniżej lica płyt – karty jej nie podają, ustaw w formularzu.`] : []),
+    ...(!between && frame.edge ? ['Końce profili przy ścianach szczytowych wchodzą w profil przyścienny biegnący po skosie i suficie.'] : []),
+    ...(frame.mount === 'direct' ? [`${Label} przykręca się do każdej krokwi, bez regulacji – spód krokwi musi być w jednej płaszczyźnie (podkładki przy nierównościach).`] : []),
+    ...(batten ? [`Przekrój łat ${batten.size} mm dobrany do rozstawu krokwi (karta: mocowanie co max ${batten.maxFix} cm).`] : []),
+    ...(section.hasCollar ? [`Sufit poziomy: jętka przy każdej parze krokwi, ${between ? 'ruszt między jętkami' : 'ruszt mocowany do jętek'}.`] : []),
     'Płyty i wełna liczone po licu zabudowy, bez okien dachowych i ścian szczytowych.',
   ];
-  return { section, structure, rafters, surfaces, depthMm, cdSpacing, warnings, assumptions };
+  return { section, structure, rafters, surfaces, depthMm, cdSpacing, frame, profile, profileMm, bays, warnings, assumptions };
 }
