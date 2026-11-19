@@ -9,6 +9,7 @@
 
 import { CORNER_STOCK_LENGTHS, FINISHING_PRODUCTS } from './finishing';
 import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
+import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
 
 export type Unit = 'szt.' | 'mb' | 'm²' | 'kg' | 'opak.' | 'rolka' | 'worek';
 
@@ -233,6 +234,7 @@ export const BOARDS: Board[] = [
     color: '#bfc3c7',
     kind: 'cement',
   },
+  ...NORGIPS_BOARDS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -904,6 +906,7 @@ export const WALL_SYSTEMS: WallSystem[] = [
     source: APPROX,
   },
   ...ATLAS_WALL_SYSTEMS,
+  ...NORGIPS_WALL_SYSTEMS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -1372,6 +1375,7 @@ export const CEILING_SYSTEMS: CeilingSystem[] = [
   cwSpanSystem(100, 1),
   cwSpanSystem(100, 2),
   ...ATLAS_CEILING_SYSTEMS,
+  ...NORGIPS_CEILING_SYSTEMS,
 ];
 
 // ---------------------------------------------------------------------------
