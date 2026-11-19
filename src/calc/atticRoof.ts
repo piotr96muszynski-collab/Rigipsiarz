@@ -564,3 +564,102 @@ export function faceRafterSpans(f: RoofFace): { t: number; s0: number; s1: numbe
   }
   return out;
 }
+
+const key2 = (p: P2) => `${Math.round(p.u * 100)}:${Math.round(p.v * 100)}`;
+
+/**
+ * Obrys płaszczyzny jako suma jej wypukłych kawałków: pętle brzegu (zewnętrzne przeciwnie do ruchu
+ * wskazówek zegara, otwory zgodnie). Wewnętrzne styki kawałków znikają – w 3D i na rysunkach nie
+ * udają załamań połaci.
+ */
+export function faceOutlines(f: Pick<RoofFace, 'pieces'>): P2[][] {
+  const polys = f.pieces.filter((pc) => Math.abs(polyArea(pc)) > 1e-6).map((pc) => (polyArea(pc) > 0 ? pc : [...pc].reverse()));
+  const verts = polys.flat();
+  // krawędzie podzielone w wierzchołkach innych kawałków (styk typu T)
+  const segs: [P2, P2][] = [];
+  for (const pc of polys)
+    for (let i = 0; i < pc.length; i++) {
+      const a = pc[i];
+      const b = pc[(i + 1) % pc.length];
+      const dx = b.u - a.u;
+      const dy = b.v - a.v;
+      const L2 = dx * dx + dy * dy;
+      if (L2 < 1e-6) continue;
+      const ks = [0, 1];
+      for (const p of verts) {
+        const k = ((p.u - a.u) * dx + (p.v - a.v) * dy) / L2;
+        if (k <= 1e-6 || k >= 1 - 1e-6) continue;
+        if (Math.abs((p.u - a.u) * dy - (p.v - a.v) * dx) / Math.sqrt(L2) < 0.01) ks.push(k);
+      }
+      ks.sort((x, y) => x - y);
+      for (let j = 0; j + 1 < ks.length; j++) {
+        if (ks[j + 1] - ks[j] < 1e-9) continue;
+        segs.push([
+          { u: a.u + dx * ks[j], v: a.v + dy * ks[j] },
+          { u: a.u + dx * ks[j + 1], v: a.v + dy * ks[j + 1] },
+        ]);
+      }
+    }
+  // odcinki wspólne dwóch kawałków (przeciwne kierunki) znoszą się
+  const open = new Map<string, [P2, P2][]>();
+  const id = (a: P2, b: P2) => `${key2(a)}>${key2(b)}`;
+  for (const [a, b] of segs) {
+    const back = open.get(id(b, a));
+    if (back?.length) back.pop();
+    else open.set(id(a, b), [...(open.get(id(a, b)) ?? []), [a, b]]);
+  }
+  const left = [...open.values()].flat();
+  // pętle brzegu
+  const from = new Map<string, [P2, P2][]>();
+  for (const s of left) from.set(key2(s[0]), [...(from.get(key2(s[0])) ?? []), s]);
+  const used = new Set<[P2, P2]>();
+  const loops: P2[][] = [];
+  for (const s of left) {
+    if (used.has(s)) continue;
+    const loop: P2[] = [];
+    let cur: [P2, P2] | undefined = s;
+    while (cur && !used.has(cur)) {
+      used.add(cur);
+      loop.push(cur[0]);
+      const next: [P2, P2][] = (from.get(key2(cur[1])) ?? []).filter((x) => !used.has(x));
+      if (next.length <= 1) cur = next[0];
+      else {
+        // kilka wyjść z jednego wierzchołka (kawałki stykające się narożnikiem): najostrzejszy skręt w lewo
+        const din = Math.atan2(cur[1].v - cur[0].v, cur[1].u - cur[0].u);
+        const turn = (x: [P2, P2]) => {
+          let d = Math.atan2(x[1].v - x[0].v, x[1].u - x[0].u) - din;
+          while (d <= -Math.PI) d += 2 * Math.PI;
+          while (d > Math.PI) d -= 2 * Math.PI;
+          return d;
+        };
+        cur = next.reduce((m, x) => (turn(x) > turn(m) ? x : m));
+      }
+    }
+    // punkty współliniowe usunięte
+    const clean = loop.filter((p, i) => {
+      const a = loop[(i + loop.length - 1) % loop.length];
+      const b = loop[(i + 1) % loop.length];
+      return Math.abs((p.u - a.u) * (b.v - a.v) - (p.v - a.v) * (b.u - a.u)) / (Math.hypot(b.u - a.u, b.v - a.v) || 1) > 0.01;
+    });
+    if (clean.length >= 3 && Math.abs(polyArea(clean)) > 1) loops.push(clean);
+  }
+  return loops;
+}
+
+/** Czy punkt rzutu leży na płaszczyźnie (w którymś z jej kawałków) */
+export function faceContains(f: Pick<RoofFace, 'pieces'>, p: P2): boolean {
+  return f.pieces.some((pc) => inPoly(polyArea(pc) > 0 ? pc : [...pc].reverse(), p));
+}
+
+/**
+ * Kierunek w rzucie prostopadły do linii (narożnik, kosz), w stronę płaszczyzny `f` – sprawdzany
+ * punktem tuż obok środka linii (środek ciężkości obrysu wklęsłej płaszczyzny może leżeć po złej stronie).
+ */
+export function sideTowardFace(f: Pick<RoofFace, 'pieces'>, p: P2, q: P2): P2 {
+  const L = Math.hypot(q.u - p.u, q.v - p.v) || 1;
+  const side = { u: -(q.v - p.v) / L, v: (q.u - p.u) / L };
+  const hits = (s: P2) =>
+    [0.25, 0.5, 0.75].filter((k) => faceContains(f, { u: p.u + (q.u - p.u) * k + s.u * 2, v: p.v + (q.v - p.v) * k + s.v * 2 })).length;
+  const neg = { u: -side.u, v: -side.v };
+  return hits(side) >= hits(neg) ? side : neg;
+}
