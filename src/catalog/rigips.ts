@@ -627,6 +627,9 @@ export interface WallSystem {
   /** Inna płyta na warstwach wewnętrznych (np. PRO pod Habito); liczba tych warstw w `innerLayers` */
   innerBoard?: string;
   innerLayers?: number;
+  /** Trzecia płyta – warstwy najbliżej rusztu, pod płytą wewnętrzną (np. 2×15 DFH2 w Rigips 3.22.00 X OCEAN) */
+  baseBoard?: string;
+  baseLayers?: number;
   /** Słupki z profili akustycznych CW Aku */
   akuStuds?: boolean;
   /** Domyślny rozstaw słupków / profili CD, cm */
@@ -897,6 +900,9 @@ export interface CeilingSystem {
   innerBoard?: string;
   /** Liczba warstw z płyty wewnętrznej */
   innerLayers?: number;
+  /** Trzecia płyta – warstwy przy ruszcie, pod płytą wewnętrzną (np. 2×15 DFH2 w Rigips 4.10.25 X OCEAN) */
+  baseBoard?: string;
+  baseLayers?: number;
   /** Rozstaw profili nośnych (górnych / UA), cm */
   mainSpacing: number;
   /** Rozstaw profili montażowych (dolnych CD) lub CW w suficie przęsłowym, cm */

@@ -32,6 +32,7 @@ import { Picker, type PickOption } from './Picker';
 import { fmtNum } from './wallStyle';
 import { SourceBadge } from './SystemSelect';
 import { makerOf } from '../calc/recommend';
+import { boardGroups } from '../catalog/systemLabel';
 
 interface Props {
   onClose: () => void;
@@ -152,7 +153,7 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
                   ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : s.frame === 'hat-lining' ? 'kapeluszowy 15/48, bez UD' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
-                  ['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
+                  ['Płyty', `${boardGroups(s).map((g) => `${g.n}× ${boardById(g.id).name}`).join(' + ')}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
                   ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
                   ...(s.frame === 'point-fix'
                     ? ([

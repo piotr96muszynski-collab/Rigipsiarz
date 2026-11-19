@@ -6,12 +6,20 @@ import { dist, nodeMap, projectOnSegment } from '../geometry/geometry';
 import type { Ceiling, Project, Wall } from '../model/types';
 
 /**
- * Płyty kolejnych warstw jednej strony, od rusztu: `innerLayers` warstw z płyty wewnętrznej
- * (systemy z dwoma rodzajami płyt, np. PRO pod Habito), reszta z płyty wybranej w elemencie.
+ * Płyty kolejnych warstw jednej strony, od rusztu: najpierw `baseLayers` warstw z płyty przy ruszcie
+ * (karty z trzema grubościami/rodzajami, np. Rigips 3.22.00 X OCEAN: 2×15 DFH2 + 1×12,5 DFH2 + X OCEAN),
+ * potem `innerLayers` warstw z płyty wewnętrznej (np. PRO pod Habito), reszta z płyty wybranej w elemencie.
  */
-export function layerBoards(sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): string[] {
-  const inner = sys.innerBoard ? Math.min(sys.layers - 1, sys.innerLayers ?? sys.layers - 1) : 0;
-  return Array.from({ length: sys.layers }, (_, i) => (i < inner ? (innerBoardId ?? sys.innerBoard!) : boardId));
+export function layerBoards(
+  sys: { layers: number; innerBoard?: string; innerLayers?: number; baseBoard?: string; baseLayers?: number },
+  boardId: string,
+  innerBoardId?: string,
+): string[] {
+  const base = sys.baseBoard ? Math.min(sys.layers - 1, sys.baseLayers ?? 0) : 0;
+  const inner = sys.innerBoard ? Math.min(sys.layers - 1 - base, sys.innerLayers ?? sys.layers - 1 - base) : 0;
+  return Array.from({ length: sys.layers }, (_, i) =>
+    i < base ? sys.baseBoard! : i < base + inner ? (innerBoardId ?? sys.innerBoard!) : boardId,
+  );
 }
 
 /** Grubość wszystkich warstw płyt sufitu, mm */
