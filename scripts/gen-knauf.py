@@ -84,8 +84,10 @@ WALL_META = {
     'W111': ('działowa', 'single', 2, 'Ściana działowa'),
     'W112': ('działowa', 'single', 2, 'Ściana działowa'),
     'W113': ('działowa', 'single', 2, 'Ściana działowa'),
-    'W113+': ('działowa', 'single', 2, 'Ściana działowa'),
+    # W113+ z Systemfindera zastępuje W114.pl z zeszytu technicznego (zeszyt-w11.txt): więcej płyt, EI 240
+    'W114': ('działowa', 'single', 2, 'Ściana działowa'),
     'W115': ('podwójna', 'double', 2, 'Ściana na podwójnym ruszcie'),
+    'W115W': ('podwójna', 'double', 2, 'Ściana na podwójnym ruszcie z płytą pośrednią'),
     'W116': ('instalacyjna', 'separate', 2, 'Ściana instalacyjna'),
     'W381': ('działowa', 'single', 2, 'Ściana z płyt cementowych'),
     'W382': ('działowa', 'single', 2, 'Ściana z płyt cementowych'),
@@ -104,6 +106,9 @@ BASIC = {'KN-W111-CW50', 'KN-W111-CW75', 'KN-W111-CW100', 'KN-W112-CW75', 'KN-W1
          'KN-W116-CW75', 'KN-W625-CW50', 'KN-W626-CW75', 'KN-W628B-CW75-2', 'KN-W683-1', 'KN-W381-CW75'}
 
 lines = read(f'{SCR}/walls.txt') + read(f'{SCR}/lin.txt')
+# systemy spoza Systemfindera, z zeszytu technicznego W11.pl (W115W, W114)
+ZESZYT = {r[0] for r in read(f'{SCR}/zeszyt-w11.txt')}
+lines += read(f'{SCR}/zeszyt-w11.txt')
 groups = OrderedDict()
 for r in lines:
     sysn, grid, prof, layers, boards, clad, wool, ei, rw, ra1, thk, mass, H = r[:13]
@@ -199,6 +204,9 @@ for (sysn, profile, nl), vs in groups.items():
     if inner:
         w['innerBoard'] = BID[inner]
         w['innerLayers'] = 2
+    if sysn == 'W115W':
+        w['midBoard'] = BID[default]
+        w['midBoardFromFace'] = True
     w['studSpacing'] = stud
     w['maxHeight'] = maxh
     w['insulationDefault'] = bool(dv['wool'])
@@ -219,10 +227,15 @@ for (sysn, profile, nl), vs in groups.items():
         info.append(f'warstwy wewnętrzne {SHORT[inner]}, zewnętrzne {SHORT[default]}')
     if frame == 'separate':
         info.append('rozstaw rusztów dowolny – podana grubość minimalna')
+    if sysn == 'W115W':
+        info.append('płyta pośrednia 12,5 mm tego samego rodzaju co poszycie, przykręcona do słupków jednego rzędu, '
+                    'z odcinkami taśmy akustycznej (detal W115W.pl-B1; liczona w płytach i wkrętach)')
+    if sysn in ZESZYT and max(maxh.values()) > 650:
+        info.append('klasa EI z tabeli tylko dla ścian do 6,5 m (przypis zeszytu technicznego)')
     if frame == 'cd-lining':
         info.append('rozstaw uchwytów ES przyjęty 100 cm (Systemfinder go nie podaje)')
     w['info'] = ' · '.join(info)
-    w['source'] = ('SRC', sysn if sysn != 'W628B' else 'W628B / W629')
+    w['source'] = ('ZESZYT', sysn) if sysn in ZESZYT else ('SRC', sysn if sysn != 'W628B' else 'W628B / W629')
     w['maker'] = 'knauf'
     if sid in BASIC:
         w['basic'] = True
@@ -364,6 +377,8 @@ ceilings = ceil_systems(ceil_rows, 'D112', 'two-level', 8, 9) + ceil_systems(cei
 def ts(v, ind=0):
     if isinstance(v, tuple) and v[0] == 'SRC':
         return f"src('{v[1]}')"
+    if isinstance(v, tuple) and v[0] == 'ZESZYT':
+        return f"zeszyt('{v[1]}')"
     if isinstance(v, tuple) and v[0] == 'APPROX':
         return f"approx('{v[1]}')"
     if isinstance(v, bool):
@@ -406,8 +421,9 @@ hdr = '''// Katalog systemów suchej zabudowy Knauf – ściany, przedścianki, 
 // Jedna pozycja = jedna konstrukcja (system × profil × liczba warstw); płyty, rozstawy słupków
 // i słupki podwójne są odmianami (`variants`). W629 (szyb na zdwojonych słupkach) to odmiany W628B.
 // Systemy Knauf nie mają pola `code` – numer systemu (W112, D112…) jest w nazwie i w odmianach.
-// Pominięte (silnik ich nie liczy): ściany na drewnie (W12x), W115W (płyta między rusztami),
-// W635 (szyb na UW), D116 (nośne UA), D131 (sufit samonośny), sufity modułowe, Cubo, Fireboard
+// W115W (płyta pośrednia między rusztami) i W114 (w Systemfinderze jako W113+, tam bez płyt Diamant
+// i Silentboard i z EI 120) – z zeszytu technicznego W11.pl, wyd. 06/2026 (data/knauf/zeszyt-w11.txt).
+// Pominięte (silnik ich nie liczy): ściany na drewnie (W12x), W635 (szyb na UW), D116 (nośne UA), D131 (sufit samonośny), sufity modułowe, Cubo, Fireboard
 // K25x, ściany RTG i antywłamaniowe.
 //
 // Plik generowany: python3 scripts/gen-knauf.py data/knauf src/catalog/knauf.ts (dane w data/knauf); importuje z `rigips.ts` wyłącznie typy.
@@ -417,6 +433,11 @@ import type { Board, CeilingSystem, Source, WallSystem } from './rigips';
 const src = (sys: string): Source => ({
   label: `Knauf Systemfinder – ${sys} (tabela odmian systemu)`,
   url: 'https://systems.knauf.com/pl-PL/systemfinder',
+});
+
+const zeszyt = (sys: string): Source => ({
+  label: `Knauf – Zeszyt techniczny W11.pl „Ściany szkieletowe”, wyd. 06/2026, ${sys}.pl (tabela wariantów i wysokości)`,
+  url: 'https://knauf.com/pl-PL/systemy/systemy-suchej-zabudowy/systemy-scienne/systemy-scian-szkieletowych-na-konstrukcji-metalowej',
 });
 
 const approx = (sys: string): Source => ({

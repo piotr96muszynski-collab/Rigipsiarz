@@ -1,6 +1,6 @@
 import { atticPlacements, atticPlanLines } from '../calc/atticPlan';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { bbox, dist, existingRooms, isNewWall, masonrySide, nodeMap, pointInPolygon, sameOutline, wallEnds } from '../geometry/geometry';
+import { bbox, dist, existingRooms, isNewWall, masonryEndExtension, masonrySide, nodeMap, pointInPolygon, sameOutline, wallEnds } from '../geometry/geometry';
 import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
 import { createAttic, createCeiling, createOpening } from '../model/factory';
@@ -10,6 +10,7 @@ import { anchorsOf, angleMarks, snapGuided, snapMove, type AngleMark, type Guide
 import type { Point, Project } from '../model/types';
 import { awayFromFinger, BUBBLE_H, BUBBLE_W, type DimLabel, hitDimLabel } from './labelPlace';
 import { fmtCm, liningThickness, wallColor, wallThickness } from './wallStyle';
+import type { MenuRequest } from './contextMenu';
 
 export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'ceiling' | 'attic';
 
@@ -54,6 +55,8 @@ interface Props {
   onMessage: (m: string) => void;
   /** Dotknięcie opisu długości ściany – otwiera okno zmiany wymiaru */
   onEditLength?: (wallId: string) => void;
+  /** Menu kontekstowe: prawy przycisk myszy albo przytrzymanie palca (narzędzie Wybierz) */
+  onContextMenu?: (r: MenuRequest & { touch: boolean }) => void;
 }
 
 interface View {
@@ -63,11 +66,11 @@ interface View {
 }
 
 type Gesture =
-  | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number; moved: boolean; tapTarget: Selection; additive: boolean; dimWall?: string }
+  | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number; moved: boolean; tapTarget: Selection; additive: boolean; dimWall?: string; menu?: boolean }
   | { kind: 'pinch'; d0: number; mid: Point; view: View }
   | { kind: 'draw'; start: Point; end: Point; startScreen: Point; moved: boolean; snap: Snap; down: Point }
   | { kind: 'rect'; start: Point; end: Point; startScreen: Point; moved: boolean; mode: 'room' | 'ceiling' | 'attic'; guides: Guide[] }
-  | { kind: 'node'; id: string; moved: boolean; guides: Guide[] }
+  | { kind: 'node'; id: string; moved: boolean; guides: Guide[]; startScreen: Point }
   | {
       kind: 'move';
       /** położenie węzłów przed przesunięciem */
@@ -79,20 +82,29 @@ type Gesture =
       tapTarget: string;
       additive: boolean;
     }
-  | { kind: 'vertex'; ceilingId: string; index: number; moved: boolean }
+  | { kind: 'vertex'; ceilingId: string; index: number; moved: boolean; startScreen: Point }
   | { kind: 'attic'; id: string; orig: Point; grab: Point; startScreen: Point; moved: boolean }
-  | { kind: 'opening'; wallId: string; openingId: string; grab: number; moved: boolean };
+  | { kind: 'opening'; wallId: string; openingId: string; grab: number; moved: boolean; startScreen: Point };
 
 const HANDLE_PX = 16;
 const DRAG_PX = 7;
+/** Przytrzymanie palca bez ruchu tak długo otwiera menu kontekstowe */
+export const LONG_PRESS_MS = 500;
 
 export function PlanCanvas(props: Props) {
-  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new', multi = false, onEditLength } = props;
+  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new', multi = false, onEditLength, onContextMenu } = props;
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View>({ ox: -100, oy: -100, z: 1.2 });
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture | null>(null);
+  /** przytrzymanie palca: licznik i miejsce dotknięcia */
+  const press = useRef<{ timer: ReturnType<typeof setTimeout>; at: Point } | null>(null);
+  const cancelPress = () => {
+    if (press.current) clearTimeout(press.current.timer);
+    press.current = null;
+  };
+  useEffect(() => cancelPress, []);
   const [, force] = useState(0);
   const rerender = () => force((x) => x + 1);
   const [chain, setChain] = useState<Point | null>(null);
@@ -114,8 +126,9 @@ export function PlanCanvas(props: Props) {
     return new Map(project.walls.filter((w) => !isNewWall(w)).map((w) => [w.id, masonrySide(project, w, rooms)]));
   }, [project]);
   // obrys nowych ścian z modelu styków: w narożnikach (także ścian różnej grubości) lica schodzą się równo
+  const contacts = useMemo(() => buildContacts(project), [project]);
   const outlines = useMemo(() => {
-    const m = buildContacts(project);
+    const m = contacts;
     const out = new Map<string, string>();
     for (const w of project.walls) {
       if (!isNewWall(w)) continue;
@@ -123,7 +136,7 @@ export function PlanCanvas(props: Props) {
       if (pts && pts.length >= 3) out.set(w.id, pts.map((q) => `${q.x},${q.y}`).join(' '));
     }
     return out;
-  }, [project, nodes]);
+  }, [project, nodes, contacts]);
   // węzły, w których spotykają się co najmniej dwie istniejące ściany
   const cornerNodes = useMemo(() => {
     const c = new Map<string, number>();
@@ -300,12 +313,32 @@ export function PlanCanvas(props: Props) {
   };
   const hitCeiling = (w: Point) => [...project.ceilings].reverse().find((c) => pointInPolygon(w, c.points));
   const hitAttic = (w: Point) => [...atticShapes].reverse().find((x) => pointInPolygon(w, x.lines.outline));
+  /** Element pod kursorem dla menu kontekstowego; ściana z zaznaczenia kilku → całe zaznaczenie */
+  const targetAt = (s: Point, w: Point): Selection => {
+    const ho = hitOpening(w);
+    if (ho) return { type: 'wall', id: ho.wall.id, openingId: ho.op.id };
+    const dim = onEditLength ? hitDimLabel(s, dimLabels()) : null;
+    const hw = dim ? project.walls.find((x) => x.id === dim) : hitWall(project, w, Math.max(tolCm, 12));
+    if (hw) return selection?.type === 'walls' && selection.ids.includes(hw.id) ? selection : { type: 'wall', id: hw.id };
+    const n = hitNode(w);
+    const nw = n && project.walls.find((x) => x.a === n.id || x.b === n.id);
+    if (nw) return { type: 'wall', id: nw.id };
+    const hc = hitCeiling(w);
+    if (hc) return { type: 'ceiling', id: hc.id };
+    const ha = hitAttic(w);
+    return ha ? { type: 'attic', id: ha.attic.id } : null;
+  };
+  const openMenu = (s: Point, touch: boolean) => {
+    const w = toWorld(s.x, s.y);
+    onContextMenu?.({ target: targetAt(s, w), world: w, screen: s, touch });
+  };
 
   // --------- obsługa wskaźnika ---------
   const onPointerDown = (e: React.PointerEvent) => {
     svgRef.current?.setPointerCapture?.(e.pointerId);
     const s = local(e);
     pointers.current.set(e.pointerId, s);
+    cancelPress();
     if (pointers.current.size === 2) {
       const [p1, p2] = [...pointers.current.values()];
       gesture.current = {
@@ -319,8 +352,23 @@ export function PlanCanvas(props: Props) {
     }
     if (pointers.current.size > 2) return;
     if (e.button === 1 || e.button === 2) {
-      gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget: selection, additive: false };
+      // prawy przycisk: przeciągnięcie przesuwa plan, kliknięcie bez ruchu otwiera menu
+      gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget: selection, additive: false, menu: e.button === 2 };
       return;
+    }
+    // przytrzymanie palca (bez ruchu) otwiera menu kontekstowe; ruch, drugi palec albo puszczenie je anuluje
+    if (tool === 'select' && e.pointerType !== 'mouse' && onContextMenu) {
+      const timer = setTimeout(() => {
+        press.current = null;
+        if (pointers.current.size !== 1) return;
+        const g0 = gesture.current;
+        if (g0 && 'moved' in g0 && g0.moved) return;
+        gesture.current = null;
+        navigator.vibrate?.(15);
+        openMenu(s, true);
+        rerender();
+      }, LONG_PRESS_MS);
+      press.current = { timer, at: s };
     }
     const additive = multi || e.shiftKey || e.ctrlKey || e.metaKey;
     const w = toWorld(s.x, s.y);
@@ -331,7 +379,7 @@ export function PlanCanvas(props: Props) {
         const c = project.ceilings.find((x) => x.id === selection.id);
         const idx = c?.points.findIndex((pt) => dist(pt, w) < tolCm) ?? -1;
         if (c && idx >= 0) {
-          gesture.current = { kind: 'vertex', ceilingId: c.id, index: idx, moved: false };
+          gesture.current = { kind: 'vertex', ceilingId: c.id, index: idx, moved: false, startScreen: s };
           return;
         }
       }
@@ -343,13 +391,13 @@ export function PlanCanvas(props: Props) {
       }
       const n = hitNode(w);
       if (n && !additive) {
-        gesture.current = { kind: 'node', id: n.id, moved: false, guides: [] };
+        gesture.current = { kind: 'node', id: n.id, moved: false, guides: [], startScreen: s };
         return;
       }
       const ho = hitOpening(w);
       if (ho) {
         setSelection({ type: 'wall', id: ho.wall.id, openingId: ho.op.id });
-        gesture.current = { kind: 'opening', wallId: ho.wall.id, openingId: ho.op.id, grab: ho.along - ho.op.offset, moved: false };
+        gesture.current = { kind: 'opening', wallId: ho.wall.id, openingId: ho.op.id, grab: ho.along - ho.op.offset, moved: false, startScreen: s };
         return;
       }
       const hw = hitWall(project, w, Math.max(tolCm, 12));
@@ -405,6 +453,7 @@ export function PlanCanvas(props: Props) {
   const onPointerMove = (e: React.PointerEvent) => {
     const s = local(e);
     if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, s);
+    if (press.current && dist(s, press.current.at) > DRAG_PX) cancelPress();
     const g = gesture.current;
     const w = toWorld(s.x, s.y);
 
@@ -456,6 +505,8 @@ export function PlanCanvas(props: Props) {
       return;
     }
     if (g.kind === 'node') {
+      // drobne drgnięcie palca nie przesuwa węzła (przytrzymanie otwiera menu)
+      if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
       g.moved = true;
       const moved = new Set([g.id]);
       const sp = snapGuided(project, w, tolCm, { anchors: anchorsOf(project, g.id, moved), moved, grid });
@@ -488,6 +539,7 @@ export function PlanCanvas(props: Props) {
       return;
     }
     if (g.kind === 'vertex') {
+      if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
       g.moved = true;
       const sp = snapDraw(w);
       update(
@@ -518,6 +570,7 @@ export function PlanCanvas(props: Props) {
       return;
     }
     if (g.kind === 'opening') {
+      if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
       g.moved = true;
       update(
         (d) => {
@@ -535,6 +588,7 @@ export function PlanCanvas(props: Props) {
 
   const onPointerUp = (e: React.PointerEvent) => {
     pointers.current.delete(e.pointerId);
+    cancelPress();
     const g = gesture.current;
     if (!g) return;
     if (g.kind === 'pinch') {
@@ -543,7 +597,13 @@ export function PlanCanvas(props: Props) {
     }
     gesture.current = null;
 
-    if (g.kind === 'pan') {
+    if (g.kind === 'pan' && g.menu) {
+      if (!g.moved) {
+        // w trakcie rysowania ścian prawy przycisk kończy łańcuch, poza tym otwiera menu
+        if (tool === 'wall' && chain) setChain(null);
+        else openMenu(local(e), false);
+      }
+    } else if (g.kind === 'pan') {
       if (!g.moved && tool === 'select') {
         if (g.additive) {
           if (g.tapTarget?.type === 'wall') setSelection(toggleWall(selection, g.tapTarget.id));
@@ -821,10 +881,14 @@ export function PlanCanvas(props: Props) {
             const inner = existing ? (interiors.get(w.id) ?? 0) : 0;
             // istniejąca ściana: linia to lico od strony pomieszczenia, mur rysujemy na zewnątrz
             const off = existing ? -inner * (t / 2) : 0;
-            // narożnik obrysu: mur przedłużony, żeby domknąć zewnętrzny róg
-            const ext = (nid: string) => (existing && inner && cornerNodes.has(nid) ? t / 2 : 0);
-            const ea = ext(w.a);
-            const eb = ext(w.b);
+            // narożnik obrysu: w wypukłym mur przedłużony do zewnętrznego lica drugiej ściany,
+            // w wklęsłym kończy się w węźle (końcówka kwadratowa dokłada t/2, stąd odjęte t/2)
+            const ext = (end: 'a' | 'b') => {
+              const e = existing && cornerNodes.has(end === 'a' ? w.a : w.b) ? masonryEndExtension(project, w, end, inner, nodes) : null;
+              return e === null ? 0 : e - t / 2;
+            };
+            const ea = ext('a');
+            const eb = ext('b');
             const a = { x: a0.x + nx * off - ux * ea, y: a0.y + ny * off - uy * ea };
             const b = { x: b0.x + nx * off + ux * eb, y: b0.y + ny * off + uy * eb };
             const faded = (tool === 'wall' || tool === 'room') && existing !== (layer === 'existing');
@@ -868,14 +932,17 @@ export function PlanCanvas(props: Props) {
                 {(w.linings ?? []).map((l) => {
                   const lt = liningThickness(l);
                   const lo = off + l.side * (t / 2 + lt / 2);
-                  // okładzina przerwana w otworach
+                  // zakres z modelu styków (w narożnikach obrysu okładziny schodzą się równo), przerwany w otworach
+                  const range = contacts.linings.get(`${w.id}:${l.side}`);
+                  const r0 = range ? range[0] * 100 : 0;
+                  const r1 = range ? range[1] * 100 : L;
                   const segs: [number, number][] = [];
-                  let cur = 0;
+                  let cur = r0;
                   for (const o of sorted) {
-                    if (o.offset > cur) segs.push([cur, o.offset]);
+                    if (Math.min(o.offset, r1) > cur) segs.push([cur, Math.min(o.offset, r1)]);
                     cur = Math.max(cur, o.offset + o.width);
                   }
-                  if (cur < L) segs.push([cur, L]);
+                  if (cur < r1) segs.push([cur, r1]);
                   return segs.map(([s0, s1], i) => [
                     <line
                       key={`${l.side}-${i}-e`}

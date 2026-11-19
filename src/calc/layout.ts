@@ -3,11 +3,12 @@
 // dzięki czemu schemat zawsze pokazuje dokładnie to, co trafiło na listę zakupów.
 // Jednostki: ściany w metrach (jak w wyliczeniach), sufity w centymetrach (jak ceilingGrid).
 
-import { boardById, ceilingSystemById, wallStudLabel, wallSystemById, type WallFrame } from '../catalog/rigips';
+import { boardById, ceilingSystemById, sideBoards, wallStudLabel, wallSystemById, type WallFrame } from '../catalog/rigips';
 import { buildContacts, cornerStudPositions, partRange, type ContactModel, type WallEndContacts } from '../geometry/contacts';
 import { bbox, firstWall, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { pickBoardLengthCm, rowSegments } from './boardLength';
+import { profileMaxStock } from './profileLength';
 
 // ---------------------------------------------------------------------------
 // Ściany
@@ -153,6 +154,10 @@ export interface BoardPiece {
 export interface BoardFace {
   side: 0 | 1;
   layer: number;
+  /** płyta tej warstwy (id z BOARDS) – strony i warstwy mogą mieć różne płyty */
+  board: string;
+  /** wymiar arkusza tej warstwy, m */
+  sheet: { width: number; length: number };
   /** zakres płyt wzdłuż ściany z modelu styków (w narożniku płyta wychodzi poza oś lub kończy się przed nią), m */
   x0: number;
   x1: number;
@@ -195,8 +200,10 @@ export interface WallLayout {
 export interface BracketGrid {
   /** jeden uchwyt = jeden kołek w murze */
   points: { x: number; y: number }[];
-  /** największy rozstaw uchwytów wzdłuż profilu z karty systemu, m */
+  /** największy rozstaw uchwytów wzdłuż profilu z karty systemu, m (profile kapeluszowe: w jednym rzędzie) */
   spacing: number;
+  /** profile kapeluszowe: kołki wprost przez półki profilu, w dwóch rzędach */
+  hat?: boolean;
 }
 
 /**
@@ -211,6 +218,21 @@ export function bracketPositions(y0: number, y1: number, spacing: number): numbe
   const n = Math.max(1, Math.ceil(run / spacing - 1e-9));
   const step = run / n;
   return Array.from({ length: n }, (_, i) => round3(y0 + step * (i + 0.5)));
+}
+
+/**
+ * Kołki / dyble profilu kapeluszowego mocowanego wprost do podłoża: dwa rzędy (po jednym na każdej półce),
+ * w każdym rzędzie max co `spacing`, rzędy przesunięte o pół rozstawu – wzdłuż profilu co `spacing / 2`
+ * na przemian po lewej (-1) i prawej (+1) półce. Norgips: „dyble w dwóch rzędach co 100 cm”; Rigips i Siniat
+ * podają rozstaw max. i zużycie 5–6 szt./m², które odpowiada temu układowi (założenie dla tych kart).
+ */
+export function hatFixPositions(s0: number, s1: number, spacing: number): { at: number; side: -1 | 1 }[] {
+  const run = s1 - s0;
+  if (run <= 0.01) return [];
+  // co najmniej po jednym kołku w każdej półce
+  const n = Math.max(2, Math.ceil(run / (spacing / 2) - 1e-9));
+  const step = run / n;
+  return Array.from({ length: n }, (_, i) => ({ at: round3(s0 + step * (i + 0.5)), side: (i % 2 ? 1 : -1) as -1 | 1 }));
 }
 
 /** Siatka łączników talerzykowych na ścianie, m (x od węzła a, y od posadzki) */
@@ -343,6 +365,35 @@ export function boardFace(
   return pieces;
 }
 
+/** Wysokości pasów poziomych jednej warstwy obudowy z samych płyt (od dołu), m – w warstwach nieparzystych pierwszy pas ma pół arkusza */
+export function panelRows(H: number, sheetW: number, layer: number): [number, number][] {
+  const ys = [0];
+  for (let y = layer % 2 ? sheetW / 2 : sheetW; y < H - 1e-3; y += sheetW) ys.push(Math.round(y * 1000) / 1000);
+  ys.push(H);
+  return ys.slice(1).map((y, i) => [ys[i], y]);
+}
+
+/**
+ * Obudowa z samych płyt: pasy poziome na całą szerokość (arkusz od ściany do ściany), w kolejnych
+ * warstwach przesunięte o pół arkusza, żeby styki poziome się mijały.
+ */
+function panelFaces(m: ContactModel, w: Wall, L: number, H: number, layers: number, sheetLen: number, sheetW: number, openings: WallOpening[]): BoardFace[] {
+  const faces: BoardFace[] = [];
+  for (let layer = 0; layer < layers; layer++) {
+    const [x0, x1] = partRange(m, w, L, { kind: 'board', side: 0, layer });
+    const rows = panelRows(H, sheetW, layer);
+    const xs: number[] = [x0];
+    for (let x = x0 + sheetLen; x < x1 - 1e-3; x += sheetLen) xs.push(round3(x));
+    xs.push(x1);
+    const pieces: BoardPiece[] = [];
+    for (const [y0, y1] of rows)
+      for (let k = 0; k + 1 < xs.length; k++)
+        pieces.push({ x0: xs[k], x1: xs[k + 1], y0, y1, cut: xs[k + 1] - xs[k] < sheetLen - 0.005 || y1 - y0 < sheetW - 0.005 });
+    faces.push({ side: 0, layer, board: w.boardId, sheet: { width: sheetW, length: sheetLen }, x0, x1, offset: 0, joints: xs.slice(1, -1), pieces: cutOpenings(pieces, openings), jambJoints: [], layerJoints: [] });
+  }
+  return faces;
+}
+
 export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactModel = buildContacts(p)): WallLayout {
   const sys = wallSystemById(w.systemId);
   const L = wallLength(p, w) / 100;
@@ -352,8 +403,11 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
 
   const frame = sys.frame;
   // bez profili: klejenie na placki albo łączniki punktowe ATLAS
-  const glued = frame === 'glued' || frame === 'point-fix';
-  const isCD = frame === 'cd-lining';
+  // obudowa z samych płyt – też bez słupków (profil obwodowy tylko przy ścianach / po obwodzie)
+  const panel = frame === 'panel';
+  const glued = frame === 'glued' || frame === 'point-fix' || panel;
+  const isHat = frame === 'hat-lining';
+  const isCD = frame === 'cd-lining' || isHat;
   const rows = glued ? 0 : frame === 'double' || frame === 'separate' ? 2 : 1;
 
   const [f0, f1] = partRange(m, w, L, { kind: 'frame' });
@@ -381,18 +435,24 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     }
     if (L - cursor > 0.05) tracks.push({ kind: 'floor', x0: cursor, x1: L, y: 0, cut: L - cursor });
     tracks.push({ kind: 'ceiling', x0: 0, x1: L, y: H, cut: L });
+    // okładzina na profilach kapeluszowych nie ma UD przy posadzce i stropie
+    if (isHat) tracks.length = 0;
     // UW na długość rusztu z modelu styków
     for (const t of tracks) {
       if (t.x0 < 1e-9) t.x0 = f0;
       if (t.x1 > L - 1e-9) t.x1 = f1;
     }
     for (const o of openings) {
-      if (o.top < H - 0.05) tracks.push({ kind: 'header', x0: o.x0, x1: o.x1, y: o.top, cut: o.w + 0.3 });
-      if (o.sill > 0.05) tracks.push({ kind: 'sill', x0: o.x0, x1: o.x1, y: o.sill, cut: o.w + 0.3 });
+      // nadproże / podokiennik: UW/UD z zagiętymi końcami; profil kapeluszowy na wymiar otworu
+      const cut = isHat ? o.w : o.w + 0.3;
+      if (o.top < H - 0.05) tracks.push({ kind: 'header', x0: o.x0, x1: o.x1, y: o.top, cut });
+      if (o.sill > 0.05) tracks.push({ kind: 'sill', x0: o.x0, x1: o.x1, y: o.sill, cut });
     }
   }
 
-  const sheetLen = pickBoardLengthCm(w.boardId, w.height) / 100;
+  // okładzina z łącznikami LS (Siniat): płyty tylko na dolnej części wysokości (min. 3/4)
+  const Hb = sys.ls ? round3(H * sys.ls.boarded) : H;
+  const sheetLen = pickBoardLengthCm(w.boardId, Hb * 100) / 100;
   const boardW = boardById(w.boardId).width / 100;
   const faces: BoardFace[] = [];
   // miejsca, w których może wypaść styk pionowy: słupki (bez ościeży – te i tak są zabronione)
@@ -404,12 +464,17 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
   const onBase = (x: number) => (baseXs ?? []).some((b) => Math.abs(b - x) < 0.005);
   const studXs = () => (baseXs ? [...baseXs, ...added] : undefined);
   const extraXs = () => (baseXs ? extraCands.filter((x) => !added.has(x)) : undefined);
-  const bottomFirst = (i: number, c0: number, c1: number) => rowPattern(i, c0, c1, H, sheetLen, openings);
   const inside = (x: number, r: [number, number]) => x > r[0] + 0.01 && x < r[1] - 0.01;
-  for (let side = 0 as 0 | 1; side < sys.sides; side = (side + 1) as 0 | 1) {
-    const layers = Array.from({ length: sys.layers }, (_, layer) => ({
+  if (panel) faces.push(...panelFaces(m, w, L, H, sys.layers, pickBoardLengthCm(w.boardId, L * 100) / 100, boardW, openings));
+  for (let side = 0 as 0 | 1; side < (panel ? 0 : sys.sides); side = (side + 1) as 0 | 1) {
+    // płyty tej strony od rusztu (strona B może mieć inne – RTG, ściany kinowe, płyta cementowa)
+    const boardsOf = sideBoards(sys, w, side);
+    const layers = boardsOf.map((board, layer) => ({
       layer,
-      offset: glued ? 0 : round3(((side + layer) * s) % boardW),
+      board,
+      bw: boardById(board).width / 100,
+      sl: pickBoardLengthCm(board, Hb * 100) / 100,
+      offset: glued ? 0 : round3(((side + layer) * s) % (boardById(board).width / 100)),
       range: partRange(m, w, L, { kind: 'board', side, layer }),
       joints: [] as number[],
       bad: [] as number[],
@@ -424,7 +489,7 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     // dopasowuje się do pozostałych (przy otworach pierwsza warstwa też może ustąpić drugiej)
     // najpierw tylko na istniejących słupkach; dodatkowy słupek dopiero, gdy styki dalej się pokrywają
     // albo styk zostaje w linii ościeża
-    const rounds = sys.layers > 1 ? 3 : 1;
+    const rounds = layers.length > 1 ? 3 : 1;
     const conflict = () =>
       layers.some((q) => q.bad.length || q.joints.some((x) => inside(x, q.range) && others(q.layer).some((y) => Math.abs(y - x) < 0.05)));
     for (let round = 0; round <= rounds; round++) {
@@ -437,7 +502,7 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
           x0,
           x1,
           offset: q.offset,
-          boardW,
+          boardW: q.bw,
           step: s,
           openings,
           studXs: studXs(),
@@ -453,11 +518,12 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     for (const q of layers) {
       const [x0, x1] = q.range;
       // styki liczone od węzła a (jak ruszt), płyta przycięta do zakresu z modelu styków
-      const pieces = cutOpenings(clipPieces(boardFace(L, H, sheetLen, q.offset, boardW, q.joints, bottomFirst), x0, x1), openings);
+      const bottomFirst = (i: number, c0: number, c1: number) => rowPattern(i, c0, c1, Hb, q.sl, openings);
+      const pieces = cutOpenings(clipPieces(boardFace(L, Hb, q.sl, q.offset, q.bw, q.joints, bottomFirst), x0, x1), openings);
       const inRange = q.joints.filter((x) => inside(x, q.range));
       const lower = layers.filter((o) => o.layer === q.layer - 1).flatMap((o) => o.joints.filter((x) => inside(x, o.range)));
       const layerJoints = inRange.filter((x) => lower.some((y) => Math.abs(y - x) < 0.05));
-      faces.push({ side, layer: q.layer, x0, x1, offset: q.offset, joints: inRange, pieces, jambJoints: q.bad, layerJoints });
+      faces.push({ side, layer: q.layer, board: q.board, sheet: { width: q.bw, length: q.sl }, x0, x1, offset: q.offset, joints: inRange, pieces, jambJoints: q.bad, layerJoints });
     }
   }
 
@@ -483,11 +549,11 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     frame,
     rows,
     studLabel: wallStudLabel(sys),
-    trackLabel: isCD ? 'UD 30' : `UW ${sys.profile}`,
+    trackLabel: isHat ? 'kapeluszowy 15/48' : isCD ? 'UD 30' : panel ? wallStudLabel(sys) : `UW ${sys.profile}`,
     openings,
     studs,
     tracks,
-    sheet: { width: boardW, length: sheetLen },
+    sheet: { width: boardW, length: panel ? pickBoardLengthCm(w.boardId, L * 100) / 100 : sheetLen },
     faces,
     fixers:
       frame === 'point-fix'
@@ -497,8 +563,31 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
             ys: faces.flatMap((f) => f.pieces.flatMap((pc) => [pc.y0, pc.y1])).filter((y) => y > 0.01 && y < H - 0.01),
           })
         : undefined,
-    brackets: isCD ? bracketGrid(studs, f0, f1, (sys.bracketSpacing ?? 100) / 100) : undefined,
+    brackets: isHat
+      ? hatGrid(studs, tracks, f0, f1, (sys.bracketSpacing ?? 100) / 100)
+      : isCD
+        ? bracketGrid(studs, f0, f1, (sys.bracketSpacing ?? 100) / 100)
+        : undefined,
   };
+}
+
+/** Odległość osi kołka od osi profilu kapeluszowego (środek półki), m */
+export const HAT_FLANGE = 0.03;
+
+/** Kołki profili kapeluszowych: pionowe profile i poziome odcinki nad / pod otworami */
+function hatGrid(studs: StudElement[], tracks: TrackElement[], f0: number, f1: number, spacing: number): BracketGrid {
+  const half = 0.04;
+  const points = [
+    ...studs.flatMap((st) => {
+      const x = round3(Math.min(f1 - half, Math.max(f0 + half, st.x)));
+      return st.segments.flatMap(([y0, y1]) => hatFixPositions(y0, y1, spacing).map((q) => ({ x: round3(x + q.side * HAT_FLANGE), y: q.at })));
+    }),
+    ...tracks.flatMap((t) => {
+      const y = t.kind === 'header' ? t.y + half : t.y - half;
+      return hatFixPositions(t.x0, t.x1, spacing).map((q) => ({ x: q.at, y: round3(y + q.side * HAT_FLANGE) }));
+    }),
+  ];
+  return { points, spacing, hat: true };
 }
 
 /** Uchwyty ES na wszystkich odcinkach profili CD (te same profile co na rysunku i w 3D) */
@@ -841,8 +930,8 @@ export function hangerPositions(s0: number, s1: number, spacing: number): number
   return Array.from({ length: n }, (_, i) => s0 + step * (i + 0.5));
 }
 
-/** Łączniki wzdłużne CD: co 4 m (długość profilu) od początku odcinka */
-export function splicePositions(s0: number, s1: number, stock = 400): number[] {
+/** Łączniki wzdłużne CD: co długość profilu (ustawienie projektu, domyślnie 4 m) od początku odcinka */
+export function splicePositions(s0: number, s1: number, stock = profileMaxStock('CD60') * 100): number[] {
   const run = s1 - s0;
   const n = Math.max(0, Math.ceil(run / stock - 1e-9) - 1);
   return Array.from({ length: n }, (_, i) => s0 + stock * (i + 1));

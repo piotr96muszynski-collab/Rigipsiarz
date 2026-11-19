@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeJunctions, dist, interiorSide, isNewWall, wallEnds } from './geometry';
+import { analyzeJunctions, dist, interiorSide, isNewWall, masonryEndExtension, masonrySide, wallEnds } from './geometry';
 import { createExistingWall, createLining, createOpening, createProject, createWall, uid } from '../model/factory';
 import { addWall, addWalls, removeOverlaps } from '../model/ops';
 import type { Point, Project, Wall } from '../model/types';
@@ -184,6 +184,37 @@ describe('model styków – mur, wolny koniec, kolizje', () => {
     // okładziny w narożnikach obrysu: jedna dochodzi do drugiej
     const ranges = [...m.linings.values()];
     expect(ranges.some(([u0]) => u0 > 0.04)).toBe(true);
+  });
+
+  it('pokój w kształcie L: mur w narożniku wklęsłym kończy się w węźle, okładziny się domykają', () => {
+    // obrys jak na zrzucie Piotra: wewnętrzny róg w (290, 0) między ścianą 290 cm a 135 cm
+    const p = createProject();
+    const pts = [
+      [0, 0],
+      [290, 0],
+      [290, -135],
+      [495, -135],
+      [495, 205],
+      [0, 205],
+    ].map(([x, y]) => ({ id: uid(), x, y }));
+    p.nodes.push(...pts);
+    for (let i = 0; i < pts.length; i++) p.walls.push(createExistingWall(p, pts[i].id, pts[(i + 1) % pts.length].id));
+    const [w290, w135] = p.walls;
+    const ext = (w: Wall, end: 'a' | 'b') => masonryEndExtension(p, w, end, masonrySide(p, w));
+    // narożnik wklęsły: oba mury kończą się w węźle (nie wystają za lico drugiej ściany)
+    expect(ext(w290, 'b')).toBe(0);
+    expect(ext(w135, 'a')).toBe(0);
+    // narożniki wypukłe: mur dochodzi do zewnętrznego lica drugiej ściany
+    expect(ext(w290, 'a')).toBeCloseTo(25, 6);
+    expect(ext(w135, 'b')).toBeCloseTo(25, 6);
+    for (const w of p.walls) w.linings = [createLining(interiorSide(p, w) || 1, 'O-CD-1')];
+    const m = buildContacts(p);
+    // okładzina ściany narysowanej wcześniej wychodzi za węzeł o grubość drugiej, druga zaczyna się w węźle
+    const L290 = m.linings.get(`${w290.id}:${w290.linings![0].side}`)!;
+    const L135 = m.linings.get(`${w135.id}:${w135.linings![0].side}`)!;
+    expect(L290[1]).toBeCloseTo(2.9 + 0.0495, 6);
+    expect(L135[0]).toBeCloseTo(0, 6);
+    expect(findCollisions(p, m)).toEqual([]);
   });
 
   it('wolny koniec: ruszt cofnięty za pasek płyty', () => {

@@ -1,31 +1,26 @@
 // Poziomy sufitu: istniejący strop, spód płyt sufitu, ruszt i zwieszenie wieszaków.
 // Model w cm (od posadzki). Jedno źródło dla widoku 3D, rysunków i ilości (długość wieszaków).
 
-import { boardById, ceilingSystemById, type CeilingSystem } from '../catalog/rigips';
+import { HAT_MM, boardStackMm, ceilingSystemById, layerBoards, type CeilingSystem } from '../catalog/rigips';
 import { dist, nodeMap, projectOnSegment } from '../geometry/geometry';
 import type { Ceiling, Project, Wall } from '../model/types';
 
-/**
- * Płyty kolejnych warstw jednej strony, od rusztu: `innerLayers` warstw z płyty wewnętrznej
- * (systemy z dwoma rodzajami płyt, np. PRO pod Habito), reszta z płyty wybranej w elemencie.
- */
-export function layerBoards(sys: { layers: number; innerBoard?: string; innerLayers?: number }, boardId: string, innerBoardId?: string): string[] {
-  const inner = sys.innerBoard ? Math.min(sys.layers - 1, sys.innerLayers ?? sys.layers - 1) : 0;
-  return Array.from({ length: sys.layers }, (_, i) => (i < inner ? (innerBoardId ?? sys.innerBoard!) : boardId));
-}
+export { layerBoards };
 
 /** Grubość wszystkich warstw płyt sufitu, mm */
-export const ceilingBoardsMm = (sys: CeilingSystem, boardId: string) =>
-  layerBoards(sys, boardId).reduce((a, id) => a + (boardById(id).thickness || 12.5), 0);
+export const ceilingBoardsMm = (sys: CeilingSystem, boardId: string) => boardStackMm(sys, boardId);
 
 /** Grubość rusztu nad płytami (bez wieszaków), mm */
 export function ceilingFrameMm(sys: CeilingSystem): number {
+  if (sys.profiles) return sys.profiles.frameMm;
   switch (sys.kind) {
     case 'two-level':
       return 2 * 27;
     case 'one-level':
-    case 'direct':
+    case 'parallel':
       return 27;
+    case 'direct':
+      return sys.hangerType === 'hat' && !sys.atticFrame ? HAT_MM : 27;
     case 'ua-span':
       return 27 + 40;
     case 'cw-span':
@@ -46,9 +41,10 @@ function assumedFrameMm(sys: CeilingSystem): number {
     case 'two-level':
       return 218;
     case 'one-level':
+    case 'parallel':
       return 188;
     case 'direct':
-      return sys.hangerType === 'elastic' ? 33 : sys.hangerType === 'attic' ? 28 : 30;
+      return sys.hangerType === 'elastic' ? 33 : sys.hangerType === 'attic' ? 28 : sys.hangerType === 'hat' ? HAT_MM : 30;
     case 'point-fix':
       return sys.fixer?.standoff[0] ?? 14;
     default:
@@ -71,7 +67,7 @@ export interface CeilingDepth {
  * Najdłuższy odstęp rusztu od stropu dla uchwytów bezpośrednich, mm (założenie: ramiona uchwytu ES
  * 125 mm po zagięciu dają ok. 10 cm; uchwyty elastyczne i do poddaszy mocuje się przy samej krokwi).
  */
-const DIRECT_MAX_GAP_MM: Record<string, number> = { es: 100, elastic: 20, attic: 20 };
+const DIRECT_MAX_GAP_MM: Record<string, number> = { es: 100, elastic: 20, attic: 20, hat: 0 };
 
 /** Minimalna (i ew. maksymalna) wysokość zabudowy sufitu od stropu do spodu płyt */
 export function ceilingDepth(sys: CeilingSystem, boardId: string = sys.defaultBoard): CeilingDepth {
@@ -150,7 +146,9 @@ export function ceilingLevels(c: Ceiling, sys: CeilingSystem = ceilingSystemById
     warnings.push(
       sys.kind === 'point-fix'
         ? `Odstęp płyty od stropu ${Math.round((slab - frameBottom) * 10)} mm przekracza zakres łącznika (${sys.fixer?.standoff.join('–')} mm) – wybierz system z dłuższym łącznikiem.`
-        : `Sufit jest ${Math.round(slab - ceiling)} cm pod stropem – na uchwytach bezpośrednich ruszt może odstawać od stropu najwyżej ok. ${Math.round((DIRECT_MAX_GAP_MM[sys.hangerType ?? 'es'] ?? 100) / 10)} cm (założenie). Wybierz sufit podwieszany na wieszakach noniuszowych.`,
+        : sys.hangerType === 'hat'
+          ? `Sufit jest ${Math.round(slab - ceiling)} cm pod stropem – profile kapeluszowe leżą wprost na stropie, płyty wypadają ${Math.round(depth.minMm / 10)} cm pod nim. Żeby obniżyć sufit, wybierz sufit na uchwytach ES albo podwieszany.`
+          : `Sufit jest ${Math.round(slab - ceiling)} cm pod stropem – na uchwytach bezpośrednich ruszt może odstawać od stropu najwyżej ok. ${Math.round((DIRECT_MAX_GAP_MM[sys.hangerType ?? 'es'] ?? 100) / 10)} cm (założenie). Wybierz sufit podwieszany na wieszakach noniuszowych.`,
     );
   return { slab, ceiling, requested, boards, frameBottom, frameTop, hangerGap: Math.max(0, slab - frameTop), depth, warnings };
 }

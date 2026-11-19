@@ -1,7 +1,7 @@
 // Przekroje systemowe (schematy, wymiary w mm). Rozpiętości są skrócone (linie urwania),
 // żeby profile i płyty były czytelne na telefonie – wymiary podane są rzeczywiste.
 
-import type { Board, CeilingSystem, WallSystem } from '../catalog/rigips';
+import { HAT_MM, PRODUCTS, boardById, midBoardMm, panelEdgeLabel, sideBoards, type Board, type CeilingSystem, type WallBoarding, type WallSystem } from '../catalog/rigips';
 import { C, Callout, Dim, INK, Legend, Paper, cm, nss } from './svg';
 import type { CeilingLevels } from '../calc/ceilingLevels';
 
@@ -32,20 +32,43 @@ function BreakLine({ x, y0, y1 }: { x: number; y0: number; y1: number }) {
 /** Przekrój poziomy ściany: płyty, ruszt (CW / podwójny / instalacyjny / CD na uchwytach / klejenie), wełna */
 export type Wool = { thickness: number; layers: number } | null;
 
-export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys: WallSystem; board: Board; spacing: number; wool: Wool; vapor?: boolean }) {
+export function WallSection({
+  sys,
+  board,
+  spacing,
+  wool,
+  vapor = false,
+  boarding,
+}: {
+  sys: WallSystem;
+  board: Board;
+  spacing: number;
+  wool: Wool;
+  vapor?: boolean;
+  /** płyty ściany (różna grubość warstw, inne poszycie strony 2); brak = `board` na każdej warstwie */
+  boarding?: WallBoarding;
+}) {
   const P = sys.profile;
-  const tb = board.thickness || T_BOARD;
-  const nt = sys.layers * tb;
+  // płyty kolejnych warstw każdej strony, od rusztu
+  const sideB: [Board[], Board[]] = [0, 1].map((side) =>
+    boarding ? sideBoards(sys, boarding, side as 0 | 1).map(boardById) : side < sys.sides ? Array.from({ length: sys.layers }, () => board) : [],
+  ) as [Board[], Board[]];
+  const tbOf = (b: Board) => b.thickness || T_BOARD;
+  const stack = (side: 0 | 1) => sideB[side].reduce((a, b) => a + tbOf(b), 0);
+  const nt = stack(0);
   const frame = sys.frame;
   const isCD = frame === 'cd-lining';
+  const hat = frame === 'hat-lining';
   const point = frame === 'point-fix';
-  const glued = frame === 'glued' || point;
-  const onWall = isCD || glued; // okładzina na istniejącej ścianie
+  const panel = frame === 'panel';
+  // obudowa z samych płyt: przekrój jak płyty bez rusztu (styki są poziome – w przekroju poziomym ich nie widać)
+  const glued = frame === 'glued' || point || panel;
+  const onWall = isCD || (glued && !panel) || hat; // okładzina na istniejącej ścianie
   // głębokość rusztu i rzędy słupków (y względem lica rdzenia)
-  const core = point ? 100 : glued ? 10 : isCD ? 40 : frame === 'double' ? 2 * P + 5 : frame === 'separate' ? 2 * P + (sys.gap ?? 10) * 10 : P;
-  const rows: [number, number][] = glued || isCD ? [] : frame === 'single' ? [[0, P]] : [[0, P], [core - P, core]];
+  const core = point ? 100 : panel ? 0 : glued ? 10 : isCD ? 40 : hat ? HAT_MM : frame === 'double' ? 2 * P + 5 + midBoardMm(sys) : frame === 'separate' ? 2 * P + (sys.gap ?? 10) * 10 : P;
+  const rows: [number, number][] = glued || isCD || hat ? [] : frame === 'single' ? [[0, P]] : [[0, P], [core - P, core]];
   const sides = onWall ? 1 : sys.sides;
-  const T = core + nt * sides;
+  const T = core + nt + (sides > 1 ? stack(1) : 0);
   const s = 420; // rysunkowa odległość słupków (rzeczywista w opisie)
   const x0 = -40;
   const x1 = s * 2 + 40;
@@ -53,21 +76,54 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
   const yCore0 = nt;
   const yCore1 = nt + core;
   const studs = [0, s, 2 * s];
-  const layers = (side: 0 | 1) =>
-    Array.from({ length: sys.layers }, (_, k) => {
-      const y = side === 0 ? nt - (k + 1) * tb : yCore1 + k * tb;
-      return { y, k };
+  const layers = (side: 0 | 1) => {
+    let acc = 0;
+    return sideB[side].map((b, k) => {
+      const tb = tbOf(b);
+      const y = side === 0 ? nt - acc - tb : yCore1 + acc;
+      acc += tb;
+      return { y, k, tb, b };
     });
+  };
+  /** Opis poszycia jednej strony od rusztu: „2×Ogień Plus 12,5 + 1×RTG 12,5+1,0” */
+  const describe = (list: Board[]) => {
+    const groups: { b: Board; n: number }[] = [];
+    for (const b of list) {
+      const last = groups[groups.length - 1];
+      if (last && last.b.id === b.id) last.n++;
+      else groups.push({ b, n: 1 });
+    }
+    return groups.map((g) => `${g.n}×${g.b.name}`).join(' + ');
+  };
+  const sameSides = sides < 2 || sideB[0].map((b) => b.id).join() === sideB[1].map((b) => b.id).join();
+  const uniform = sideB[0].every((b) => b.id === sideB[0][0]?.id);
   const legend: { n: number; label: string }[] = [
-    { n: 1, label: `${board.name}, ${sys.layers}×${cm(tb)} mm${sides > 1 ? ' z każdej strony' : ''}` },
+    {
+      n: 1,
+      label: sameSides
+        ? uniform
+          ? `${sideB[0][0]?.name ?? board.name}, ${sideB[0].length}×${cm(tbOf(sideB[0][0] ?? board))} mm${sides > 1 ? ' z każdej strony' : ''}`
+          : `${describe(sideB[0])} (od rusztu)${sides > 1 ? ' z każdej strony' : ''}`
+        : `strona A (u góry): ${describe(sideB[0])}; strona B (u dołu): ${describe(sideB[1])} – warstwy od rusztu`,
+    },
   ];
   if (point) legend.push({ n: 2, label: `łączniki ATLAS M-System 3G kotwione w ścianie, siatka ${cm(spacing)}×${sys.pointSpacing ?? 50} cm` });
+  else if (panel)
+    legend.push({
+      n: 2,
+      label: `bez słupków: płyty poziomo, każda w jednym kawałku od ściany do ściany (do ${String((sys.panel?.maxWidth ?? 0) / 100).replace('.', ',')} m), warstwy skręcone ze sobą, przykręcone do profilu obwodowego (${panelEdgeLabel(sys)}) ${sys.panel?.edgeSides === 'all' ? 'po obwodzie' : 'przy ścianach'} (kołki co ${sys.panel?.anchorSpacing} cm)`,
+    });
   else if (glued) legend.push({ n: 2, label: 'placki kleju gipsowego, ok. 10 mm, na istniejącej ścianie' });
+  else if (hat)
+    legend.push({
+      n: 2,
+      label: `profil kapeluszowy 15/48 co ${cm(spacing * 10)} mm, ${PRODUCTS[sys.anchor ?? 'KOLEK']?.name.toLowerCase() ?? 'kołki'} przez obie półki${sys.bracketSpacing ? `, w każdym rzędzie co ${sys.bracketSpacing} cm (na przemian)` : ''} · bez UD, płyta 15 mm od ściany`,
+    });
   else if (isCD) legend.push({ n: 2, label: `profil CD 60 co ${cm(spacing * 10)} mm na uchwytach ES${sys.bracketSpacing ? ` co ${sys.bracketSpacing} cm` : ''}, UD 30 przy posadzce i stropie` });
   else
     legend.push({
       n: 2,
-      label: `${sys.studKind === 'UA' ? 'profil UA' : sys.studKind === 'UU' ? 'słupek z dwóch profili U' : 'profil CW'} ${P} co ${cm(spacing * 10)} mm, w UW ${P} przy posadzce i stropie${sys.studKind === 'UA' ? ', kątowniki UA na końcach' : ''}${sys.wallTie ? `, ${sys.wallTie.kind === 'angle' ? 'kątowniki' : 'przewiązki PWA'} do ściany co ${sys.wallTie.spacing} cm` : ''}${rows.length > 1 ? (frame === 'double' ? ' – dwa rzędy obok siebie' : ` – dwa rzędy rozsunięte (${sys.gap ?? 10} cm), łączone paskami płyty`) : ''}`,
+      label: `${sys.studKind === 'UA' ? 'profil UA' : sys.studKind === 'UU' ? 'słupek z dwóch profili U' : 'profil CW'} ${P} co ${cm(spacing * 10)} mm, w UW ${P} przy posadzce i stropie${sys.studKind === 'UA' ? ', kątowniki UA na końcach' : ''}${sys.wallTie ? `, ${sys.wallTie.kind === 'angle' ? 'kątowniki' : 'przewiązki PWA'} do ściany co ${sys.wallTie.spacing} cm` : ''}${rows.length > 1 ? (frame === 'double' ? ' – dwa rzędy obok siebie' : ` – dwa rzędy rozsunięte (${sys.gap ?? 10} cm), łączone ${sys.rowTie ? (PRODUCTS[sys.rowTie.product]?.name.toLowerCase() ?? 'łącznikami') : 'paskami płyty'}`) : ''}`,
     });
   const woolOn = !!wool && !glued;
   const woolH = wool ? Math.min(core, wool.thickness) : 0;
@@ -76,7 +132,7 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
   if (!glued)
     legend.push({
       n: woolOn ? 4 : 3,
-      label: `styk płyt na ${isCD ? 'profilu' : 'słupku'}${sys.layers > 1 ? ', w kolejnej warstwie przesunięty o rozstaw' : ''}${sides > 1 ? ', po drugiej stronie przesunięty' : ''}`,
+      label: `styk płyt na ${isCD || hat ? 'profilu' : 'słupku'}${sys.layers > 1 ? ', w kolejnej warstwie przesunięty o rozstaw' : ''}${sides > 1 ? ', po drugiej stronie przesunięty' : ''}`,
     });
   // paroizolacja od strony pomieszczenia: między rusztem a płytami strony 1
   const nVapor = vapor && !glued ? legend.length + 1 : 0;
@@ -98,15 +154,15 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
         {([0, 1] as const)
           .filter((side) => side < sides)
           .flatMap((side) =>
-            layers(side).map(({ y, k }) => {
+            layers(side).map(({ y, k, tb, b }) => {
               // styki płyt na słupkach, w kolejnych warstwach i po drugiej stronie przesunięte
               const joint = (side + k) % 2 === 0 ? s : 2 * s;
               return glued ? (
-                <rect key={`${side}-${k}`} x={x0} y={y} width={x1 - x0} height={tb} fill={board.color} stroke={INK} strokeWidth={0.9} {...nss} />
+                <rect key={`${side}-${k}`} x={x0} y={y} width={x1 - x0} height={tb} fill={b.color} stroke={INK} strokeWidth={0.9} {...nss} />
               ) : (
                 <g key={`${side}-${k}`}>
-                  <rect x={x0} y={y} width={joint - 1.5 - x0} height={tb} fill={board.color} stroke={INK} strokeWidth={0.9} {...nss} />
-                  <rect x={joint + 1.5} y={y} width={x1 - joint - 1.5} height={tb} fill={board.color} stroke={INK} strokeWidth={0.9} {...nss} />
+                  <rect x={x0} y={y} width={joint - 1.5 - x0} height={tb} fill={b.color} stroke={INK} strokeWidth={0.9} {...nss} />
+                  <rect x={joint + 1.5} y={y} width={x1 - joint - 1.5} height={tb} fill={b.color} stroke={INK} strokeWidth={0.9} {...nss} />
                 </g>
               );
             }),
@@ -126,6 +182,21 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
             <g key={x}>
               <path d={cHorz(yCore0, x - 30, x + 30, 1, 27, 5)} fill="none" stroke={C.stud} strokeWidth={2.2} {...nss} />
               <path d={`M${x - 34} ${yCore0 + 20} L${x - 34} ${yCore1} M${x + 34} ${yCore0 + 20} L${x + 34} ${yCore1}`} stroke={C.hanger} strokeWidth={1.6} {...nss} />
+            </g>
+          ))}
+        {hat &&
+          studs.map((x) => (
+            <g key={x}>
+              <path
+                d={`M${x - 49} ${yCore1} L${x - 24} ${yCore1} L${x - 24} ${yCore0} L${x + 24} ${yCore0} L${x + 24} ${yCore1} L${x + 49} ${yCore1}`}
+                fill="none"
+                stroke={C.stud}
+                strokeWidth={2.2}
+                {...nss}
+              />
+              {[-36, 36].map((d) => (
+                <rect key={d} x={x + d - 3} y={yCore1 - 2} width={6} height={45} fill={C.hanger} opacity={0.85} />
+              ))}
             </g>
           ))}
         {rows.flatMap(([r0, r1], ri) =>
@@ -167,16 +238,20 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
   const tb = board.thickness || T_BOARD;
   const nt = sys.layers * tb;
   const kind = sys.kind;
-  const direct = kind === 'direct';
+  // profile kapeluszowe przykręcone wprost do stropu – bez uchwytów i bez UD
+  const hat = kind === 'direct' && sys.hangerType === 'hat';
+  const direct = kind === 'direct' && !hat;
   const cw = kind === 'cw-span';
   const ua = kind === 'ua-span';
-  const hung = kind === 'two-level' || kind === 'one-level';
+  const parallel = kind === 'parallel';
+  const hung = kind === 'two-level' || kind === 'one-level' || parallel;
   const point = kind === 'point-fix';
+  const mf = sys.profiles;
   const P = sys.profile ?? 50;
-  const mainDepth = cw ? P : ua ? 40 : point ? 4 : 27;
-  const D = direct ? 40 : hung ? 220 : 90; // odległość od stropu (rysunkowa)
+  const mainDepth = cw ? P : ua ? 40 : point ? 4 : hat ? HAT_MM : 27;
+  const D = hat ? 0 : direct ? 40 : hung ? 220 : 90; // odległość od stropu (rysunkowa)
   const yMain = D;
-  const hasSecondary = !direct && !cw && !point;
+  const hasSecondary = !direct && !cw && !point && !parallel && !hat;
   const yLow = kind === 'one-level' ? D : D + mainDepth; // poziom profilu montażowego
   const yBoard = hasSecondary ? yLow + 27 : yMain + mainDepth;
   const bottom = yBoard + nt;
@@ -184,11 +259,11 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
   const span = 520;
   const xs = [first, first + span];
   const x1 = first + span + 160;
-  const singleGrid = direct || cw || point;
+  const singleGrid = direct || cw || point || parallel || hat;
   const firstOff = singleGrid ? sys.secondarySpacing : Math.min(sys.mainSpacing / 2, 40);
   const spacing = singleGrid ? sys.secondarySpacing : sys.mainSpacing;
   const mainName = cw ? `CW ${P}` : ua ? 'UA 50' : point ? 'łącznika' : 'CD 60';
-  const perimeter = cw ? `UW ${P}` : 'UD 30';
+  const perimeter = cw ? `UW ${P}` : mf ? `profil przyścienny ${mf.edge}` : 'UD 30';
   const yPerim = hasSecondary ? yLow : yMain;
   const hPerim = hasSecondary ? 27 : mainDepth;
 
@@ -199,31 +274,43 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
     n: nMain,
     label: point
       ? `łącznik ATLAS M-System 3G kotwiony w stropie, siatka ${sys.mainSpacing}×${sys.secondarySpacing} cm (bez profili)`
+      : hat
+      ? `profil kapeluszowy 15/48 co ${sys.secondarySpacing} cm, półkami na stropie`
       : direct
       ? `profil CD 60 co ${sys.secondarySpacing} cm`
       : cw
         ? `profil CW ${P} co ${sys.secondarySpacing} cm, oparty na UW przy ścianach (bez wieszaków)`
         : ua
           ? `profil UA 50 co ${sys.mainSpacing} cm, oparty na ścianach na kątownikach (bez wieszaków)`
-          : `profil nośny CD 60 co ${sys.mainSpacing} cm`,
+          : parallel
+            ? `profil CD 60 co ${sys.secondarySpacing} cm, równolegle (bez profili głównych)`
+            : mf
+              ? `profil główny ${mf.main} co ${sys.mainSpacing} cm`
+              : `profil nośny CD 60 co ${sys.mainSpacing} cm`,
   });
   const nSec = hasSecondary ? n() : 0;
   if (hasSecondary)
     legend.push({
       n: nSec,
-      label: `profil montażowy CD 60 co ${sys.secondarySpacing} cm, ${
-        kind === 'one-level' ? 'w jednym poziomie, łączniki jednopoziomowe' : ua ? 'pod UA, łączniki UA–CD' : 'pod nośnym, łącznik krzyżowy'
-      }`,
+      label: mf
+        ? `profil nośny ${mf.secondary} co ${sys.secondarySpacing} cm, wpięty w profil główny i skręcony`
+        : `profil montażowy CD 60 co ${sys.secondarySpacing} cm, ${
+            kind === 'one-level' ? 'w jednym poziomie, łączniki jednopoziomowe' : ua ? 'pod UA, łączniki UA–CD' : 'pod nośnym, łącznik krzyżowy'
+          }`,
     });
-  const nHang = direct || hung ? n() : 0;
+  const nHang = direct || hung || hat ? n() : 0;
   if (nHang)
     legend.push({
       n: nHang,
-      label: direct
+      label: hat
+        ? `dybel stalowy 6×40 przez półkę profilu, w dwóch rzędach (na obu półkach na przemian), w rzędzie co ${sys.hangerSpacing} cm`
+        : direct
         ? `uchwyt bezpośredni ${sys.hangerType === 'elastic' ? 'elastyczny' : sys.hangerType === 'attic' ? 'do poddaszy' : 'ES'} co ${sys.hangerSpacing} cm, kotwa w stropie`
-        : `wieszak noniuszowy + kotwa stropowa, co ${sys.hangerSpacing} cm wzdłuż profilu nośnego`,
+        : mf
+          ? `zawiesie z kątownika ${mf.hangerAngle} + kotwa stropowa, co ${sys.hangerSpacing} cm wzdłuż profilu głównego`
+          : `wieszak noniuszowy + kotwa stropowa, co ${sys.hangerSpacing} cm wzdłuż profilu nośnego`,
     });
-  const nPer = point ? 0 : n();
+  const nPer = point || hat ? 0 : n();
   if (nPer) legend.push({ n: nPer, label: `${perimeter} na taśmie uszczelniającej, kołki przy ścianie` });
   const nBoard = n();
   legend.push({ n: nBoard, label: `${board.name}, ${sys.layers}×${cm(tb)} mm` });
@@ -251,8 +338,8 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
         {/* wełna na płytach */}
         {nWool > 0 && <rect x={4} y={woolY} width={x1 - 4} height={yBoard - woolY} fill="url(#wool)" opacity={0.7} />}
         {/* profil obwodowy na taśmie */}
-        {!point && <rect x={0} y={yPerim - 2} width={4} height={hPerim + 4} fill={C.wool} />}
-        {!point && <path d={cVert(4, yPerim, yPerim + hPerim, 1, cw ? 40 : 27, 5)} fill="none" stroke={C.ud} strokeWidth={2.2} {...nss} />}
+        {!point && !hat && <rect x={0} y={yPerim - 2} width={4} height={hPerim + 4} fill={C.wool} />}
+        {!point && !hat && <path d={cVert(4, yPerim, yPerim + hPerim, 1, cw ? 40 : 27, 5)} fill="none" stroke={C.ud} strokeWidth={2.2} {...nss} />}
         {/* profile */}
         {xs.map((x) => (
           <g key={x}>
@@ -272,7 +359,20 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
                 <rect x={x - 6} y={-6} width={12} height={6} fill={INK} />
               </g>
             )}
-            {point ? (
+            {hat ? (
+              <g>
+                <path
+                  d={`M${x - 49} 0 L${x - 24} 0 L${x - 24} ${HAT_MM} L${x + 24} ${HAT_MM} L${x + 24} 0 L${x + 49} 0`}
+                  fill="none"
+                  stroke={C.main}
+                  strokeWidth={2.4}
+                  {...nss}
+                />
+                {[-36, 36].map((d) => (
+                  <rect key={d} x={x + d - 3} y={-45} width={6} height={47} fill={C.hanger} opacity={0.85} />
+                ))}
+              </g>
+            ) : point ? (
               <g>
                 <rect x={x - 5} y={-40} width={10} height={yMain + 40} fill={C.main} opacity={0.8} />
                 <rect x={x - 30} y={yMain} width={60} height={4} fill={C.main} />
@@ -312,7 +412,7 @@ export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sy
           y2={bottom}
           off={f * 3.4}
           f={f * 0.85}
-          label={levels ? cm(Math.round((levels.slab - levels.ceiling) * 10)) : direct ? `≈ ${cm(bottom)}` : 'wg projektu'}
+          label={levels ? cm(Math.round((levels.slab - levels.ceiling) * 10)) : direct || hat ? `≈ ${cm(bottom)}` : 'wg projektu'}
         />
         {levels && (hung || direct) && yMain > 30 && (
           <Dim x1={x1} y1={0} x2={x1} y2={yMain} off={f * 1.3} f={f * 0.75} label={cm(Math.round(levels.hangerGap * 10))} />

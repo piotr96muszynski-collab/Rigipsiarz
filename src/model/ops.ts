@@ -1,8 +1,8 @@
 import { findOverlaps, uncoveredParts } from '../geometry/contacts';
 import { dist, existingRooms, isNewWall, masonrySide, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
-import { wallSystemById } from '../catalog/rigips';
-import { createExistingWall, createWall, uid } from './factory';
-import type { Id, Lining, Point, Project, Wall } from './types';
+import { wallSystemById, type StudSpacing } from '../catalog/rigips';
+import { createExistingWall, createOpening, createWall, uid } from './factory';
+import type { Id, Lining, Opening, OpeningKind, Point, Project, Wall } from './types';
 
 /** Zmiana systemu ściany: płyta, rozstaw i wełna wracają do wartości systemu */
 export function setWallSystem(w: Wall, systemId: string) {
@@ -14,6 +14,7 @@ export function setWallSystem(w: Wall, systemId: string) {
   delete w.insulationThickness;
   delete w.doubleStuds;
   delete w.innerBoardId;
+  delete w.sideBBoards;
 }
 
 /** Odmiana wybrana w doborze: system razem z płytą, rozstawem i słupkami z karty producenta */
@@ -21,7 +22,9 @@ export interface SystemChoice {
   system: { id: string };
   boardId: string;
   innerBoardId?: string;
-  studSpacing: 60 | 40 | 30;
+  /** Płyty strony 2 z odmiany (systemy z innym poszyciem stron) */
+  sideBBoards?: string[];
+  studSpacing: StudSpacing;
   doubleStuds: boolean;
 }
 
@@ -38,6 +41,11 @@ export function applyWallChoice(w: Wall | Lining, c: SystemChoice) {
   else delete w.doubleStuds;
   if (c.innerBoardId && c.innerBoardId !== s.innerBoard) w.innerBoardId = c.innerBoardId;
   else delete w.innerBoardId;
+  // okładzina (ma `side`) jest jednostronna – bez płyt strony 2
+  if (!('side' in w)) {
+    if (c.sideBBoards?.length && c.sideBBoards.join() !== (s.sideB ?? []).join()) w.sideBBoards = [...c.sideBBoards];
+    else delete w.sideBBoards;
+  }
 }
 
 /** System nowych ścian: ustawienia płyty, rozstawu i wełny wracają do wartości systemu */
@@ -295,4 +303,56 @@ export function hitWall(p: Project, pt: Point, tol: number): Wall | null {
     }
   }
   return best;
+}
+
+/**
+ * Podział ściany w punkcie (cm od węzła a, zaokrąglone do 1 cm). Obie części zachowują system,
+ * wysokość i okładziny; otwory trafiają do części, w której leżą. Zwraca id nowej (drugiej) części
+ * albo null, gdy podział jest niemożliwy (za blisko końca, otwór w miejscu podziału).
+ */
+export function splitWall(p: Project, wallId: Id, along: number): Id | null {
+  const w = p.walls.find((x) => x.id === wallId);
+  if (!w) return null;
+  const [a, b] = wallEnds(p, w);
+  const L = dist(a, b);
+  const at = Math.round(along);
+  if (at < 10 || at > L - 10) return null;
+  if (w.openings.some((o) => o.offset < at && o.offset + o.width > at)) return null;
+  const pt = { x: a.x + ((b.x - a.x) * at) / L, y: a.y + ((b.y - a.y) * at) / L };
+  const id = uid();
+  p.nodes.push({ id, x: Math.round(pt.x * 10) / 10, y: Math.round(pt.y * 10) / 10 });
+  const second: Wall = {
+    ...structuredClone(w),
+    id: uid(),
+    a: id,
+    openings: w.openings.filter((o) => o.offset >= at).map((o) => ({ ...o, offset: o.offset - at })),
+  };
+  w.b = id;
+  w.openings = w.openings.filter((o) => o.offset < at);
+  p.walls.splice(p.walls.indexOf(w) + 1, 0, second);
+  return second.id;
+}
+
+/**
+ * Wstawia drzwi albo okno w ścianę, wyśrodkowane na punkcie `along` (cm od węzła a),
+ * z odstępem 5 cm od końców. Zwraca dodany otwór.
+ */
+export function insertOpening(p: Project, wallId: Id, kind: OpeningKind, along: number): Opening | null {
+  const w = p.walls.find((x) => x.id === wallId);
+  if (!w) return null;
+  const L = dist(...wallEnds(p, w));
+  const op = createOpening(kind, 0);
+  if (op.width > L - 10) op.width = Math.max(40, Math.round(L - 20));
+  op.offset = Math.round(Math.max(5, Math.min(L - op.width - 5, along - op.width / 2)));
+  w.openings.push(op);
+  return op;
+}
+
+/** Zamiana drzwi na okno i odwrotnie – szerokość i położenie zostają, wysokość i parapet z ustawień typu */
+export function toggleOpeningKind(o: Opening) {
+  const next = createOpening(o.kind === 'door' ? 'window' : 'door', o.offset);
+  o.kind = next.kind;
+  o.height = next.height;
+  o.sill = next.sill;
+  o.reinforced = next.reinforced;
 }

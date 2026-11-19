@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { materialsToCsv, type MaterialLine } from '../calc/materials';
 import { formatPLN, priceLines, storeSearchUrl, type PriceBook } from '../model/prices';
 import type { Project } from '../model/types';
+import { appProfileLength, profileLengthLabel, type ProfileLengthPref } from '../calc/profileLength';
 
 interface Props {
   project: Project;
@@ -9,6 +10,38 @@ interface Props {
   prices: PriceBook;
   setPrice: (key: string, value: number | undefined) => void;
   update: (fn: (d: Project) => void) => void;
+}
+
+/** Wybór długości handlowej profilu – zapis w projekcie, ilości przeliczają się z rozkroju */
+function ProfileLengthSelect({ pid, pref, choices, update }: { pid: string; pref: ProfileLengthPref; choices: number[]; update: Props['update'] }) {
+  const app = appProfileLength(pid);
+  return (
+    <label className="item-len">
+      <span className="muted">Kupuję po</span>
+      <select
+        value={String(pref)}
+        onChange={(e) => {
+          const v: ProfileLengthPref = e.target.value === 'auto' ? 'auto' : Number(e.target.value);
+          update((d) => {
+            const next = { ...(d.settings.profileLengths ?? {}) };
+            // jak w aplikacji = bez nadpisania w projekcie
+            if (v === app) delete next[pid];
+            else next[pid] = v;
+            if (Object.keys(next).length) d.settings.profileLengths = next;
+            else delete d.settings.profileLengths;
+          });
+        }}
+        aria-label={`Długość profili: ${pid}`}
+      >
+        <option value="auto">Auto (z rozkroju)</option>
+        {choices.map((c) => (
+          <option key={c} value={String(c)}>
+            {profileLengthLabel(c)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 const fmtQty = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ','));
@@ -120,6 +153,7 @@ export function ShoppingList({ project, lines, prices, setPrice, update }: Props
                       {l.note}
                     </span>
                   )}
+                  {l.profile?.first && <ProfileLengthSelect {...l.profile} update={update} />}
                   {showPrices && (
                     <span className="item-price">
                       <input
@@ -176,7 +210,7 @@ export function ShoppingList({ project, lines, prices, setPrice, update }: Props
       </div>
       <p className="muted small disclaimer">
         Ilości wyliczone wg typowych wytycznych montażu systemów Rigips i ATLAS M-System 3G (rozstawy profili i łączników, zużycie wkrętów i masy). Profile
-        policzone z rozkroju na długości handlowe. Przed zamówieniem sprawdź wymagania karty technicznej systemu.
+        policzone z rozkroju na długości handlowe – długość każdego profilu możesz zmienić („Kupuję po”), ilości, przedłużenia i łączniki przeliczą się z projektu. Przed zamówieniem sprawdź wymagania karty technicznej systemu.
       </p>
     </div>
   );
