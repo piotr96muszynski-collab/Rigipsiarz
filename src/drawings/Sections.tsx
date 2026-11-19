@@ -32,7 +32,7 @@ function BreakLine({ x, y0, y1 }: { x: number; y0: number; y1: number }) {
 /** Przekrój poziomy ściany: płyty, ruszt (CW / podwójny / instalacyjny / CD na uchwytach / klejenie), wełna */
 export type Wool = { thickness: number; layers: number } | null;
 
-export function WallSection({ sys, board, spacing, wool }: { sys: WallSystem; board: Board; spacing: number; wool: Wool }) {
+export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys: WallSystem; board: Board; spacing: number; wool: Wool; vapor?: boolean }) {
   const P = sys.profile;
   const tb = board.thickness || T_BOARD;
   const nt = sys.layers * tb;
@@ -78,6 +78,10 @@ export function WallSection({ sys, board, spacing, wool }: { sys: WallSystem; bo
       n: woolOn ? 4 : 3,
       label: `styk płyt na ${isCD ? 'profilu' : 'słupku'}${sys.layers > 1 ? ', w kolejnej warstwie przesunięty o rozstaw' : ''}${sides > 1 ? ', po drugiej stronie przesunięty' : ''}`,
     });
+  // paroizolacja od strony pomieszczenia: między rusztem a płytami strony 1
+  const nVapor = vapor && !glued ? legend.length + 1 : 0;
+  if (nVapor)
+    legend.push({ n: nVapor, label: `folia paroizolacyjna (np. Isover Stopair 1104 / Vario KM Duplex UV), przyklejona taśmą dwustronną do profili pod płytami, zakłady ok. 10 cm sklejone taśmą (np. Vario KB1), szczelnie doprowadzona do sąsiednich przegród` });
   return (
     <figure className="drawing">
       <Paper viewBox={[x0 - 140, -f * 4, x1 - x0 + 330, T + (onWall ? 90 : 0) + f * 9]} title={`Przekrój ściany ${sys.name}`}>
@@ -107,6 +111,7 @@ export function WallSection({ sys, board, spacing, wool }: { sys: WallSystem; bo
               );
             }),
           )}
+        {nVapor > 0 && <line x1={x0} y1={yCore0 + 1.2} x2={x1} y2={yCore0 + 1.2} stroke={C.vapor} strokeWidth={2.4} strokeDasharray="14 5" {...nss} />}
         {glued && !point &&
           [s * 0.25, s * 0.75, s * 1.25, s * 1.75].map((x) => <ellipse key={x} cx={x} cy={yCore0 + 5} rx={45} ry={5} fill="#c9c2b0" />)}
         {point &&
@@ -143,6 +148,7 @@ export function WallSection({ sys, board, spacing, wool }: { sys: WallSystem; bo
         <Callout x={point ? 2 * s : glued ? s * 1.75 : 2 * s + 30} y={yCore0 + 4} tx={2 * s + 120} ty={-f * 2.2} n={2} f={f} />
         {woolOn && <Callout x={s * 1.5} y={yCore0 + woolH / 2} tx={s * 1.5} ty={-f * 2.2} n={3} f={f} />}
         {!glued && <Callout x={s} y={nt / 2} tx={s - 110} ty={-f * 2.2} n={woolOn ? 4 : 3} f={f} />}
+        {nVapor > 0 && <Callout x={s * 1.25} y={yCore0 + 1.2} tx={s * 1.25 + 60} ty={-f * 2.2} n={nVapor} f={f} />}
       </Paper>
       <Legend items={legend} />
       <figcaption className="muted small">
@@ -156,7 +162,7 @@ export function WallSection({ sys, board, spacing, wool }: { sys: WallSystem; bo
 const m2 = (cmv: number) => (cmv / 100).toFixed(2).replace('.', ',');
 
 /** Przekrój pionowy sufitu poprzecznie do profili nośnych */
-export function CeilingSection({ sys, board, wool, levels }: { sys: CeilingSystem; board: Board; wool: Wool; levels?: CeilingLevels }) {
+export function CeilingSection({ sys, board, wool, levels, vapor = false }: { sys: CeilingSystem; board: Board; wool: Wool; levels?: CeilingLevels; vapor?: boolean }) {
   const f = 22;
   const tb = board.thickness || T_BOARD;
   const nt = sys.layers * tb;
@@ -223,6 +229,14 @@ export function CeilingSection({ sys, board, wool, levels }: { sys: CeilingSyste
   legend.push({ n: nBoard, label: `${board.name}, ${sys.layers}×${cm(tb)} mm` });
   const nWool = wool && !point ? n() : 0;
   if (wool && nWool) legend.push({ n: nWool, label: `wełna mineralna ${wool.thickness} mm, układana na płytach między profilami` });
+  // paroizolacja: pod rusztem, nad płytami (mocowana taśmą dwustronną do spodu profili), wełna nad nią
+  const nVapor = vapor && !point ? n() : 0;
+  if (nVapor)
+    legend.push({
+      n: nVapor,
+      label: `folia paroizolacyjna (np. Isover Stopair 1104 / Vario KM Duplex UV), przyklejona taśmą dwustronną do spodu profili CD przed płytami, zakłady ok. 10 cm sklejone taśmą (np. Vario KB1), wywinięta na ściany i doszczelniona`,
+    });
+  const yVapor = yBoard - 1.5;
   const woolY = yBoard - Math.min(wool?.thickness ?? 0, yBoard - 10);
 
   return (
@@ -278,6 +292,10 @@ export function CeilingSection({ sys, board, wool, levels }: { sys: CeilingSyste
             <line x1={4} y1={yLow + 13.5} x2={x1} y2={yLow + 13.5} stroke={C.secondary} strokeWidth={0.6} strokeDasharray="6 6" {...nss} />
           </g>
         )}
+        {/* paroizolacja nad płytami, wywinięta na ścianę */}
+        {nVapor > 0 && (
+          <path d={`M${x1} ${yVapor} L${2} ${yVapor} L${2} ${yVapor - 60}`} fill="none" stroke={C.vapor} strokeWidth={2.4} strokeDasharray="14 5" {...nss} />
+        )}
         {/* płyty */}
         {Array.from({ length: sys.layers }, (_, k) => (
           <rect key={k} x={0} y={yBoard + k * tb} width={x1} height={tb} fill={board.color} stroke={INK} strokeWidth={0.9} {...nss} />
@@ -306,6 +324,7 @@ export function CeilingSection({ sys, board, wool, levels }: { sys: CeilingSyste
         {nHang > 0 && <Callout x={xs[1]} y={Math.max(10, yMain - 70)} tx={xs[1] + 120} ty={-120} n={nHang} f={f} />}
         {nPer > 0 && <Callout x={12} y={yPerim + 10} tx={60} ty={bottom + f * 3} n={nPer} f={f} />}
         {nWool > 0 && <Callout x={first + span * 0.75} y={(woolY + yBoard) / 2} tx={first + span * 0.75} ty={-120} n={nWool} f={f} />}
+        {nVapor > 0 && <Callout x={first + span * 0.3} y={yVapor} tx={first + span * 0.3} ty={bottom + f * 3} n={nVapor} f={f} />}
         <Callout x={xs[1] + 80} y={yBoard + nt / 2} tx={xs[1] + 80} ty={bottom + f * 3} n={nBoard} f={f} />
       </Paper>
       <Legend items={legend} />

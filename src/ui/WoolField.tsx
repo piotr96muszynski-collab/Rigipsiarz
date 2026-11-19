@@ -1,4 +1,5 @@
 import { DEFAULT_WOOL, WOOL_THICKNESSES, resolveWool, woolProductById, woolProductsFor, type WoolChoice } from '../catalog/insulation';
+import type { VaporBarrierSpec } from '../calc/vaporBarrier';
 import { Picker } from './Picker';
 import { fmtNum } from './wallStyle';
 
@@ -126,6 +127,26 @@ export function WoolSettings({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Folia paroizolacyjna w inspektorze sufitu / ściany / okładziny: włącznik i ilość dla elementu */
+export function VaporField({ spec, enabled, areaM2, onToggle }: { spec: VaporBarrierSpec; enabled: boolean; areaM2?: number; onToggle: (on: boolean) => void }) {
+  if (spec.mode === 'none') return null;
+  return (
+    <div className="wool-field">
+      <label className="check">
+        <input type="checkbox" checked={enabled} onChange={(e) => onToggle(e.target.checked)} />
+        Folia paroizolacyjna{spec.mode === 'system' ? ' (element systemu)' : ''}
+      </label>
+      <small className="hint">
+        {enabled && areaM2 !== undefined
+          ? `${fmtNum(areaM2 * spec.foil, 1)} m² folii z zakładami ok. 10 cm, taśma na zakłady ${fmtNum(areaM2 * spec.overlapTape, 1)} mb · ${spec.source}`
+          : spec.mode === 'system'
+            ? 'Wyłączona – upewnij się, że paroizolację zapewnia inna warstwa.'
+            : 'Od strony ciepłego pomieszczenia, gdy przegroda oddziela strefy o różnej temperaturze (np. strop pod nieogrzewanym poddaszem, ściana zewnętrzna).'}
+      </small>
     </div>
   );
 }

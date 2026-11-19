@@ -2854,7 +2854,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [
@@ -2882,7 +2882,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [
@@ -2908,7 +2908,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [
@@ -2932,7 +2932,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [
@@ -2961,7 +2961,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [
@@ -2988,7 +2988,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [
@@ -3012,7 +3012,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [
@@ -3041,7 +3041,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [
@@ -3068,7 +3068,7 @@ export const RIGIPS_CEILINGS: CeilingSystem[] = [
       {"product":"TASMA_SPOIN","label":"Taśma spoinowa","qty":1.4,"unit":"mb"},
       {"product":"MASA_WYK","label":"Masa wykończeniowa","qty":0.15,"unit":"kg"},
       {"label":"Wełna mineralna","qty":1,"unit":"m²"},
-      {"label":"Paroizolacja","qty":1.18,"unit":"m²"},
+      {"product":"FOLIA_PAROIZ","label":"Paroizolacja","qty":1.18,"unit":"m²"},
       {"label":"Wkręt mocujący sufit do sufitu min. ø 5,5","qty":8,"unit":"szt."},
     ],
     variants: [

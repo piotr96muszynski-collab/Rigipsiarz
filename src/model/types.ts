@@ -48,6 +48,8 @@ export interface Lining {
   /** Płyta warstw wewnętrznych w systemach z dwoma rodzajami płyt (brak = wg systemu) */
   innerBoardId?: string;
   insulation: boolean;
+  /** Folia paroizolacyjna pod płytami (brak = wg systemu) */
+  vaporBarrier?: boolean;
 }
 
 /**
@@ -83,6 +85,8 @@ export interface Wall {
   insulation: boolean;
   /** Grubość wełny, mm (brak = pełna głębokość rusztu) */
   insulationThickness?: number;
+  /** Folia paroizolacyjna pod płytami strony 1 (brak = wg systemu, zwykle bez) */
+  vaporBarrier?: boolean;
   endA: FreeEndType;
   endB: FreeEndType;
   openings: Opening[];
@@ -96,6 +100,8 @@ export interface Ceiling {
   insulation: boolean;
   /** Grubość wełny na suficie, mm (brak = 100 mm) */
   insulationThickness?: number;
+  /** Folia paroizolacyjna nad płytami (brak = wg systemu: w poddaszach tak, w innych sufitach nie) */
+  vaporBarrier?: boolean;
   /** Kierunek profili nośnych: 0 = wzdłuż osi X, 90 = wzdłuż osi Y */
   direction: 0 | 90;
   /** Wysokość sufitu podwieszanego: spód płyt od posadzki, cm */

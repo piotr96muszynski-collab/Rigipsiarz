@@ -5,6 +5,7 @@
 import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
 import { ceilingLevels } from '../calc/ceilingLevels';
+import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
 import { hangerPositions, liningLayout, pieceArea, pieceOutline, splicePositions, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
@@ -16,7 +17,7 @@ import { rowSegments } from '../calc/boardLength';
 export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
 
 /** Materiały elementów rusztu; płyty mają klucz `board:<id>` */
-export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'connector' | 'masonry' | 'disc' | 'anchor';
+export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'connector' | 'masonry' | 'disc' | 'anchor' | 'vapor';
 export type MatKey = FrameMat | `board:${string}`;
 
 export interface BoxPart {
@@ -437,6 +438,11 @@ function buildExistingWall(
     const widthM = board.width / 100;
     // w narożniku obrysu okładzina dochodzi do lica sąsiedniej okładziny (model styków)
     const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
+    // paroizolacja między rusztem a płytami (warstwa rusztu – widoczna po ukryciu płyt)
+    if (vaporBarrierOn(l.vaporBarrier, wallVaporSpec(sys))) {
+      const [v0, v1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
+      for (const r of subtractRects({ x0: v0, x1: v1, y0: 0, y1: H }, holes)) box('wallFrame', 'vapor', r.x0, r.x1, r.y0, r.y1, face + l.side * (depth - VAPOR_T / 2), VAPOR_T);
+    }
     for (let layer = 0; layer < sys.layers; layer++) {
       const n = face + l.side * (depth + bt * layer + bt / 2);
       const shift = (layer % 2) * (widthM / 2);
@@ -448,6 +454,9 @@ function buildExistingWall(
     }
   }
 }
+
+/** Grubość folii w 3D, m (rysunkowa – żeby była widoczna) */
+const VAPOR_T = 0.002;
 
 function buildCeiling(c: Ceiling, parts: Part3D[]) {
   if (c.points.length < 3) return;
@@ -471,6 +480,10 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
       owner: c.id,
     });
   }
+
+  // paroizolacja na płytach, pod rusztem (warstwa rusztu – widoczna po ukryciu płyt)
+  if (vaporBarrierOn(c.vaporBarrier, ceilingVaporSpec(sys)))
+    parts.push({ type: 'slab', layer: 'ceilingFrame', mat: 'vapor', points: pts, y: yb + bt * sys.layers, thickness: VAPOR_T, owner: c.id });
 
   const yFrame = lv.frameBottom / 100;
   const twoLevel = sys.kind === 'two-level';

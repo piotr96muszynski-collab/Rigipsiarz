@@ -529,6 +529,7 @@ export function liningAsWall(w: Wall, l: Lining): Wall {
     doubleStuds: l.doubleStuds,
     innerBoardId: l.innerBoardId,
     insulation: l.insulation,
+    vaporBarrier: l.vaporBarrier,
     endA: 'existing-wall',
     endB: 'existing-wall',
     linings: undefined,

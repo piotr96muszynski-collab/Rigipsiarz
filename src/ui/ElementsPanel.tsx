@@ -19,7 +19,8 @@ import { WallVariantInfo } from './VariantInfo';
 import type { Attic, Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { DimInput } from './DimInput';
 import { Picker, type PickOption } from './Picker';
-import { WoolField } from './WoolField';
+import { VaporField, WoolField } from './WoolField';
+import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
 import { fmtNum } from './wallStyle';
 
 interface Props {
@@ -271,6 +272,12 @@ export function WallEditor({
         onToggle={(on) => edit((w) => void (w.insulation = on))}
         onThickness={(mm) => edit((w) => void (w.insulationThickness = mm))}
       />
+      <VaporField
+        spec={wallVaporSpec(sys)}
+        enabled={vaporBarrierOn(wall.vaporBarrier, wallVaporSpec(sys))}
+        areaM2={info?.netAreaM2}
+        onToggle={(on) => edit((w) => void (w.vaporBarrier = on))}
+      />
 
       {info && (
         <div className="ends">
@@ -510,6 +517,12 @@ export function CeilingEditor({
         onToggle={(on) => edit((c) => void (c.insulation = on))}
         onThickness={(mm) => edit((c) => void (c.insulationThickness = mm))}
       />
+      <VaporField
+        spec={ceilingVaporSpec(sys)}
+        enabled={vaporBarrierOn(ceiling.vaporBarrier, ceilingVaporSpec(sys))}
+        areaM2={r?.areaM2}
+        onToggle={(on) => edit((c) => void (c.vaporBarrier = on))}
+      />
       {!rect && <small className="hint">Kształt sufitu zmienisz na planie, przeciągając jego narożniki.</small>}
     </div>
   );
@@ -715,6 +728,12 @@ function LiningEditor({
               )}
             </div>
           )}
+          <VaporField
+            spec={wallVaporSpec(sys)}
+            enabled={vaporBarrierOn(lining.vaporBarrier, wallVaporSpec(sys))}
+            areaM2={result?.info.netAreaM2}
+            onToggle={(on) => onEdit((l) => void (l.vaporBarrier = on))}
+          />
           <Warnings items={result?.info.warnings} />
         </>
       )}

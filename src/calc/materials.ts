@@ -36,6 +36,7 @@ import { analyzeJoints, type Joint } from './joints';
 import { atticRequirement, type AtticResult } from './atticMaterials';
 import { ceilingLevels, ceilingWallWarnings, hangerGapClass, layerBoards, type CeilingLevels } from './ceilingLevels';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
+import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn, wallVaporSpec } from './vaporBarrier';
 import { OFFCUT_MIN, bracketPositions, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
@@ -392,6 +393,9 @@ export function wallRequirement(
   // --- Wełna: powierzchnia netto ściany (po odjęciu otworów) × liczba warstw ---
   const ins = wallInsulation(w, sys);
   if (ins) add(req.area, `WELNA${ins.thickness}`, net * ins.layers);
+  // paroizolacja po jednej stronie (od pomieszczenia), pod płytami
+  const vapor = wallVaporSpec(sys);
+  if (vaporBarrierOn(w.vaporBarrier, vapor)) vaporBarrierLines(req, net, vapor);
 
   return {
     req,
@@ -743,6 +747,9 @@ export function ceilingRequirement(
   addJointing(req, A, sys.layers, c.boardId, sys.secondarySpacing < 40 || sys.kind === 'direct' && sys.hangerType === 'elastic' ? 1.4 : 1.2, fin);
   const ins = ceilingInsulation(c);
   if (ins) add(req.area, `WELNA${ins.thickness}`, A * ins.layers);
+  // paroizolacja między wełną / rusztem a płytami (w poddaszach element systemu)
+  const vapor = ceilingVaporSpec(sys);
+  if (vaporBarrierOn(c.vaporBarrier, vapor)) vaporBarrierLines(req, A, vapor);
 
   return { req, areaM2: A, perimeterM: P, warnings, levels };
 }
@@ -930,7 +937,10 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
   for (const [pid, v] of Object.entries(merged.counts)) lines.push(withPacks(pid, Math.ceil(v * (pid.startsWith('T') || pid.startsWith('AQ') || pid === 'LN9' ? waste : 1) - 1e-9), 'szt.'));
   for (const [pid, v] of Object.entries(merged.meters)) lines.push(withPacks(pid, Math.ceil(v * waste - 1e-9), 'mb'));
   for (const [pid, v] of Object.entries(merged.kg)) lines.push(withPacks(pid, Math.ceil(v * waste - 1e-9), 'kg'));
-  for (const [pid, v] of Object.entries(merged.area)) lines.push(woolLine(pid, v, waste, opts.wool?.[String(woolThicknessOf(pid))]));
+  for (const [pid, v] of Object.entries(merged.area)) {
+    if (pid.startsWith('WELNA')) lines.push(woolLine(pid, v, waste, opts.wool?.[String(woolThicknessOf(pid))]));
+    else lines.push(withPacks(pid, Math.ceil(v * waste * 10 - 1e-9) / 10, 'm²'));
+  }
 
   return lines.sort(
     (a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || a.name.localeCompare(b.name, 'pl'),

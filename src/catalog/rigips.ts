@@ -8,6 +8,7 @@
 // z wymaganiami ogniowymi lub akustycznymi zawsze sprawdź aktualną kartę systemu.
 
 import { CORNER_STOCK_LENGTHS, FINISHING_PRODUCTS } from './finishing';
+import { VAPOR_PRODUCTS } from './vaporBarrier';
 import { RIGIPS_CEILINGS, RIGIPS_WALLS } from './rigips.gen';
 import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
 import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
@@ -472,6 +473,7 @@ export const PRODUCTS: Record<string, Product> = {
   // masy, taśmy spoinowe, narożniki i materiały na styki – src/catalog/finishing.ts
   ...FINISHING_PRODUCTS,
   ...ATLAS_PRODUCTS,
+  ...VAPOR_PRODUCTS,
 };
 
 /** Stare identyfikatory produktów (zapisane ceny i odhaczenia) → nowe */
