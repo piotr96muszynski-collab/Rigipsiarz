@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BOARDS, CEILING_SYSTEMS, MAKER_LABEL, WALL_SYSTEMS, boardById, ceilingSystemById, wallMaxHeight, wallSystemById } from '../catalog/rigips';
+import { BOARDS, CEILING_SYSTEMS, MAKER_LABEL, WALL_SYSTEMS, boardById, boardStackMm, ceilingSystemById, wallFrameDepth, wallMaxHeight, wallSystemById } from '../catalog/rigips';
+import { ceilingDepth, ceilingLevels } from './ceilingLevels';
+import { createCeiling, createProject } from '../model/factory';
+import { ceilingRequirement } from './materials';
 import { SINIAT_BOARDS, SINIAT_CEILING_SYSTEMS, SINIAT_SKIPPED, SINIAT_WALL_SYSTEMS } from '../catalog/siniat';
 import { ceilingConsumption, wallConsumption, type ConsumptionLine } from './materials';
 import { recommendCeilings, recommendWalls } from './recommend';
@@ -37,7 +40,7 @@ describe('katalog Siniat – spójność', () => {
     const wallCats = new Set(SINIAT_WALL_SYSTEMS.map((s) => s.category));
     expect(wallCats).toEqual(new Set(['działowa', 'podwójna', 'instalacyjna', 'okładzina', 'szacht']));
     for (const c of wallCats) expect(SINIAT_WALL_SYSTEMS.some((s) => s.category === c && s.basic), c).toBe(true);
-    expect(new Set(SINIAT_CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'direct']));
+    expect(new Set(SINIAT_CEILING_SYSTEMS.map((s) => s.kind))).toEqual(new Set(['two-level', 'one-level', 'parallel', 'direct']));
     expect(SINIAT_CEILING_SYSTEMS.some((s) => s.attic && s.basic)).toBe(true);
     expect(all.filter((s) => s.basic).length).toBeLessThan(all.length / 2);
     expect(SINIAT_SKIPPED.length).toBeGreaterThan(0);
@@ -119,5 +122,97 @@ describe('katalog Siniat – silnik i dobór', () => {
     for (const p of wet) expect(boardById(p.boardId).moisture).toBe('wet');
     const ceil = recommendCeilings({ mount: 'attic', room: 'dry', fire: 0, maker: 'siniat' });
     expect(ceil.some((p) => p.system.id.startsWith('SN-P-'))).toBe(true);
+  });
+});
+
+describe('Siniat – systemy dodane po PR #55 (różne grubości płyt, płyta dosztywniająca, MF, WO/WON)', () => {
+  it('nic nie jest już pomijane z powodu poszycia 12,5 + 15 mm ani płyty dosztywniającej', () => {
+    expect(SINIAT_SKIPPED.some((x) => /różnej grubości/.test(x))).toBe(false);
+    expect(SINIAT_SKIPPED.some((x) => /dosztywniając/.test(x))).toBe(false);
+    expect(SINIAT_SKIPPED.join(', ')).not.toMatch(/(: |, )(DK\/MFC|WON\/CD60|WO\/CD60)-[\d,]+(, |$)/);
+  });
+  it('okładzina CD/ES-55 (2×12,5 + 2×15): dwie warstwy 12,5 od rusztu, dwie 15 na zewnątrz; odmiany Twarda i Hydro', () => {
+    const s = wallSystemById('SN-O-CDES-4-IN12.5x2');
+    expect([s.layers, s.innerLayers, s.innerBoard, s.defaultBoard]).toEqual([4, 2, 'SN-OP12.5', 'SN-OP15']);
+    expect(boardStackMm(s, s.defaultBoard)).toBe(55);
+    const tw = s.variants!.find((v) => v.board === 'SN-TW15')!;
+    expect(tw.innerBoards).toEqual(['SN-TW12.5']);
+    const c = wallConsumption(s);
+    expect(q(c, 'board:SN-OP12.5')).toBeCloseTo(2);
+    expect(q(c, 'board:SN-OP15')).toBeCloseTo(2);
+  });
+  it('sufit ES/CD60-40 (2×12,5 + 1×15): grubość płyt 40 mm, zabudowa z karty 70 mm', () => {
+    const s = ceilingSystemById('SN-S-ES-3-IN12.5x2');
+    expect([s.layers, s.innerLayers, s.innerBoard, s.defaultBoard]).toEqual([3, 2, 'SN-OP12.5', 'SN-OP15']);
+    expect(boardStackMm(s, 'SN-OP15')).toBe(40);
+    expect(ceilingDepth(s, 'SN-OP15').minMm).toBe(70);
+    const c = ceilingConsumption(s);
+    expect(q(c, 'board:SN-OP12.5')).toBeCloseTo(2);
+    expect(q(c, 'board:SN-OP15')).toBeCloseTo(1);
+  });
+  it('ściana 168B50 z płytą dosztywniającą: grubość 168 mm, 1 m² płyty Ogień+ między rzędami na m² ściany', () => {
+    const s = wallSystemById('SN-W-B50-PD-2-EXP');
+    expect([s.frame, s.midBoard, s.innerBoard, s.defaultBoard]).toEqual(['double', 'SN-OP12.5', 'SN-EXP12.5', 'SN-CICHAA12.5']);
+    // 2×C50 + 5 mm + płyta 12,5 + 2×2×12,5 = 167,5 ≈ 168 mm z karty
+    expect(wallFrameDepth(s) + 2 * boardStackMm(s, s.defaultBoard)).toBeCloseTo(167.5);
+    const c = wallConsumption(s);
+    expect(q(c, 'board:SN-OP12.5')).toBeCloseTo(1);
+    expect(q(c, 'board:SN-EXP12.5')).toBeCloseTo(2);
+    expect(q(c, 'board:SN-CICHAA12.5')).toBeCloseTo(2);
+    expect(wallSystemById('SN-W-B100-PD-2').variants!.some((v) => v.fire === 120)).toBe(true);
+  });
+  it('sufit DK/MFC: profile MF zamiast CD 60, zawiesia z kątownika MFC2330, bez łączników krzyżowych', () => {
+    const s = ceilingSystemById('SN-S-DKMFC-1');
+    expect([s.kind, s.mainSpacing, s.secondarySpacing, s.hangerSpacing]).toEqual(['two-level', 120, 40, 120]);
+    expect(s.profiles).toMatchObject({ main: 'MFCP44', secondary: 'MFCC50', edge: 'MFCE26', hangerAngle: 'MFC2330' });
+    const c = ceilingConsumption(s);
+    // karta s. 31: MFCP44 1,0 mb, MFCC50 2,8 mb, MFCE26 0,6 mb na m² (ruszt wzorcowy ±25%)
+    expect(q(c, 'MFCP44')).toBeGreaterThan(0.75);
+    expect(q(c, 'MFCP44')).toBeLessThan(1.25);
+    expect(q(c, 'MFCC50')).toBeGreaterThan(2.1);
+    expect(q(c, 'MFCC50')).toBeLessThan(3.5);
+    expect(q(c, 'MFCE26')).toBeGreaterThan(0);
+    expect(q(c, 'MFC2330')).toBeGreaterThan(0);
+    for (const k of ['CD60', 'UD30', 'LACZNIK_KRZ', 'WIESZAK_NONIUSZ', 'LACZNIK_WZDL']) expect(q(c, k), k).toBe(0);
+    expect(q(c, 'WKRET_FLAT13')).toBeGreaterThan(4);
+    expect(ceilingDepth(s, 'SN-EXP12.5').minMm).toBe(83); // 82,5 mm z karty, zaokrąglone
+  });
+  it('MF: kątownik zawiesia rośnie ze zwieszeniem sufitu', () => {
+    const s = ceilingSystemById('SN-S-DKMFC-1');
+    const at = (slab: number) => {
+      const p = createProject();
+      const c = createCeiling(p, [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }], { systemId: s.id, boardId: s.defaultBoard });
+      c.slabHeight = slab;
+      c.height = 250;
+      return { m: ceilingRequirement(c, s).req.meters.MFC2330, gap: ceilingLevels(c, s).hangerGap };
+    };
+    const low = at(260);
+    const high = at(300);
+    expect(high.gap - low.gap).toBeCloseTo(40);
+    expect(high.m).toBeGreaterThan(low.m);
+  });
+  it('sufit WON/CD60: profile CD równolegle na wieszakach noniuszowych, bez profili głównych i łączników krzyżowych', () => {
+    const s = ceilingSystemById('SN-S-WON-1');
+    expect([s.kind, s.hangerType, s.secondarySpacing, s.hangerSpacing]).toEqual(['parallel', 'noniusz', 40, 120]);
+    const c = ceilingConsumption(s);
+    expect(q(c, 'WIESZAK_NONIUSZ')).toBeGreaterThan(1.5);
+    expect(q(c, 'CD60')).toBeGreaterThan(2);
+    expect(q(c, 'CD60')).toBeLessThan(3.2);
+    expect(q(c, 'LACZNIK_KRZ') + q(c, 'LACZNIK_JEDNO') + q(c, 'WIESZAK_ES')).toBe(0);
+    // podwieszony: brak górnej granicy zwieszenia (w przeciwieństwie do uchwytów ES)
+    expect(ceilingDepth(s).maxMm).toBeUndefined();
+    expect(ceilingSystemById('SN-S-WO-1').info).toMatch(/WO60/);
+  });
+  it('dobór „podwieszany” obejmuje sufity równoległe na wieszakach', () => {
+    const r = recommendCeilings({ mount: 'suspended', room: 'dry', fire: 0, maker: 'siniat' });
+    expect(r.some((p) => p.system.kind === 'parallel')).toBe(true);
+  });
+});
+
+describe('grubość poszycia z płyt różnej grubości w geometrii', () => {
+  it('okładzina 2×12,5 + 2×15 na CD 60: lico 37 + 55 mm od muru (nie 4×15)', async () => {
+    const { liningThickness } = await import('../geometry/contacts');
+    const l = { side: 1 as const, systemId: 'SN-O-CDES-4-IN12.5x2', boardId: 'SN-OP15', studSpacing: 60 as const, insulation: false };
+    expect(liningThickness(l)).toBeCloseTo((37 + 55) / 1000);
   });
 });
