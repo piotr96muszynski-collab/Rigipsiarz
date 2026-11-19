@@ -272,7 +272,12 @@ describe('poddasze z narożnikami i koszami w 3D', () => {
     const faces = m.parts.filter((x) => x.type === 'face' && x.layer === 'ceilingBoards');
     const beams = m.parts.filter((x) => x.type === 'beam');
     expect(faces.length).toBeGreaterThan(5);
-    expect(beams.some((b) => b.type === 'beam' && b.layer === 'existing')).toBe(true);
+    expect(beams.some((b) => b.type === 'beam' && b.layer === 'rafters')).toBe(true);
+    // więźba na osobnej warstwie (można ją wyłączyć), CD na połaciach z pełnym przekrojem
+    expect(m.parts.some((x) => x.layer === 'existing' && x.mat === 'timber' && x.type === 'beam')).toBe(false);
+    const cd = beams.filter((b) => b.mat === 'cdMain');
+    expect(cd.length).toBeGreaterThan(0);
+    expect(cd.every((b) => b.type === 'beam' && b.profile?.web === 'a-' && b.profile.webRibs.length === 2)).toBe(true);
     for (const v of [...m.bounds.min, ...m.bounds.max]) expect(Number.isFinite(v)).toBe(true);
     // obrót kalenicy o 90° przenosi całość
     const r = buildModel3D(quickAtticProject({ ...a, planRot: 90 }));

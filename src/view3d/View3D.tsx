@@ -13,7 +13,7 @@ import type { Project } from '../model/types';
 import { findCollisions } from '../geometry/contacts';
 import { EXIT_FULLSCREEN_ICON, FULLSCREEN_ICON } from '../ui/fullscreen';
 import type { FullscreenControl } from '../ui/PlanTab';
-import { buildModel3D, type BoxPart, type FacePart, type Layer3D, type MatKey, type Model3D } from './model3d';
+import { buildModel3D, type BeamPart, type BoxPart, type FacePart, type Layer3D, type MatKey, type Model3D } from './model3d';
 import { profileOutline, type ProfileSpec } from './profiles';
 
 const FRAME_COLORS: Record<string, number> = {
@@ -34,7 +34,8 @@ const FRAME_COLORS: Record<string, number> = {
 };
 
 const LAYERS: { id: Layer3D; label: string }[] = [
-  { id: 'existing', label: 'Istniejące ściany i więźba' },
+  { id: 'existing', label: 'Istniejące ściany' },
+  { id: 'rafters', label: 'Krokwie i jętki' },
   { id: 'wallBoards', label: 'Płyty ścian' },
   { id: 'wallFrame', label: 'Ruszt i łączniki ścian' },
   { id: 'ceilingBoards', label: 'Płyty sufitu' },
@@ -42,7 +43,7 @@ const LAYERS: { id: Layer3D; label: string }[] = [
 ];
 
 type Visibility = Record<Layer3D, boolean>;
-const ALL_ON: Visibility = { existing: true, wallBoards: true, wallFrame: true, ceilingBoards: true, ceilingFrame: true };
+const ALL_ON: Visibility = { existing: true, rafters: true, wallBoards: true, wallFrame: true, ceilingBoards: true, ceilingFrame: true };
 
 /** Jakość grafiki: niska – bez cieni (słabe telefony), średnia – cienie, wysoka – miękkie cienie i AO */
 export type Quality3D = 'low' | 'medium' | 'high';
@@ -89,8 +90,8 @@ function materialFor(key: MatKey, quality: Quality3D): THREE.Material {
 }
 
 /** Przekrój profilu wyciągnięty na długość 1 m wzdłuż osi profilu (y dla 'up', x dla 'along') */
-function profileGeometry(spec: ProfileSpec, A: number, B: number): THREE.BufferGeometry {
-  const outline = profileOutline(spec, A, B);
+function profileGeometry(spec: ProfileSpec, A: number, B: number, detail: boolean): THREE.BufferGeometry {
+  const outline = profileOutline(spec, A, B, detail);
   // punkty kształtu dobrane tak, by po obrocie (a, b) trafiły w osie lokalne bryły
   const pts = outline.map((q) => (spec.axis === 'up' ? new THREE.Vector2(q.x, -q.y) : new THREE.Vector2(-q.y, q.x)));
   const g: THREE.BufferGeometry = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: 1, bevelEnabled: false, steps: 1 });
@@ -132,14 +133,14 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
   const byKey = new Map<string, THREE.BufferGeometry[]>();
   const edgesByLayer = new Map<Layer3D, THREE.BufferGeometry[]>();
   // profile tego samego przekroju – jedna siatka z instancjami (InstancedMesh)
-  const profiles = new Map<string, { layer: Layer3D; mat: MatKey; spec: ProfileSpec; A: number; B: number; parts: BoxPart[] }>();
+  const profiles = new Map<string, { layer: Layer3D; mat: MatKey; spec: ProfileSpec; A: number; B: number; parts: (BoxPart | BeamPart)[] }>();
   const tmp = new THREE.Object3D();
   for (const part of model.parts) {
-    if (part.type === 'box' && part.profile) {
+    if ((part.type === 'box' || part.type === 'beam') && part.profile) {
       const spec = part.profile;
-      const A = spec.axis === 'up' ? part.s[0] : part.s[1];
-      const B = part.s[2];
-      const key = `${part.layer}|${part.mat}|${spec.axis}|${spec.web}|${spec.t}|${spec.lip}|${A.toFixed(4)}|${B.toFixed(4)}`;
+      const A = part.type === 'beam' ? part.h : spec.axis === 'up' ? part.s[0] : part.s[1];
+      const B = part.type === 'beam' ? part.w : part.s[2];
+      const key = `${part.layer}|${part.mat}|${spec.axis}|${spec.web}|${spec.t}|${spec.lip}|${spec.webRibs.join(',')}|${spec.flangeRib}|${A.toFixed(4)}|${B.toFixed(4)}`;
       const entry = profiles.get(key) ?? profiles.set(key, { layer: part.layer, mat: part.mat, spec, A, B, parts: [] }).get(key)!;
       entry.parts.push(part);
       continue;
@@ -229,9 +230,29 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
   const qx = new THREE.Quaternion();
   const pos = new THREE.Vector3();
   const scale = new THREE.Vector3();
+  // przetłoczenia profili pomijamy w jakości niskiej (4× mniej trójkątów na słabszym telefonie)
+  const detail = quality !== 'low';
+  const va = new THREE.Vector3();
+  const vb = new THREE.Vector3();
+  const vu = new THREE.Vector3();
+  const vs = new THREE.Vector3();
   for (const { layer, mat, spec, A, B, parts } of profiles.values()) {
-    const mesh = new THREE.InstancedMesh(profileGeometry(spec, A, B), materialFor(mat, quality), parts.length);
+    const mesh = new THREE.InstancedMesh(profileGeometry(spec, A, B, detail), materialFor(mat, quality), parts.length);
     parts.forEach((part, i) => {
+      if (part.type === 'beam') {
+        // belka: oś x wzdłuż a→b, y = kierunek wysokości, z = szerokość (jak BoxGeometry belki)
+        va.set(...part.a);
+        vb.set(...part.b).sub(va);
+        const len = vb.length();
+        vb.normalize();
+        vu.set(...part.up);
+        vu.sub(vs.copy(vb).multiplyScalar(vu.dot(vb))).normalize();
+        vs.crossVectors(vb, vu);
+        m.makeBasis(vb, vu, vs).scale(scale.set(len, 1, 1));
+        m.setPosition(va.addScaledVector(vb, len / 2));
+        mesh.setMatrixAt(i, m);
+        return;
+      }
       pos.set(...part.c);
       q.setFromAxisAngle(up, part.rotY);
       if (part.rotX) q.multiply(qx.setFromAxisAngle(along, part.rotX));
@@ -499,7 +520,7 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
   return (
     <div className="view3d">
       <div className="view3d-toolbar" role="group" aria-label="Widoczne warstwy">
-        {LAYERS.filter((l) => (l.id === 'existing' ? hasExisting : l.id.startsWith('wall') ? hasWalls : hasCeilings)).map((l) => (
+        {LAYERS.filter((l) => (l.id === 'existing' ? hasExisting : l.id === 'rafters' ? hasAttics : l.id.startsWith('wall') ? hasWalls : hasCeilings)).map((l) => (
           <label key={l.id} className={`chip ${vis[l.id] ? 'on' : ''}`}>
             <input
               type="checkbox"

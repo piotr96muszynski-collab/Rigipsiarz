@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { calculateProject } from '../calc/materials';
 import { sampleProject } from '../model/factory';
 import { buildModel3D, type BoxPart } from './model3d';
-import { polygonArea, profileFor, profileOutline } from './profiles';
+import { polygonArea, polylineLength, profileCenterline, profileFor, profileOutline } from './profiles';
 
 const inside = (pts: { x: number; y: number }[], A: number, B: number) =>
   pts.every((q) => Math.abs(q.x) <= A / 2 + 1e-9 && Math.abs(q.y) <= B / 2 + 1e-9);
 
 describe('przekroje profili', () => {
-  it('CW 50×75: profil C z zagięciami, pole = blacha na obwodzie', () => {
+  it('CW 50×75 uproszczony: profil C z zagięciami, pole = blacha na obwodzie', () => {
     const spec = profileFor('cw', 'up', 'a-')!;
-    const pts = profileOutline(spec, 0.05, 0.075);
+    const pts = profileOutline(spec, 0.05, 0.075, false);
     expect(pts).toHaveLength(12);
     expect(inside(pts, 0.05, 0.075)).toBe(true);
     // środnik + 2 półki + 2 zagięcia, grubość t (narożniki liczone raz)
@@ -19,11 +19,49 @@ describe('przekroje profili', () => {
     expect(polygonArea(pts)).toBeCloseTo(expected, 9);
   });
 
-  it('UW: profil U bez zagięć (8 wierzchołków)', () => {
+  it('UW uproszczony: profil U bez zagięć (8 wierzchołków)', () => {
     const spec = profileFor('uw', 'along', 'a-')!;
-    const pts = profileOutline(spec, 0.04, 0.075);
+    const pts = profileOutline(spec, 0.04, 0.075, false);
     expect(pts).toHaveLength(8);
     expect(inside(pts, 0.04, 0.075)).toBe(true);
+  });
+
+  it('CD 60×27 pełny: blacha 0,6 mm, ranty do środka, przetłoczenia środnika i półek', () => {
+    const spec = profileFor('cdMain', 'along', 'a-')!;
+    expect(spec.t).toBeCloseTo(0.0006, 9);
+    // w suficie: a = wysokość 27 mm, b = szerokość 60 mm
+    const line = profileCenterline(spec, 0.027, 0.06);
+    // 2 ranty + 2 półki + środnik = 6 punktów, po 4 na każdy z 4 rowków (2 w środniku, po 1 w półce)
+    expect(line).toHaveLength(6 + 4 * 4);
+    const pts = profileOutline(spec, 0.027, 0.06);
+    expect(pts).toHaveLength(2 * line.length);
+    expect(inside(pts, 0.027, 0.06)).toBe(true);
+    // pole = grubość × długość rozwinięcia blachy (ścięte narożniki się znoszą)
+    expect(polygonArea(pts)).toBeCloseTo(spec.t * polylineLength(line), 10);
+    // rozwinięcie dłuższe niż profil bez przetłoczeń (60 + 2×27 + 2×6 mm minus grubości)
+    const flat = polylineLength(profileCenterline(spec, 0.027, 0.06, false));
+    expect(flat).toBeCloseTo(0.06 + 2 * 0.027 + 2 * 0.006 - 4 * spec.t, 6);
+    expect(polylineLength(line)).toBeGreaterThan(flat + 0.002);
+    // przetłoczenia środnika wciśnięte do wnętrza (w stronę półek), po obu stronach osi
+    const web = line.filter((q) => q[0] > -0.0135 + 0.0003 + 1e-6 && q[0] < -0.01);
+    expect(web.length).toBe(4);
+    expect(web.some((q) => q[1] < 0) && web.some((q) => q[1] > 0)).toBe(true);
+  });
+
+  it('pełne przekroje innych profili mieszczą się w obrysie i mają pole = t × rozwinięcie', () => {
+    for (const [mat, A, B] of [
+      ['cw', 0.05, 0.075],
+      ['uw', 0.04, 0.1],
+      ['ud', 0.027, 0.028],
+      ['ua', 0.04, 0.05],
+    ] as const) {
+      for (const web of ['a-', 'a+', 'b-', 'b+'] as const) {
+        const spec = profileFor(mat, 'along', web)!;
+        const pts = profileOutline(spec, A, B);
+        expect(inside(pts, A, B)).toBe(true);
+        expect(polygonArea(pts)).toBeCloseTo(spec.t * polylineLength(profileCenterline(spec, A, B)), 10);
+      }
+    }
   });
 
   it('środnik po wskazanej stronie', () => {
