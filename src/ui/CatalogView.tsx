@@ -23,6 +23,7 @@ import {
   type WallCategory,
   type WallFrame,
   type WallSystem,
+  wallStudLabel,
 } from '../catalog/rigips';
 import type { PointFixer } from '../catalog/atlas';
 import { REF_CEILING, REF_WALL, ceilingConsumption, wallConsumption, type ConsumptionLine } from '../calc/materials';
@@ -150,7 +151,7 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 maker={makerOf(s)}
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
-                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : `CW ${s.profile} / UW ${s.profile}`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
                   ['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
                   ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
                   ...(s.frame === 'point-fix'

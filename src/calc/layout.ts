@@ -3,7 +3,7 @@
 // dzięki czemu schemat zawsze pokazuje dokładnie to, co trafiło na listę zakupów.
 // Jednostki: ściany w metrach (jak w wyliczeniach), sufity w centymetrach (jak ceilingGrid).
 
-import { boardById, ceilingSystemById, wallSystemById, type WallFrame } from '../catalog/rigips';
+import { boardById, ceilingSystemById, wallStudLabel, wallSystemById, type WallFrame } from '../catalog/rigips';
 import { buildContacts, cornerStudPositions, partRange, type ContactModel, type WallEndContacts } from '../geometry/contacts';
 import { bbox, firstWall, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
@@ -362,7 +362,7 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
   const tracks: TrackElement[] = [];
   if (!glued) {
     for (const o of openings) {
-      const kind: StudKind = o.reinforced && !isCD ? 'jamb-ua' : 'jamb';
+      const kind: StudKind = (o.reinforced && !isCD) || sys.studKind === 'UA' ? 'jamb-ua' : 'jamb';
       studs.push({ x: o.x0, kind, segments: [[0, H]] }, { x: o.x1, kind, segments: [[0, H]] });
     }
     for (const x of junctionStudPositions(p, w, j, m)) studs.push({ x, kind: 'extra', segments: [[0, H]] });
@@ -482,7 +482,7 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     profile: sys.profile,
     frame,
     rows,
-    studLabel: isCD ? 'CD 60' : `CW ${sys.profile}`,
+    studLabel: wallStudLabel(sys),
     trackLabel: isCD ? 'UD 30' : `UW ${sys.profile}`,
     openings,
     studs,
