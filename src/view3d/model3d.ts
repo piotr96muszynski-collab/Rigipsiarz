@@ -9,7 +9,9 @@ import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBa
 import { hangerPositions, liningLayout, pieceArea, pieceOutline, splicePositions, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
-import type { Ceiling, Point, Project, Wall } from '../model/types';
+import type { Attic, Ceiling, Point, Project, Wall } from '../model/types';
+import { atticGrid } from '../calc/attic';
+import { layerBoards } from '../calc/ceilingLevels';
 import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 import { rowSegments } from '../calc/boardLength';
 
@@ -17,7 +19,7 @@ import { rowSegments } from '../calc/boardLength';
 export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
 
 /** Materiały elementów rusztu; płyty mają klucz `board:<id>` */
-export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'connector' | 'masonry' | 'disc' | 'anchor' | 'vapor';
+export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'connector' | 'masonry' | 'disc' | 'anchor' | 'vapor' | 'timber';
 export type MatKey = FrameMat | `board:${string}`;
 
 export interface BoxPart {
@@ -30,6 +32,8 @@ export interface BoxPart {
   s: [number, number, number];
   /** Obrót wokół osi pionowej, rad */
   rotY: number;
+  /** Pochylenie wokół osi długości elementu (skosy poddasza), rad; stosowane przed obrotem `rotY` */
+  rotX?: number;
   /** Ścianka/sufit, z którego pochodzi element */
   owner: string;
   /** Profil stalowy: w 3D rysowany przekrojem C/U zamiast pełnej bryły */
@@ -581,6 +585,82 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
   });
 }
 
+const JETKA_H = 0.14;
+
+/**
+ * Poddasze w 3D: kalenica wzdłuż osi x, przekrój w płaszczyźnie (z, y). Krokwie i jętki, wieszaki,
+ * profile CD w poprzek krokwi, UD na ścianach szczytowych, folia i płyty na skosach oraz suficie –
+ * z tej samej siatki co rysunki i zestawienie. `z0` = przesunięcie w planie, m.
+ */
+export function buildAttic(a: Attic, parts: Part3D[], z0 = 0) {
+  const sys = ceilingSystemById(a.systemId);
+  const grid = atticGrid(a, sys);
+  const L = a.length / 100;
+  const rw = a.rafterWidth / 100;
+  const rh = a.rafterHeight / 100;
+  const depth = grid.depthMm / 1000;
+  const boards = layerBoards(sys, a.boardId).map((id) => ({ id, t: boardById(id).thickness / 1000 }));
+  const tb = boards.reduce((t, b) => t + b.t, 0);
+  const vapor = vaporBarrierOn(a.vaporBarrier, ceilingVaporSpec(sys));
+
+  /** Układ płaszczyzny: p0 → p1 w stronę rosnącego z, normalna na zewnątrz (ku krokwiom) */
+  const frame = (p: { x: number; z: number }, q: { x: number; z: number }) => {
+    const [lo, hi] = p.x <= q.x ? [p, q] : [q, p];
+    const dz = (hi.x - lo.x) / 100;
+    const dy = (hi.z - lo.z) / 100;
+    const run = Math.hypot(dz, dy);
+    const rotX = Math.atan2(-dy, dz);
+    // punkt w odległości k od p0 wzdłuż płaszczyzny i h na zewnątrz
+    const at = (k: number, h: number): [number, number] => [lo.z / 100 + (dy / run) * k + (dz / run) * h, z0 + lo.x / 100 + (dz / run) * k - (dy / run) * h];
+    return { run, rotX, at, flipped: lo !== p };
+  };
+  const tilted = (layer: Layer3D, mat: MatKey, f: ReturnType<typeof frame>, x: number, k: number, h: number, s: [number, number, number]) => {
+    const [y, z] = f.at(k, h);
+    parts.push({ type: 'box', layer, mat, c: [x, y, z], s, rotY: 0, rotX: f.rotX, owner: a.id });
+  };
+
+  for (const g of grid.surfaces) {
+    const f = frame(g.surface.a, g.surface.b);
+    // płyty: kolejne warstwy od lica w stronę rusztu
+    let h = 0;
+    for (const b of [...boards].reverse()) {
+      tilted('ceilingBoards', `board:${b.id}`, f, L / 2, f.run / 2, h + b.t / 2, [L, b.t, f.run]);
+      h += b.t;
+    }
+    if (vapor) tilted('ceilingFrame', 'vapor', f, L / 2, f.run / 2, tb + VAPOR_T / 2, [L, VAPOR_T, f.run]);
+    for (const s of g.cd) {
+      const k = (f.flipped ? g.surface.run - s : s) / 100;
+      const [y, z] = f.at(k, tb + CD_H / 2);
+      parts.push({ type: 'box', layer: 'ceilingFrame', mat: 'cdMain', c: [L / 2, y, z], s: [L, CD_H, CD_W], rotY: 0, rotX: f.rotX, owner: a.id, profile: profileFor('cdMain', 'along', 'a-') });
+      // wieszak przy boku krokwi: od profilu CD do krokwi
+      const hh = Math.max(0.03, depth - tb + 0.04);
+      for (const u of g.hangerU) tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + hh / 2, [0.004, hh, ES_W]);
+    }
+    // UD 30 na ścianach szczytowych
+    for (const x of [UD_W / 2, L - UD_W / 2]) tilted('ceilingFrame', 'ud', f, x, f.run / 2, tb + CD_H / 2, [UD_W, CD_H, f.run]);
+  }
+
+  // konstrukcja dachu: krokwie od ścianki kolankowej do kalenicy, jętki nad sufitem
+  const st = grid.structure;
+  const ridge = { x: st.ridgeX, z: st.ridgeHeight };
+  const slopes: ReturnType<typeof frame>[] = [];
+  if (st.ridgeX > 1) slopes.push(frame({ x: 0, z: a.kneeLeft }, ridge));
+  if (a.roof !== 'mono' && st.ridgeX < a.width - 1) slopes.push(frame({ x: a.width, z: a.kneeRight }, ridge));
+  const collar = st.surfaces.find((s) => s.kind === 'collar');
+  for (const u of grid.rafters) {
+    for (const f of slopes) tilted('existing', 'timber', f, u / 100, f.run / 2, rh / 2, [rw, rh, f.run]);
+    if (collar)
+      parts.push({ type: 'box', layer: 'existing', mat: 'timber', c: [u / 100 + rw, (collar.a.z / 100) + JETKA_H / 2, z0 + (collar.a.x + collar.b.x) / 200], s: [rw * 0.6, JETKA_H, collar.run / 100], rotY: 0, owner: a.id });
+  }
+  // ścianki kolankowe i wyższa ściana dachu jednospadowego (mur)
+  const wallT = 0.25;
+  const masonry = (zc: number, hgt: number) => {
+    if (hgt > 0.01) parts.push({ type: 'box', layer: 'existing', mat: 'masonry', c: [L / 2, hgt / 2, z0 + zc], s: [L, hgt, wallT], rotY: 0, owner: a.id });
+  };
+  masonry(-wallT / 2, a.kneeLeft / 100);
+  masonry(a.width / 100 + wallT / 2, (a.roof === 'mono' ? st.ridgeHeight : a.kneeRight) / 100);
+}
+
 /** Model 3D projektu; `_calc` zostaje dla zgodności wywołań – układ rusztu liczy się z tych samych funkcji co rysunki */
 export function buildModel3D(p: Project, _calc?: ProjectCalc): Model3D {
   const parts: Part3D[] = [];
@@ -594,6 +674,13 @@ export function buildModel3D(p: Project, _calc?: ProjectCalc): Model3D {
     else buildExistingWall(p, w, masonrySide(p, w, rooms), nodes, contacts, parts);
   }
   for (const c of p.ceilings) buildCeiling(c, parts);
+  // poddasza obok reszty projektu (nie mają położenia na planie)
+  const planPts = [...p.nodes, ...p.ceilings.flatMap((c) => c.points)];
+  let atticZ = planPts.length ? Math.max(...planPts.map((q) => q.y)) / 100 + 1 : 0;
+  for (const a of p.attics ?? []) {
+    buildAttic(a, parts, atticZ);
+    atticZ += a.width / 100 + 1.5;
+  }
 
   const min: [number, number, number] = [Infinity, 0, Infinity];
   const max: [number, number, number] = [-Infinity, 0, -Infinity];
@@ -605,7 +692,13 @@ export function buildModel3D(p: Project, _calc?: ProjectCalc): Model3D {
     max[2] = Math.max(max[2], z);
   };
   for (const pt of parts) {
-    if (pt.type === 'box') grow(pt.c[0], pt.c[1] + pt.s[1] / 2, pt.c[2]);
+    if (pt.type === 'box' && pt.rotX) {
+      // element pochylony: zakres po osi długości i po rzucie pochylonej szerokości
+      const hy = (Math.abs(Math.sin(pt.rotX)) * pt.s[2]) / 2;
+      const hz = (Math.abs(Math.cos(pt.rotX)) * pt.s[2]) / 2;
+      grow(pt.c[0] - pt.s[0] / 2, pt.c[1] + hy, pt.c[2] - hz);
+      grow(pt.c[0] + pt.s[0] / 2, pt.c[1] + hy, pt.c[2] + hz);
+    } else if (pt.type === 'box') grow(pt.c[0], pt.c[1] + pt.s[1] / 2, pt.c[2]);
     else if (pt.type === 'cyl') grow(pt.c[0], pt.c[1], pt.c[2]);
     else if (pt.type === 'panel') {
       const c = Math.cos(pt.rotY);
