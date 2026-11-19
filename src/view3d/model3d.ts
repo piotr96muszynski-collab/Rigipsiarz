@@ -21,7 +21,8 @@ import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 import { rowSegments } from '../calc/boardLength';
 
 /** Warstwy, które można przełączać w widoku */
-export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
+/** Warstwy 3D; 'rafters' – więźba poddasza (krokwie, jętki, krokwie narożne i koszowe), osobno od murów */
+export type Layer3D = 'existing' | 'rafters' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
 
 /** Materiały elementów rusztu; płyty mają klucz `board:<id>` */
 export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'connector' | 'masonry' | 'disc' | 'anchor' | 'vapor' | 'timber' | 'glass';
@@ -117,6 +118,8 @@ export interface BeamPart {
   w: number;
   h: number;
   owner: string;
+  /** Profil stalowy wzdłuż osi belki (a = wysokość wzdłuż `up`, b = szerokość) */
+  profile?: ProfileSpec;
 }
 
 export type Part3D = BoxPart | SlabPart | PanelPart | CylPart | FacePart | BeamPart;
@@ -840,9 +843,9 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   if (a.roof !== 'mono' && st.ridgeX < a.width - 1) slopes.push(frame({ x: a.width, z: a.kneeRight }, ridge));
   const collar = st.surfaces.find((s) => s.kind === 'collar');
   for (const u of grid.rafters) {
-    for (const f of slopes) tilted('existing', 'timber', f, u / 100, f.run / 2, rh / 2, [rw, rh, f.run]);
+    for (const f of slopes) tilted('rafters', 'timber', f, u / 100, f.run / 2, rh / 2, [rw, rh, f.run]);
     if (collar)
-      parts.push({ type: 'box', layer: 'existing', mat: 'timber', c: [u / 100 + rw, (collar.a.z / 100) + JETKA_H / 2, z0 + (collar.a.x + collar.b.x) / 200], s: [rw * 0.6, JETKA_H, collar.run / 100], rotY: 0, owner: a.id });
+      parts.push({ type: 'box', layer: 'rafters', mat: 'timber', c: [u / 100 + rw, (collar.a.z / 100) + JETKA_H / 2, z0 + (collar.a.x + collar.b.x) / 200], s: [rw * 0.6, JETKA_H, collar.run / 100], rotY: 0, owner: a.id });
   }
   // ścianki kolankowe i wyższa ściana dachu jednospadowego (mur)
   const wallT = 0.25;

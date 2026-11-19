@@ -14,6 +14,7 @@ import type { Attic, Point } from '../model/types';
 import { atticRoofWallFaces } from '../calc/atticRoofWalls';
 import { atticWallLayout } from '../calc/atticWalls';
 import type { Layer3D, MatKey, Part3D } from './model3d';
+import { profileFor, type WebSide } from './profiles';
 
 type V3 = [number, number, number];
 const CD_W = 0.06;
@@ -62,9 +63,14 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
     return unit(sub(M({ u: -fc.plane.a * 100, v: -fc.plane.b * 100 }, 100), M(p0, 0)));
   };
   const on = (fc: RoofFace, p: P2, off: number): V3 => addv(M(p, zAt(fc.plane, p)), normalOf(fc), off);
-  const beam = (layer: Layer3D, mat: MatKey, x: V3, y: V3, up: V3, w: number, h: number) => {
+  /** web – strona środnika CD względem `up`: 'a-' (połacie, up ku krokwiom) albo 'a+' (ściany, up ku płytom); null – bryła */
+  const beam = (layer: Layer3D, mat: MatKey, x: V3, y: V3, up: V3, w: number, h: number, web: WebSide | null = 'a-') => {
     if (Math.hypot(...sub(y, x)) < 0.01) return;
-    parts.push({ type: 'beam', layer, mat, a: x, b: y, up, w, h, owner });
+    // CD z pełnym przekrojem (środnik od strony płyt); łaty, kapelusze, UD i wieszaki zostają bryłami
+    // przekrój 60×27 – wyklucza kapelusze (8 cm), MFCP 44 i niskie profile okładzin na kapeluszach
+    const cd = (mat === 'cdMain' || mat === 'cdSec') && Math.abs(w - CD_W) < 1e-6 && h > 0.02 && h < 0.03 && web !== null;
+    const profile = cd ? profileFor(mat, 'along', web) : undefined;
+    parts.push({ type: 'beam', layer, mat, a: x, b: y, up, w, h, owner, ...(profile ? { profile } : {}) });
   };
 
   // okna dachowe i rozkład płyt (ten sam co na rysunkach i liście zakupów)
@@ -174,7 +180,7 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
   for (const fc of st.faces) {
     const n = normalOf(fc);
     const collar = fc.kind === 'collar';
-    for (const sp of faceRafterSpans(fc)) beam('existing', 'timber', on(fc, faceToPlan(fc, sp.t, sp.s0), (collar ? JETKA_H : rh) / 2), on(fc, faceToPlan(fc, sp.t, sp.s1), (collar ? JETKA_H : rh) / 2), n, collar ? rw * 0.6 : rw, collar ? JETKA_H : rh);
+    for (const sp of faceRafterSpans(fc)) beam('rafters', 'timber', on(fc, faceToPlan(fc, sp.t, sp.s0), (collar ? JETKA_H : rh) / 2), on(fc, faceToPlan(fc, sp.t, sp.s1), (collar ? JETKA_H : rh) / 2), n, collar ? rw * 0.6 : rw, collar ? JETKA_H : rh);
   }
   for (const l of st.lines) {
     if (l.kind !== 'hip' && l.kind !== 'valley' && l.kind !== 'ridge') continue;
@@ -183,7 +189,7 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
     const up = unit(addv(normalOf(f0), normalOf(f1)));
     const z0 = zAt(f0.plane, l.p);
     const z1 = zAt(f0.plane, l.q);
-    beam('existing', 'timber', addv(M(l.p, z0), up, rh / 2), addv(M(l.q, z1), up, rh / 2), up, rw * 1.2, rh * 1.15);
+    beam('rafters', 'timber', addv(M(l.p, z0), up, rh / 2), addv(M(l.q, z1), up, rh / 2), up, rw * 1.2, rh * 1.15);
   }
   // okładziny ścianek kolankowych i ścian szczytowych (także przy dobudówkach): płyty docięte do skosu, profile pionowe
   for (const lay of walls) {
@@ -200,7 +206,7 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
       const off = d + lt.slice(0, l.layer).reduce((v, x) => v + x, 0);
       for (const pc of l.pieces) parts.push({ type: 'face', layer: 'wallBoards', mat: `board:${l.boardId}`, pts: pc.outline.map((q) => W(q.x, q.z, off)), normal: inward, thickness: t, owner });
     }
-    for (const sd of lay.studs) beam('wallFrame', 'cdMain', W(sd.x, 0, d - sH / 2), W(sd.x, sd.len, d - sH / 2), inward, CD_W, sH);
+    for (const sd of lay.studs) beam('wallFrame', 'cdMain', W(sd.x, 0, d - sH / 2), W(sd.x, sd.len, d - sH / 2), inward, CD_W, sH, lay.sys.frame === 'hat-lining' ? null : 'a+');
     for (const [p, q] of lay.tracks) beam('wallFrame', 'ud', W(p.x, p.z, d - sH / 2), W(q.x, q.z, d - sH / 2), inward, UD_W, sH);
   }
 
