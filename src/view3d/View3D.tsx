@@ -82,7 +82,8 @@ function materialFor(key: MatKey, quality: Quality3D): THREE.Material {
   const side = isBoard ? THREE.DoubleSide : THREE.FrontSide;
   // folia paroizolacyjna: półprzezroczysta, żeby było widać ruszt i wełnę za nią
   if (key === 'glass') return new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.4, depthWrite: false });
-  if (key === 'vapor') return new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false });
+  // folia odsunięta w głąb mocniej niż płyty (patrz niżej) – pod ostrym kątem nie przebija przez płyty
+  if (key === 'vapor') return new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 4 });
   if (quality === 'low') return new THREE.MeshLambertMaterial({ color, side });
   const look = isBoard ? { metalness: 0, roughness: 0.92 } : (FRAME_LOOK[key] ?? { metalness: 0.4, roughness: 0.5 });
   return new THREE.MeshStandardMaterial({ color, side, ...look });
@@ -107,24 +108,59 @@ function profileGeometry(spec: ProfileSpec, A: number, B: number): THREE.BufferG
 
 /** Graniastosłup z płaskiego wielokąta wypukłego wyciągniętego wzdłuż normalnej */
 function facePrism(part: FacePart): THREE.BufferGeometry {
-  const n = new THREE.Vector3(...part.normal).normalize().multiplyScalar(part.thickness);
-  const top = part.pts.map((p) => new THREE.Vector3(...p));
+  const dir = new THREE.Vector3(...part.normal).normalize();
+  const n = dir.clone().multiplyScalar(part.thickness);
+  const loops = [part.pts, ...(part.holes ?? [])].map((l) => l.map((p) => new THREE.Vector3(...p)));
+  const top = loops.flat();
   const bot = top.map((p) => p.clone().add(n));
+  // wielokąt (także wklęsły, z otworami) rozkładany na trójkąty w swojej płaszczyźnie
+  const ax = Math.abs(dir.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  const e1 = ax.sub(dir.clone().multiplyScalar(ax.dot(dir))).normalize();
+  const e2 = new THREE.Vector3().crossVectors(dir, e1);
+  const flat = loops.map((l) => l.map((p) => new THREE.Vector2(p.dot(e1), p.dot(e2))));
+  const tris = THREE.ShapeUtils.triangulateShape(flat[0], flat.slice(1));
   const pos: number[] = [];
   const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-  for (let i = 1; i + 1 < top.length; i++) {
-    tri(top[0], top[i + 1], top[i]);
-    tri(bot[0], bot[i], bot[i + 1]);
+  // lico od strony `pts` zwrócone przeciwnie do grubości, spód – zgodnie, boki na zewnątrz
+  const facing = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).dot(dir);
+  for (const [i, j, k] of tris) {
+    if (facing(top[i], top[j], top[k]) > 0) {
+      tri(top[i], top[k], top[j]);
+      tri(bot[i], bot[j], bot[k]);
+    } else {
+      tri(top[i], top[j], top[k]);
+      tri(bot[i], bot[k], bot[j]);
+    }
   }
-  for (let i = 0; i < top.length; i++) {
-    const j = (i + 1) % top.length;
-    tri(top[i], top[j], bot[j]);
-    tri(top[i], bot[j], bot[i]);
+  let base = 0;
+  for (const l of loops) {
+    // obieg pętli w rzucie na płaszczyznę: boki zwrócone na zewnątrz bryły (przy otworach – do środka otworu)
+    const f2 = flat[loops.indexOf(l)];
+    const outward = THREE.ShapeUtils.isClockWise(f2) === (l !== loops[0]);
+    for (let i = 0; i < l.length; i++) {
+      const a = base + i;
+      const b = base + ((i + 1) % l.length);
+      if (outward) {
+        tri(top[a], top[b], bot[b]);
+        tri(top[a], bot[b], bot[a]);
+      } else {
+        tri(top[a], bot[b], top[b]);
+        tri(top[a], bot[a], bot[b]);
+      }
+    }
+    base += l.length;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.computeVertexNormals();
   return g;
+}
+
+/** Ruszt za płytami odsunięty w głąb mocniej niż płyty – pod ostrym kątem nie przebija przez poszycie */
+function behindBoards(material: THREE.Material) {
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = 2;
+  material.polygonOffsetUnits = 2;
 }
 
 /** Buduje grupy siatek (po jednej na warstwę i materiał – mało wywołań rysowania) */
@@ -216,7 +252,7 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
       material.polygonOffset = true;
       material.polygonOffsetFactor = 1;
       material.polygonOffsetUnits = 1;
-    }
+    } else if ((layer === 'wallFrame' || layer === 'ceilingFrame') && mat !== 'vapor') behindBoards(material);
     const mesh = new THREE.Mesh(merged, material);
     mesh.castShadow = shadows;
     mesh.receiveShadow = shadows;
@@ -230,7 +266,9 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
   const pos = new THREE.Vector3();
   const scale = new THREE.Vector3();
   for (const { layer, mat, spec, A, B, parts } of profiles.values()) {
-    const mesh = new THREE.InstancedMesh(profileGeometry(spec, A, B), materialFor(mat, quality), parts.length);
+    const material = materialFor(mat, quality);
+    if (layer === 'wallFrame' || layer === 'ceilingFrame') behindBoards(material);
+    const mesh = new THREE.InstancedMesh(profileGeometry(spec, A, B), material, parts.length);
     parts.forEach((part, i) => {
       pos.set(...part.c);
       q.setFromAxisAngle(up, part.rotY);

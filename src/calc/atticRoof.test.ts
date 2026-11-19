@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { atticRequirement } from './atticMaterials';
 import { allCeilingSystems } from '../catalog/rigips';
 import { createAttic, createLining } from '../model/factory';
-import { atticRoof, faceCdLines, hasRoofCorners } from './atticRoof';
+import { atticRoof, faceCdLines, faceContains, faceOutlines, hasRoofCorners, polyArea, sideTowardFace } from './atticRoof';
 
 const base = { width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 45, collarHeight: undefined };
 const total = (r: ReturnType<typeof atticRoof>) => r.faces.reduce((s, f) => s + f.areaM2, 0);
@@ -106,5 +106,39 @@ describe('okładziny ścian poddasza z narożnikami i koszami', () => {
     // lewa: 2 odcinki obok dobudówki, prawa: cała, połać narożna: 1, dobudówka: 2 boki
     expect(knees.length).toBe(6);
     expect(r.wallAreaM2).toBeGreaterThan(0);
+  });
+});
+
+// układ ze zgłoszenia: 10×8 m, narożnik przy 1. szczycie, dobudówka 4,8 m z koszami, sufit pod jętkami na 4 m
+describe('dach kopertowy z dobudówką (T) i sufitem pod jętkami', () => {
+  const a = createAttic({ ...base, pitch: 40, collarHeight: 400, ends: ['hip', 'gable'], wings: [{ id: 'w', side: 'left', at: 500, width: 480, length: 300, end: 'gable' }] });
+  const r = atticRoof(a);
+  it('długości narożników i koszy jak na rzucie (587,9 / 394,6 / 394,7)', () => {
+    expect(r.lines.filter((l) => l.kind === 'hip').map((l) => l.len.toFixed(1))).toEqual(['587.9', '587.9']);
+    expect(r.lines.filter((l) => l.kind === 'valley').map((l) => l.len.toFixed(1))).toEqual(['394.6', '394.7']);
+  });
+  it('obrys połaci w całości: bez wewnętrznych styków kawałków, pole jak suma kawałków', () => {
+    for (const f of r.faces) {
+      const loops = faceOutlines(f);
+      const sum = f.pieces.reduce((s, pc) => s + Math.abs(polyArea(pc)), 0);
+      expect(loops.reduce((s, l) => s + polyArea(l), 0)).toBeCloseTo(sum, 0);
+      expect(loops.every((l) => polyArea(l) > 0)).toBe(true);
+    }
+    // skos lewy: jeden wielokąt wklęsły z wcięciem dobudówki (kosze) i ścięciem narożnika
+    const left = faceOutlines(r.faces.find((f) => f.key === 'left')!);
+    expect(left).toHaveLength(1);
+    const pts = left[0].map((p) => `${Math.round(p.u)},${Math.round(p.v)}`);
+    expect(pts).toEqual(['0,0', '260,0', '500,240', '740,0', '1000,0', '1000,358', '358,358']);
+  });
+  it('profile wzdłuż koszy i narożników leżą na swojej płaszczyźnie (nie po drugiej stronie linii)', () => {
+    for (const l of r.lines.filter((x) => x.kind === 'hip' || x.kind === 'valley'))
+      for (const fi of l.faces) {
+        const f = r.faces[fi];
+        const s = sideTowardFace(f, l.p, l.q);
+        for (const k of [0.2, 0.5, 0.8]) {
+          const p = { u: l.p.u + (l.q.u - l.p.u) * k + s.u * 5, v: l.p.v + (l.q.v - l.p.v) * k + s.v * 5 };
+          expect(faceContains(f, p)).toBe(true);
+        }
+      }
   });
 });
