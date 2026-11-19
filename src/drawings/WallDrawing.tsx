@@ -403,9 +403,10 @@ export function WallFixersDrawing({ l, title, fixerName }: { l: WallLayout; titl
         ]}
       />
       <figcaption className="muted small">
-        Wymiary w cm. Dolny łańcuch: osie kolumn łączników od lewej krawędzi okładziny, prawy: rzędy od posadzki. Skrajny
-        rząd łączników {cm(FIXER_EDGE * 100)} cm od każdego brzegu ściany, kolumny pośrednie w osiach styków płyt (instrukcja
-        ATLAS M-System 3G). Najpierw wytycz i osadź łączniki, ustaw talerzyki w płaszczyźnie płyt (łata, laser), potem
+        Wymiary w cm. Dolny łańcuch: osie kolumn łączników od lewej krawędzi okładziny, prawy: rzędy od posadzki. Kolejność
+        wytyczania: najpierw łączniki wzdłuż wszystkich krawędzi, {cm(FIXER_EDGE * 100)} cm od brzegu (instrukcja ATLAS M-System
+        3G), potem pośrednie – kolumny w osiach styków płyt, rzędy co rozstaw od dolnego rzędu. Gdy przy krawędzi zostaje
+        mniejszy odstęp, łączniki stoją tam gęściej. Najpierw wytycz i osadź łączniki, ustaw talerzyki w płaszczyźnie płyt (łata, laser), potem
         przykręcaj płyty: 4 wkręty na talerzyk, ok. 10 mm odstępu od posadzki, docinek płyty nie węższy niż 20 cm.
       </figcaption>
     </figure>

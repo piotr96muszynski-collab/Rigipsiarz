@@ -232,39 +232,46 @@ export interface FixerGrid {
  */
 export const FIXER_EDGE = 0.07;
 
-/** Najmniejszy odstęp sąsiednich rzędów łączników – bliższy rząd pośredni łączymy ze skrajnym, m */
-const FIXER_MERGE = 0.05;
+/** Osie bliższe niż 1 mm to ten sam rząd łączników, m */
+const FIXER_SAME = 0.001;
 
 /**
- * Kolumny łączników na odcinku `lo`..`hi`: w osiach co `step` liczonych od początku ściany
- * (0 – tam wypadają styki płyt 120 cm), skrajne 7 cm od brzegów. Oś pośrednia bliżej niż
- * 5 cm od skrajnej odpada (jej rolę przejmuje skrajna).
+ * Kolumny łączników na odcinku `lo`..`hi`. Najpierw skrajne – 7 cm od obu brzegów, potem
+ * pośrednie w osiach co `step` liczonych od początku ściany (0 – tam wypadają styki płyt
+ * 120 cm). Żadnej osi nie usuwamy: gdy pośrednia wypada blisko skrajnej, oba rzędy zostają
+ * (łączniki są wtedy gęściej).
  */
 export function fixerColumns(lo: number, hi: number, step: number, edge = FIXER_EDGE): number[] {
   const a = round3(lo + edge);
   const b = round3(hi - edge);
-  if (b - a < FIXER_MERGE) return [round3((lo + hi) / 2)];
+  if (b - a < FIXER_SAME) return [round3((lo + hi) / 2)];
   const mid: number[] = [];
-  for (let k = Math.floor(a / step + 1e-9) + 1; k * step < b - 1e-9; k++) mid.push(round3(k * step));
-  return [a, ...mid.filter((v) => v - a >= FIXER_MERGE - 1e-9 && b - v >= FIXER_MERGE - 1e-9), b];
+  for (let k = Math.floor(a / step + 1e-9) + 1; k * step < b - FIXER_SAME; k++) {
+    const v = round3(k * step);
+    if (v - a >= FIXER_SAME) mid.push(v);
+  }
+  return [a, ...mid, b];
 }
 
 /**
- * Rzędy łączników na wysokości `H`: skrajne 7 cm od posadzki i stropu, pośrednie równo
- * rozłożone, odstęp nigdy większy niż `step`.
+ * Rzędy łączników na wysokości `H`. Najpierw skrajne – 7 cm od posadzki i od stropu, potem
+ * pośrednie co `step` od dolnego skrajnego rzędu. Ostatni odstęp pod górnym rzędem może
+ * wyjść mniejszy – wtedy łączniki są gęściej, żadnego nie usuwamy.
  */
 export function fixerRows(H: number, step: number, edge = FIXER_EDGE): number[] {
-  const a = edge;
-  const b = H - edge;
-  if (b - a < FIXER_MERGE) return [round3(H / 2)];
-  const n = Math.ceil((b - a) / step - 1e-9);
-  return Array.from({ length: n + 1 }, (_, i) => round3(a + ((b - a) * i) / n));
+  const a = round3(edge);
+  const b = round3(H - edge);
+  if (b - a < FIXER_SAME) return [round3(H / 2)];
+  const out = [a];
+  for (let v = a + step; v < b - FIXER_SAME; v += step) out.push(round3(v));
+  out.push(b);
+  return out;
 }
 
 /**
- * Siatka łączników ATLAS M-System 3G na okładzinie od `x0` do `x1` i wysokości `H`: kolumny co
- * `sx` (w osiach styków płyt), rzędy co najwyżej co `sy`, skrajne 7 cm od krawędzi (instrukcja
- * ATLAS). Łączniki w świetle otworów pomijamy.
+ * Siatka łączników ATLAS M-System 3G na okładzinie od `x0` do `x1` i wysokości `H`: najpierw
+ * łączniki wzdłuż krawędzi, 7 cm od brzegu (instrukcja ATLAS), potem pośrednie – kolumny co `sx`
+ * w osiach styków płyt, rzędy co `sy` od dolnego rzędu. Łączniki w świetle otworów pomijamy.
  */
 export function pointFixGrid(
   x0: number,
