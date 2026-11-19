@@ -84,9 +84,13 @@ function rowOf(s: WallSystem | CeilingSystem, group: string): Row {
   };
 }
 
-/** Znacznik pochodzenia danych: karta producenta albo wartości orientacyjne */
-export function SourceBadge({ approx, custom }: { approx?: boolean; custom?: boolean }) {
+/**
+ * Znacznik pochodzenia danych: karta producenta albo wartości orientacyjne.
+ * `quiet` – bez znacznika „z karty” (w listach wyboru prawie każdy system jest z karty, więc oznaczamy tylko wyjątki).
+ */
+export function SourceBadge({ approx, custom, quiet }: { approx?: boolean; custom?: boolean; quiet?: boolean }) {
   if (custom) return <span className="sys-badge own">własny</span>;
+  if (quiet && !approx) return null;
   return approx ? (
     <span className="sys-badge approx" title="Brak karty producenta – wartości orientacyjne">
       szacunek
@@ -151,12 +155,21 @@ interface PickRow {
 /** Wyniki doboru: trzy najprostsze konstrukcje, reszta po rozwinięciu */
 function Picks({ rows, value }: { rows: (PickRow & { id: string })[]; value: string }) {
   const [all, setAll] = useState(false);
-  if (!rows.length)
-    return <p className="sys-empty">Żaden system z katalogu nie ma w karcie takich parametrów. Zmniejsz wymagania albo wybierz system z listy.</p>;
+  const bar = useRef<HTMLButtonElement>(null);
   const shown = all ? rows : rows.slice(0, 3);
   return (
     <>
-      <div className="picker-group">Polecane – od najprostszej konstrukcji</div>
+      {/* przyklejony u dołu, dopóki wyniki są pod pytaniami (telefon), i u góry przy przewijaniu wyników */}
+      <button type="button" ref={bar} className="sys-results-bar" onClick={() => bar.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })}>
+        <span>{rows.length ? `Polecane: ${rows.length}` : 'Brak pasujących systemów'}</span>
+        {rows.length > 0 && <small>od najprostszej konstrukcji</small>}
+        <svg viewBox="0 0 24 24" aria-hidden>
+          <path d="M7 10l5 5 5-5" />
+        </svg>
+      </button>
+      {!rows.length && (
+        <p className="sys-empty">Żaden system z katalogu nie ma w karcie takich parametrów. Zmniejsz wymagania albo wybierz system z listy.</p>
+      )}
       {shown.map((r, i) => (
         <button key={r.key} type="button" className={`picker-opt sys-pick ${r.id === value ? 'on' : ''}`} onClick={r.onPick}>
           <span className="sys-rank" aria-hidden>
@@ -164,7 +177,7 @@ function Picks({ rows, value }: { rows: (PickRow & { id: string })[]; value: str
           </span>
           <span>
             <span className="picker-label">
-              {r.name} <SourceBadge approx={r.approx} />
+              {r.name} <SourceBadge approx={r.approx} quiet />
             </span>
             <small>{r.detail}</small>
           </span>
@@ -203,7 +216,7 @@ function SystemList({ rows, value, onPick }: { rows: Row[]; value: string; onPic
           <button type="button" role="option" aria-selected={on} className={`picker-opt ${on ? 'on' : ''}`} onClick={() => onPick(r.id)}>
             <span>
               <span className="picker-label">
-                {r.name} <SourceBadge approx={r.approx} custom={r.custom} />
+                {r.name} <SourceBadge approx={r.approx} custom={r.custom} quiet />
               </span>
               <small>{[r.maker !== 'rigips' && !r.custom ? MAKER_LABEL[r.maker] : '', r.facts].filter(Boolean).join(' · ')}</small>
             </span>
@@ -275,14 +288,20 @@ function SystemSheet({
 }) {
   const titleId = useId();
   const [tab, setTab] = useState<'wizard' | 'list'>('wizard');
+  const list = useRef<HTMLDivElement>(null);
+  const current = rows.find((r) => r.id === value);
   useBack(true, onClose);
+  // druga zakładka zaczyna się od góry (nagłówek, wyszukiwarka), a nie w miejscu przewinięcia pierwszej
+  useEffect(() => {
+    if (list.current) list.current.scrollTop = 0;
+  }, [tab]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       document.body.style.overflow = prev;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -318,8 +337,13 @@ function SystemSheet({
             ]}
             onChange={setTab}
           />
+          {current && (
+            <p className="sys-current">
+              Teraz: <strong>{current.name}</strong>
+            </p>
+          )}
         </div>
-        <div className="picker-list" role={tab === 'list' ? 'listbox' : undefined} aria-labelledby={titleId}>
+        <div ref={list} className="picker-list" role={tab === 'list' ? 'listbox' : undefined} aria-labelledby={titleId}>
           {tab === 'wizard' ? wizard : <SystemList rows={rows} value={value} onPick={onPick} />}
         </div>
       </div>
@@ -487,8 +511,8 @@ function WallWizard({
         rows={picks.map((p) => ({ key: p.system.id, id: p.system.id, name: p.system.name, detail: pickDetail(p), approx: p.approx, onPick: () => onPick(p) }))}
       />
       <p className="sys-note">
-        Klasy EI, akustyka i wysokości pochodzą z kart producentów. Systemy „szacunek” nie mają karty – nie pojawiają się przy zaznaczonej
-        odporności ogniowej ani akustyce.
+        Klasy EI, akustyka i wysokości pochodzą z kart producentów. Systemy oznaczone „szacunek” nie mają karty – nie pojawiają się przy
+        zaznaczonej odporności ogniowej ani akustyce.
       </p>
     </>
   );

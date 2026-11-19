@@ -108,7 +108,12 @@ export function MultiWallEditor({ project, ids, update }: { project: Project; id
         <>
           <div className="field">
             <label htmlFor="multi-sys">System {sysId === undefined && differs}</label>
-            <WallSystemSelect id="multi-sys" value={sys.id} onChange={(id) => edit(isNewWall, (w) => setWallSystem(w, id))} />
+            <WallSystemSelect
+              id="multi-sys"
+              value={sys.id}
+              // dobór pod najwyższą ze ścian – niższe zmieszczą się w tym samym systemie
+              heightCm={Math.max(...fresh.map((w) => w.height))}
+              onChange={(id) => edit(isNewWall, (w) => setWallSystem(w, id))} />
           </div>
           <div className="grid-2">
             <div className="field">

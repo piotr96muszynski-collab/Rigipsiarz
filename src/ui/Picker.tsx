@@ -136,11 +136,12 @@ function PickerSheet<T extends string | number>({
         next.focus();
       }
     };
-    window.addEventListener('keydown', onKey);
+    // capture: arkusz zatrzymuje propagację klawiszy (żeby nie trafiały do planu), więc nasłuch musi być przed nim
+    window.addEventListener('keydown', onKey, true);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       document.body.style.overflow = prev;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
