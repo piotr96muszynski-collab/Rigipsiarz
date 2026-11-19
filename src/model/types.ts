@@ -1,6 +1,7 @@
 // Wszystkie wymiary w modelu są w centymetrach.
 
 import type { FinishingSettings } from '../catalog/finishing';
+import type { BoardLengthPref } from '../calc/boardLength';
 import type { WoolChoice } from '../catalog/insulation';
 
 export type Id = string;
@@ -133,6 +134,8 @@ export interface ProjectSettings {
   wool?: Record<string, WoolChoice>;
   /** Spoinowanie (Q1) i domyślne wykończenie narożników i styków; brak = wartości domyślne */
   finishing?: Partial<FinishingSettings>;
+  /** Długość arkuszy płyt w tym projekcie, cm ('auto' = dopasowana do wysokości); brak = jak w ustawieniach aplikacji */
+  boardLength?: BoardLengthPref;
 }
 
 /**
