@@ -3351,6 +3351,8 @@ button.catalog-part {
 }
 .info-more {
   color: var(--muted);
+}
+
 /* import pliku pomiaru (PomierzTu) */
 .import-note {
   grid-column: 1 / -1;
