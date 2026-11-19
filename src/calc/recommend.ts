@@ -77,7 +77,7 @@ export function featureNeeds(features: Iterable<WallFeature>): Pick<WallNeeds, '
 }
 
 /** Czy system ma ruszt z profili CW (szerokość profilu ma znaczenie) */
-export const hasStudProfile = (s: WallSystem): boolean => s.frame !== 'glued' && s.frame !== 'cd-lining' && s.frame !== 'point-fix' && s.frame !== 'hat-lining';
+export const hasStudProfile = (s: WallSystem): boolean => s.frame !== 'glued' && s.frame !== 'cd-lining' && s.frame !== 'point-fix' && s.frame !== 'hat-lining' && s.frame !== 'panel';
 
 /** Szerokości profili CW dostępne w systemach o danym przeznaczeniu, rosnąco */
 export function profileWidths(purpose: WallPurpose, systems: WallSystem[] = allWallSystems()): number[] {
@@ -175,7 +175,10 @@ export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWall
       const thickness = wallThickness(sys, c.boardId, c.v);
       if (needs.maxThickness && thickness > needs.maxThickness + 0.5) continue;
       const reasons: string[] = [];
-      if (c.maxHeight) reasons.push(`do ${fmtM(c.maxHeight)} m przy słupkach${c.double ? ' podwójnych' : ''} co ${c.spacing} cm`);
+      if (sys.frame === 'panel') {
+        reasons.push(`bez słupków – płyty od ściany do ściany, szerokość do ${fmtM(c.v?.maxWidth ?? sys.panel?.maxWidth ?? 0)} m`);
+        if (c.maxHeight) reasons.push(`wysokość do ${fmtM(c.maxHeight)} m`);
+      } else if (c.maxHeight) reasons.push(`do ${fmtM(c.maxHeight)} m przy słupkach${c.double ? ' podwójnych' : ''} co ${c.spacing} cm`);
       if (fire) reasons.push(`EI ${fire}`);
       if (ra1) reasons.push(`RA1 ${ra1} dB`);
       reasons.push(`grubość ${Math.round(thickness)} mm`);
@@ -230,7 +233,7 @@ function costKey(p: WallPick): number[] {
   // słupki z UA (blacha 2 mm, kątowniki, śruby M8) i UU (para U + para UD) są droższe od CW przy tej samej wysokości
   // profile kapeluszowe są tańsze od CD na ES, ale wymagają równej ściany (bez regulacji) – za CD
   const frameCost =
-    s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'cd-lining' ? 2 : s.frame === 'hat-lining' ? 2.5 : s.frame === 'single' ? (s.studKind ? 3.5 : 3) : 4;
+    s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'panel' ? 1.5 : s.frame === 'cd-lining' ? 2 : s.frame === 'hat-lining' ? 2.5 : s.frame === 'single' ? (s.studKind ? 3.5 : 3) : 4;
   return [
     s.layers * s.sides,
     boardCost(p.boardId),

@@ -286,6 +286,16 @@ function buildWall(
     }
   }
 
+  // --- Obudowa z samych płyt: profil obwodowy (kątownik 40 mm) przy ścianach, w Rigips też przy posadzce i stropie ---
+  if (lay && sys.frame === 'panel') {
+    const a = 0.04;
+    // za płytami (strona szachtu), półka przy murze
+    const n = -sec.core - a / 2;
+    box('wallFrame', 'uw', f0, f0 + 0.002, 0, H, n, a);
+    box('wallFrame', 'uw', f1 - 0.002, f1, 0, H, n, a);
+    if (sys.panel?.edgeSides === 'all') for (const y of [0, H - 0.002]) box('wallFrame', 'uw', f0, f1, y, y + 0.002, n, a);
+  }
+
   // --- ATLAS M-System 3G: łączniki talerzykowe za płytą (strona 0), podłoże po stronie przeciwnej ---
   if (lay?.fixers) {
     const depth = sec.core * 2;

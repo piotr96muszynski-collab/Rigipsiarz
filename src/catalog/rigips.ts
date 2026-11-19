@@ -13,6 +13,7 @@ import { RIGIPS_CEILINGS, RIGIPS_WALLS } from './rigips.gen';
 import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
 import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
 import { KNAUF_BOARDS, KNAUF_CEILING_SYSTEMS, KNAUF_WALL_SYSTEMS } from './knauf';
+import { RIGIPS_PANEL_SHAFTS } from './rigipsPanel';
 import { SINIAT_BOARDS, SINIAT_CEILING_SYSTEMS, SINIAT_WALL_SYSTEMS } from './siniat';
 import { HAT_CEILING_SYSTEMS, HAT_WALL_SYSTEMS } from './hat.gen';
 
@@ -377,6 +378,12 @@ export const PRODUCTS: Record<string, Product> = {
   UA50: { id: 'UA50', name: 'Profil usztywniający UA 50', group: 'Profile', unit: 'szt.', length: 3 },
   UA75: { id: 'UA75', name: 'Profil usztywniający UA 75', group: 'Profile', unit: 'szt.', length: 3 },
   UA100: { id: 'UA100', name: 'Profil usztywniający UA 100', group: 'Profile', unit: 'szt.', length: 3 },
+  // obudowy szachtów z samych płyt (Rigips 3.50.14/19/22, 3.80.15): kątownik po obwodzie szachtu, dł. 2,0 m
+  KAT_SZYB: { id: 'KAT_SZYB', name: 'Kątownik ściany szybu 40×40×1 (lub 40×20×1)', group: 'Profile', unit: 'szt.', length: 2 },
+  // okładziny wolnostojące Siniat C/LS: łącznik stabilizacyjny słupka ze ścianą nad opłytowaniem
+  LS50: { id: 'LS50', name: 'Łącznik stabilizacyjny Nida LS 50', group: 'Mocowanie', unit: 'szt.' },
+  LS75: { id: 'LS75', name: 'Łącznik stabilizacyjny Nida LS 75', group: 'Mocowanie', unit: 'szt.' },
+  LS100: { id: 'LS100', name: 'Łącznik stabilizacyjny Nida LS 100', group: 'Mocowanie', unit: 'szt.' },
   KATUA: { id: 'KATUA', name: 'Kątownik przyłączeniowy do UA', group: 'Mocowanie', unit: 'szt.' },
   SRUBA_M8: { id: 'SRUBA_M8', name: 'Śruba M8 z nakrętką (do profili UA)', group: 'Mocowanie', unit: 'szt.' },
   PWA: { id: 'PWA', name: 'Przewiązka wibroakustyczna (Nida PWA) do kotwienia słupków do ściany', group: 'Mocowanie', unit: 'szt.' },
@@ -544,7 +551,7 @@ export type WallCategory = 'działowa' | 'podwójna' | 'instalacyjna' | 'okładz
  * - hat-lining: okładzina na profilach kapeluszowych 15/48 przykręconych (kołkowanych) wprost do ściany,
  *   bez UD i bez uchwytów – kołki w dwóch rzędach (na obu półkach profilu)
  */
-export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix' | 'hat-lining';
+export type WallFrame = 'single' | 'double' | 'separate' | 'cd-lining' | 'glued' | 'point-fix' | 'hat-lining' | 'panel';
 
 export const WALL_CATEGORY_LABEL: Record<WallCategory, string> = {
   działowa: 'Ściany działowe – pojedynczy ruszt',
@@ -563,6 +570,7 @@ export const WALL_FRAME_LABEL: Record<WallFrame, string> = {
   glued: 'płyta klejona (bez rusztu)',
   'point-fix': 'łączniki ATLAS M-SYSTEM 3G (bez profili)',
   'hat-lining': 'profile kapeluszowe 15/48 kołkowane do ściany',
+  panel: 'płyty samonośne między ścianami (bez słupków, profil po obwodzie)',
 };
 
 /** Wysokość profilu kapeluszowego 15/48 (odstęp płyty od podłoża), mm */
@@ -597,6 +605,8 @@ export interface SystemVariant {
   doubleStuds?: boolean;
   /** Maksymalna wysokość ściany, cm */
   maxHeight?: number;
+  /** Maksymalna szerokość (rozpiętość) obudowy z samych płyt, cm */
+  maxWidth?: number;
   /** Klasa odporności ogniowej EI w minutach (brak = nieokreślona) */
   fire?: number;
   /** Izolacyjność akustyczna, dB */
@@ -622,6 +632,26 @@ export interface SystemVariant {
 export interface WallTie {
   kind: 'angle' | 'pwa';
   spacing: number;
+}
+
+/**
+ * Obudowa szachtu z samych płyt (ruszt `panel`): płyty ułożone poziomo, na całą szerokość szachtu,
+ * skręcone warstwami ze sobą i przykręcone do profilu / kątownika przykołkowanego do ścian
+ * (Siniat „bez konstrukcji nośnej”, Rigips 3.50.14/19/22 i 3.80.15).
+ */
+export interface PanelSpec {
+  /** Profil obwodowy: id produktu (KAT_SZYB – kątownik ściany szybu 40×40×1, CW50 – profil C) */
+  edge: string;
+  /** Gdzie profil: walls – przy ścianach po obu stronach, all – po całym obwodzie (też posadzka i strop) */
+  edgeSides: 'walls' | 'all';
+  /** Największy rozstaw kołków w profilu obwodowym, cm */
+  anchorSpacing: number;
+  /** Największa szerokość obudowy (rozpiętość między ścianami), cm */
+  maxWidth: number;
+  /** Wkręty wg karty, szt./m² obudowy (łączą warstwy ze sobą i z profilem obwodowym) */
+  screws: { product: string; perM2: number }[];
+  /** Grubości wełny dopuszczone w karcie, mm (brak = bez wełny) */
+  wool?: number[];
 }
 
 export interface WallSystem {
@@ -676,6 +706,13 @@ export interface WallSystem {
   studKind?: 'UA' | 'UU';
   /** Kotwienie słupków do ściany w pionie: kątowniki (Siniat C100/L) albo przewiązki PWA; rozstaw, cm */
   wallTie?: WallTie;
+  /**
+   * Okładzina wolnostojąca z łącznikami stabilizacyjnymi Nida LS (Siniat C/LS): płyty tylko na dolnej
+   * części wysokości (`boarded` – ułamek, karta: min. 3/4), nad nimi każdy słupek trzyma łącznik LS kołkowany do ściany
+   */
+  ls?: { boarded: number };
+  /** Obudowa z samych płyt (ruszt `panel`) */
+  panel?: PanelSpec;
   /** Mocowanie punktowe (ATLAS M-SYSTEM 3G): łącznik; rozstaw poziomy = studSpacing */
   fixer?: PointFixer;
   /** Rozstaw łączników w pionie (mocowanie punktowe), cm */
@@ -761,6 +798,7 @@ const HAND_WALLS: WallSystem[] = [
     info: 'Niewielkie obudowy rur w narożniku – profile CD z UD 30',
     source: APPROX,
   },
+  ...RIGIPS_PANEL_SHAFTS,
   ...ATLAS_WALL_SYSTEMS,
   ...NORGIPS_WALL_SYSTEMS,
   ...KNAUF_WALL_SYSTEMS,
@@ -1178,6 +1216,22 @@ export function ceilingMaxSpan(sys: CeilingSystem): number | undefined {
   return undefined;
 }
 
+/** Profil obwodowy obudowy z samych płyt, np. „kątownik 40×40×1” */
+export function panelEdgeLabel(sys: WallSystem): string {
+  const e = sys.panel?.edge;
+  return e === 'KAT_SZYB' ? 'kątownik 40×40×1' : e?.startsWith('CW') ? `profil C ${e.slice(2)}` : 'profil obwodowy';
+}
+
+/**
+ * Największa szerokość obudowy z samych płyt (cm) dla płyty `board` – karty Siniat podają ją
+ * osobno dla płyt (np. Twarda 200 cm, bo arkusz ma 200 cm: płyta idzie w jednym kawałku od ściany do ściany)
+ */
+export function wallMaxWidth(sys: WallSystem, board?: string): number | undefined {
+  if (!sys.panel) return undefined;
+  const v = sys.variants?.filter((x) => x.board === (board ?? sys.defaultBoard) && x.maxWidth);
+  return v?.length ? Math.max(...v.map((x) => x.maxWidth!)) : sys.panel.maxWidth;
+}
+
 /** Sufit zawieszony na wieszakach / uchwytach (rozstaw wieszaków ma znaczenie) */
 export const isHungCeiling = (kind: CeilingKind): boolean => kind === 'two-level' || kind === 'one-level' || kind === 'parallel' || kind === 'direct';
 
@@ -1208,6 +1262,7 @@ export const midBoardMm = (sys: WallSystem): number => (sys.midBoard ? (sys.midL
 /** Nazwa słupka ściany do opisów i rysunków, np. „CW 75”, „UA 50”, „2×U 75 (UU)” */
 export function wallStudLabel(sys: WallSystem): string {
   if (sys.frame === 'cd-lining') return 'CD 60';
+  if (sys.frame === 'panel') return panelEdgeLabel(sys);
   if (sys.frame === 'hat-lining') return 'kapeluszowy 15/48';
   if (sys.studKind === 'UA') return `UA ${sys.profile}`;
   if (sys.studKind === 'UU') return `2×U ${sys.profile} (UU)`;
@@ -1233,6 +1288,8 @@ export function wallFrameDepth(sys: WallSystem): number {
       return HAT_MM;
     case 'glued':
       return 10;
+    case 'panel':
+      return 0;
     case 'point-fix':
       // średni odstęp płyty od podłoża dla wybranego łącznika
       return sys.fixer ? Math.round((sys.fixer.standoff[0] + sys.fixer.standoff[1]) / 2) : 30;

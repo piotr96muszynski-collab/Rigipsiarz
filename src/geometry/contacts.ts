@@ -249,7 +249,7 @@ export function buildContacts(p: Project): ContactModel {
       } else {
         const e = blank(w, nid, 'free', 'end', 'free');
         const stack = sec.bt * Math.max(sec.layers[0], sec.layers[1]);
-        if (sec.frame !== 'glued' && sec.frame !== 'point-fix' && stack > 0) {
+        if (sec.frame !== 'glued' && sec.frame !== 'point-fix' && sec.frame !== 'panel' && stack > 0) {
           e.frame = { s: stack, contact: 'strip' };
           e.strip = { thickness: stack, layers: Math.max(sec.layers[0], sec.layers[1]) };
         }
@@ -442,7 +442,7 @@ export function footprints(p: Project, m: ContactModel = buildContacts(p)): Foot
     if (isNewWall(w)) {
       const sec = m.sections.get(w.id)!;
       const [f0, f1] = partRange(m, w, ax.L, { kind: 'frame' });
-      if (f1 - f0 > 1e-4) out.push({ wallId: w.id, label: 'ruszt', kind: 'frame', poly: rectPoly(ax, f0, f1, -sec.core, sec.core) });
+      if (f1 - f0 > 1e-4 && sec.core > 1e-4) out.push({ wallId: w.id, label: 'ruszt', kind: 'frame', poly: rectPoly(ax, f0, f1, -sec.core, sec.core) });
       const sides = sec.layers[1] > 0 ? 2 : 1;
       for (const side of [0, 1] as const)
         for (let k = 0; k < sec.layers[side]; k++) {

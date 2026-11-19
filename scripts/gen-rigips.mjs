@@ -71,6 +71,8 @@ for (const s of data.systems) {
     skip(s, 'ściana łukowa');
     continue;
   }
+  // obudowy z samych płyt na kątowniku obwodowym – opisane ręcznie z kart PDF w src/catalog/rigipsPanel.ts
+  if (['3.50.14', '3.50.19', '3.50.22', '3.80.15'].includes(code)) continue;
   if (!s.vars.length) {
     skip(s, 'brak tabeli odmian na stronie');
     continue;

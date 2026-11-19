@@ -1,7 +1,7 @@
 // Przekroje systemowe (schematy, wymiary w mm). Rozpiętości są skrócone (linie urwania),
 // żeby profile i płyty były czytelne na telefonie – wymiary podane są rzeczywiste.
 
-import { HAT_MM, PRODUCTS, type Board, type CeilingSystem, type WallSystem } from '../catalog/rigips';
+import { HAT_MM, PRODUCTS, panelEdgeLabel, type Board, type CeilingSystem, type WallSystem } from '../catalog/rigips';
 import { C, Callout, Dim, INK, Legend, Paper, cm, nss } from './svg';
 import type { CeilingLevels } from '../calc/ceilingLevels';
 
@@ -40,10 +40,12 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
   const isCD = frame === 'cd-lining';
   const hat = frame === 'hat-lining';
   const point = frame === 'point-fix';
-  const glued = frame === 'glued' || point;
-  const onWall = isCD || glued || hat; // okładzina na istniejącej ścianie
+  const panel = frame === 'panel';
+  // obudowa z samych płyt: przekrój jak płyty bez rusztu (styki są poziome – w przekroju poziomym ich nie widać)
+  const glued = frame === 'glued' || point || panel;
+  const onWall = isCD || (glued && !panel) || hat; // okładzina na istniejącej ścianie
   // głębokość rusztu i rzędy słupków (y względem lica rdzenia)
-  const core = point ? 100 : glued ? 10 : isCD ? 40 : hat ? HAT_MM : frame === 'double' ? 2 * P + 5 : frame === 'separate' ? 2 * P + (sys.gap ?? 10) * 10 : P;
+  const core = point ? 100 : panel ? 0 : glued ? 10 : isCD ? 40 : hat ? HAT_MM : frame === 'double' ? 2 * P + 5 : frame === 'separate' ? 2 * P + (sys.gap ?? 10) * 10 : P;
   const rows: [number, number][] = glued || isCD || hat ? [] : frame === 'single' ? [[0, P]] : [[0, P], [core - P, core]];
   const sides = onWall ? 1 : sys.sides;
   const T = core + nt * sides;
@@ -63,6 +65,11 @@ export function WallSection({ sys, board, spacing, wool, vapor = false }: { sys:
     { n: 1, label: `${board.name}, ${sys.layers}×${cm(tb)} mm${sides > 1 ? ' z każdej strony' : ''}` },
   ];
   if (point) legend.push({ n: 2, label: `łączniki ATLAS M-System 3G kotwione w ścianie, siatka ${cm(spacing)}×${sys.pointSpacing ?? 50} cm` });
+  else if (panel)
+    legend.push({
+      n: 2,
+      label: `bez słupków: płyty poziomo, każda w jednym kawałku od ściany do ściany (do ${String((sys.panel?.maxWidth ?? 0) / 100).replace('.', ',')} m), warstwy skręcone ze sobą, przykręcone do profilu obwodowego (${panelEdgeLabel(sys)}) ${sys.panel?.edgeSides === 'all' ? 'po obwodzie' : 'przy ścianach'} (kołki co ${sys.panel?.anchorSpacing} cm)`,
+    });
   else if (glued) legend.push({ n: 2, label: 'placki kleju gipsowego, ok. 10 mm, na istniejącej ścianie' });
   else if (hat)
     legend.push({
