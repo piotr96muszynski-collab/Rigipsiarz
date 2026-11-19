@@ -117,6 +117,27 @@ export interface Ceiling {
   slabHeight?: number;
 }
 
+/** Zakończenie poddasza na końcu kalenicy: ściana szczytowa albo połać z narożnikami dachu (dach kopertowy) */
+export type AtticEnd = 'gable' | 'hip';
+
+/**
+ * Dobudówka dachu prostopadła do kalenicy (dach w kształcie L lub T): jej połacie spotykają się
+ * z połacią główną w koszach. Ten sam kąt, wysokość ścianki kolankowej i jętek co po tej stronie poddasza.
+ */
+export interface AtticWing {
+  id: Id;
+  /** Po której stronie kalenicy głównej (ściana okapowa lewa albo prawa) */
+  side: 'left' | 'right';
+  /** Oś dobudówki wzdłuż kalenicy głównej, cm od pierwszej ściany szczytowej */
+  at: number;
+  /** Szerokość między ścianami okapowymi dobudówki, cm */
+  width: number;
+  /** Wysunięcie od lica ściany okapowej poddasza do końca dobudówki, cm */
+  length: number;
+  /** Koniec dobudówki: ściana szczytowa albo połać z narożnikami */
+  end: AtticEnd;
+}
+
 /**
  * Zabudowa poddasza opisana przekrojem poprzecznym: pomieszczenie prostokątne pod dachem
  * dwuspadowym albo jednospadowym. Wysokości mierzone od posadzki do spodu konstrukcji
@@ -163,6 +184,10 @@ export interface Attic {
   vaporBarrier?: boolean;
   /** Widoczna część krokwi poniżej lica płyt, cm – tylko systemy z widoczną więźbą (płyty między krokwiami) */
   reveal?: number;
+  /** Zakończenia wzdłuż kalenicy: [przy pierwszej, przy drugiej ścianie szczytowej]; brak = obie szczytowe */
+  ends?: [AtticEnd, AtticEnd];
+  /** Dobudówki z koszami (dach L / T); brak = bez */
+  wings?: AtticWing[];
 }
 
 /** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */

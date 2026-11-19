@@ -12,6 +12,7 @@ import { analyzeJunctions, existingRooms, isNewWall, masonryEndExtension, masonr
 import type { Attic, Ceiling, Point, Project, Wall } from '../model/types';
 import { atticGrid } from '../calc/attic';
 import { atticPlacements } from '../calc/atticPlan';
+import { buildAtticRoof } from './atticRoof3d';
 import { layerBoards } from '../calc/ceilingLevels';
 import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 import { rowSegments } from '../calc/boardLength';
@@ -85,7 +86,35 @@ export interface CylPart {
   owner: string;
 }
 
-export type Part3D = BoxPart | SlabPart | PanelPart | CylPart;
+/** Płaski wielokąt wypukły w dowolnej płaszczyźnie (płyty i folia na połaciach z narożnikami / koszami) */
+export interface FacePart {
+  type: 'face';
+  layer: Layer3D;
+  mat: MatKey;
+  /** Wierzchołki, m */
+  pts: [number, number, number][];
+  /** Kierunek grubości (od `pts`), dowolna długość */
+  normal: [number, number, number];
+  thickness: number;
+  owner: string;
+}
+
+/** Belka o przekroju prostokątnym między dwoma punktami (krokwie narożne, odcinki profili pod kątem) */
+export interface BeamPart {
+  type: 'beam';
+  layer: Layer3D;
+  mat: MatKey;
+  a: [number, number, number];
+  b: [number, number, number];
+  /** Kierunek wysokości przekroju (prostopadły do osi) */
+  up: [number, number, number];
+  /** Szerokość i wysokość przekroju, m */
+  w: number;
+  h: number;
+  owner: string;
+}
+
+export type Part3D = BoxPart | SlabPart | PanelPart | CylPart | FacePart | BeamPart;
 
 export interface Model3D {
   parts: Part3D[];
@@ -663,6 +692,8 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   const z0 = 0;
   const sys = ceilingSystemById(a.systemId);
   const grid = atticGrid(a, sys);
+  // dach z narożnikami / koszami: płaszczyzny o dowolnym obrysie
+  if (grid.roof) return buildAtticRoof(a, { ...grid, roof: grid.roof }, parts, origin);
   const L = a.length / 100;
   const rw = a.rafterWidth / 100;
   const rh = a.rafterHeight / 100;
@@ -821,7 +852,9 @@ export function buildModel3D(p: Project, _calc?: ProjectCalc): Model3D {
       const c = Math.cos(pt.rotY);
       const sn = Math.sin(pt.rotY);
       for (const q of pt.loops[0] ?? []) grow(pt.origin[0] + q.x * c, q.y, pt.origin[2] - q.x * sn);
-    } else for (const q of pt.points) grow(q.x, pt.y + pt.thickness, q.y);
+    } else if (pt.type === 'face') for (const q of pt.pts) grow(q[0], q[1], q[2]);
+    else if (pt.type === 'beam') for (const q of [pt.a, pt.b]) grow(q[0], q[1], q[2]);
+    else for (const q of pt.points) grow(q.x, pt.y + pt.thickness, q.y);
   }
   if (!parts.length) {
     min[0] = min[2] = -2;

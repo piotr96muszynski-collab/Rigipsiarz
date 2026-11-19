@@ -11,6 +11,7 @@ import { atticFrameOf, atticGrid, type AtticGrid } from './attic';
 import { layerBoards } from './ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
 import { joinsFor, profileMaxStock } from './profileLength';
+import { atticRoofRequirement } from './atticRoofMaterials';
 import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, pickBoardLength, type Requirement } from './materials';
 
 export interface AtticResult {
@@ -37,6 +38,8 @@ export function atticRequirement(
 ): AtticResult {
   const req = emptyReq();
   const grid = atticGrid(a, sys);
+  // dach z narożnikami lub koszami: płaszczyzny o dowolnym obrysie
+  if (grid.roof) return atticRoofRequirement(a, sys, fin, { ...grid, roof: grid.roof });
   const warnings = [...grid.warnings];
   const assumptions = [...grid.assumptions];
   const L = a.length / 100;

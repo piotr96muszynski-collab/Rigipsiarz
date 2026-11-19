@@ -1,4 +1,5 @@
 import { AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
+import { AtticRoofFaceDrawing, AtticRoofPlanDrawing } from '../drawings/AtticRoofDrawing';
 import { useMemo, useState } from 'react';
 import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc/layout';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
@@ -237,7 +238,21 @@ export function DrawingsPanel({ project, calc }: Props) {
             </header>
             <h4>Przekrój poprzeczny</h4>
             <AtticSectionDrawing attic={a} grid={r.grid} title={`Poddasze ${i + 1} – przekrój`} />
-            {r.grid.surfaces.map((g) => (
+            {r.grid.roof && (
+              <>
+                <h4>Rzut – narożniki dachu i kosze</h4>
+                <AtticRoofPlanDrawing attic={a} roof={r.grid.roof} title={`Poddasze ${i + 1} – rzut`} />
+                {r.grid.roof.faces.map((g, k) => (
+                  <div key={g.face.key}>
+                    <h4>
+                      {k + 1}. {g.face.label} – ruszt i punkty mocowania
+                    </h4>
+                    <AtticRoofFaceDrawing attic={a} grid={{ ...r.grid, roof: r.grid.roof! }} index={k} title={`Poddasze ${i + 1} – ${g.face.label.toLowerCase()}`} />
+                  </div>
+                ))}
+              </>
+            )}
+            {!r.grid.roof && r.grid.surfaces.map((g) => (
               <div key={g.surface.id}>
                 <h4>{g.surface.label} – ruszt i punkty mocowania</h4>
                 <AtticSurfaceDrawing attic={a} g={g} grid={r.grid} title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()}`} />
