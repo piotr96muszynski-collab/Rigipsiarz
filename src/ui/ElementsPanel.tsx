@@ -22,6 +22,8 @@ import { Picker, type PickOption } from './Picker';
 import { VaporField, WoolField } from './WoolField';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
 import { fmtNum } from './wallStyle';
+import { InfoLine, MoreOptions } from './MoreOptions';
+import { ceilingMoreSummary, openingSummary, wallMoreSummary } from './moreSummary';
 
 interface Props {
   project: Project;
@@ -31,7 +33,7 @@ interface Props {
 
 const JUNCTION_LABEL: Record<string, string> = {
   free: 'wolny koniec',
-  'existing-wall': 'przy istniejącej ścianie',
+  'existing-wall': 'przy murze',
   corner: 'narożnik',
   inline: 'przedłużenie',
   'tee-through': 'trójnik',
@@ -206,21 +208,47 @@ export function WallEditor({
     root.current?.querySelector(`[data-opening="${activeOpeningId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [activeOpeningId]);
 
+  const spacingLabel = sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW';
+  const woolOptions = wallWoolOptions(sys);
+  const woolMm = wallInsulation({ ...wall, insulation: true }, sys)?.thickness ?? 0;
+  const vaporSpec = wallVaporSpec(sys);
+  const vaporOn = vaporBarrierOn(wall.vaporBarrier, vaporSpec);
+  const endLabel = (kind: string) => JUNCTION_LABEL[kind] ?? kind;
+  const variant = (part: 'line' | 'options') => (
+    <WallVariantInfo
+      part={part}
+      idBase={wall.id}
+      sys={sys}
+      boardId={wall.boardId}
+      studSpacing={wall.studSpacing}
+      doubleStuds={wall.doubleStuds}
+      innerBoardId={wall.innerBoardId}
+      heightCm={wall.height}
+      onApply={(pick) => edit((w) => applyWallChoice(w, pick))}
+      onDouble={(on) =>
+        edit((w) => {
+          if (on) w.doubleStuds = true;
+          else delete w.doubleStuds;
+        })
+      }
+      onInner={(id) => edit((w) => void (w.innerBoardId = id))}
+    />
+  );
+  const summary = wallMoreSummary({
+    spacing: wall.studSpacing,
+    pointFix: sys.frame === 'point-fix',
+    cw: sys.frame === 'single' || sys.frame === 'double' || sys.frame === 'separate',
+    doubleStuds: wall.doubleStuds,
+    wool: woolOptions.length ? { on: wall.insulation, mm: woolMm } : undefined,
+    vapor: vaporSpec.mode === 'none' ? undefined : vaporOn,
+    ends: info ? [endLabel(info.junctions.endA), endLabel(info.junctions.endB)] : undefined,
+  });
+
   return (
     <div className="editor" ref={root}>
-      <div className="grid-3">
+      <div className="grid-2">
         <DimInput label="Długość" unit="m" value={L} min={10} onChange={(v) => edit((w, d) => setWallLength(d, w, v))} />
         <DimInput label="Wysokość" unit="m" value={wall.height} min={30} max={1000} onChange={(v) => edit((w) => void (w.height = v))} />
-        <div className="field">
-          <label htmlFor={`sp-${wall.id}`}>{sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW'}</label>
-          <Picker
-            id={`sp-${wall.id}`}
-            label={sys.frame === 'point-fix' ? 'Rozstaw łączników' : 'Rozstaw CW'}
-            value={wall.studSpacing}
-            options={SPACING_OPTIONS}
-            onChange={(v) => edit((w) => void (w.studSpacing = v))}
-          />
-        </div>
       </div>
 
       <div className="grid-2">
@@ -233,83 +261,67 @@ export function WallEditor({
             onChange={(id) => edit((w) => setWallSystem(w, id))}
             onPick={(pick) => edit((w) => applyWallChoice(w, pick))}
           />
-          <small className="hint">{sys.info}</small>
         </div>
         <div className="field">
           <label htmlFor={`bd-${wall.id}`}>Płyta</label>
           <Picker id={`bd-${wall.id}`} label="Płyta" value={wall.boardId} options={BOARD_OPTIONS()} onChange={(v) => edit((w) => void (w.boardId = v))} />
         </div>
       </div>
-
-      <WallVariantInfo
-        idBase={wall.id}
-        sys={sys}
-        boardId={wall.boardId}
-        studSpacing={wall.studSpacing}
-        doubleStuds={wall.doubleStuds}
-        innerBoardId={wall.innerBoardId}
-        heightCm={wall.height}
-        onApply={(pick) => edit((w) => applyWallChoice(w, pick))}
-        onDouble={(on) =>
-          edit((w) => {
-            if (on) w.doubleStuds = true;
-            else delete w.doubleStuds;
-          })
-        }
-        onInner={(id) => edit((w) => void (w.innerBoardId = id))}
-      />
+      <InfoLine more={sys.info}>{variant('line')}</InfoLine>
 
       <Warnings items={info?.warnings} />
 
-      <WoolField
-        id={`wool-${wall.id}`}
-        enabled={wall.insulation}
-        thickness={wallInsulation({ ...wall, insulation: true }, sys)?.thickness ?? 0}
-        options={wallWoolOptions(sys)}
-        layers={sys.frame === 'double' ? 2 : 1}
-        areaM2={info?.netAreaM2}
-        wool={project.settings.wool}
-        onToggle={(on) => edit((w) => void (w.insulation = on))}
-        onThickness={(mm) => edit((w) => void (w.insulationThickness = mm))}
-      />
-      <VaporField
-        spec={wallVaporSpec(sys)}
-        enabled={vaporBarrierOn(wall.vaporBarrier, wallVaporSpec(sys))}
-        areaM2={info?.netAreaM2}
-        onToggle={(on) => edit((w) => void (w.vaporBarrier = on))}
-      />
-
-      {info && (
-        <div className="ends">
-          {(['A', 'B'] as const).map((k) => {
-            const kind = k === 'A' ? info.junctions.endA : info.junctions.endB;
-            const editable = kind === 'free' || kind === 'existing-wall';
-            return (
-              <div key={k} className="end">
-                <span className="muted small">Koniec {k}</span>
-                {editable ? (
-                  <Picker
-                    label={`Koniec ${k}`}
-                    value={kind as Wall['endA']}
-                    mode="segments"
-                    options={END_OPTIONS}
-                    onChange={(v) =>
-                      edit((w) => {
-                        if (k === 'A') w.endA = v;
-                        else w.endB = v;
-                      })
-                    }
-                  />
-                ) : (
-                  <span className="tag">{JUNCTION_LABEL[kind]}</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       <OpeningsEditor wall={wall} L={L} edit={edit} activeOpeningId={activeOpeningId} />
+
+      <MoreOptions kind="wall" summary={summary}>
+        <div className="field">
+          <label htmlFor={`sp-${wall.id}`}>{spacingLabel}</label>
+          <Picker id={`sp-${wall.id}`} label={spacingLabel} value={wall.studSpacing} options={SPACING_OPTIONS} onChange={(v) => edit((w) => void (w.studSpacing = v))} />
+        </div>
+        {variant('options')}
+        <WoolField
+          id={`wool-${wall.id}`}
+          enabled={wall.insulation}
+          thickness={woolMm}
+          options={woolOptions}
+          layers={sys.frame === 'double' ? 2 : 1}
+          areaM2={info?.netAreaM2}
+          wool={project.settings.wool}
+          onToggle={(on) => edit((w) => void (w.insulation = on))}
+          onThickness={(mm) => edit((w) => void (w.insulationThickness = mm))}
+        />
+        <VaporField spec={vaporSpec} enabled={vaporOn} areaM2={info?.netAreaM2} onToggle={(on) => edit((w) => void (w.vaporBarrier = on))} />
+
+        {info && (
+          <div className="ends">
+            {(['A', 'B'] as const).map((k) => {
+              const kind = k === 'A' ? info.junctions.endA : info.junctions.endB;
+              const editable = kind === 'free' || kind === 'existing-wall';
+              return (
+                <div key={k} className="end">
+                  <span className="muted small">Koniec {k}</span>
+                  {editable ? (
+                    <Picker
+                      label={`Koniec ${k}`}
+                      value={kind as Wall['endA']}
+                      mode="segments"
+                      options={END_OPTIONS}
+                      onChange={(v) =>
+                        edit((w) => {
+                          if (k === 'A') w.endA = v;
+                          else w.endB = v;
+                        })
+                      }
+                    />
+                  ) : (
+                    <span className="tag">{endLabel(kind)}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </MoreOptions>
     </div>
   );
 }
@@ -327,48 +339,69 @@ function OpeningsEditor({
   activeOpeningId?: string;
 }) {
   const existing = !isNewWall(wall);
+  // rozwinięty otwór: wskazany na planie albo kliknięty / dopiero dodany; reszta to jednolinijkowe wiersze
+  const [openId, setOpenId] = useState<string | undefined>(activeOpeningId);
+  useEffect(() => {
+    if (activeOpeningId) setOpenId(activeOpeningId);
+  }, [activeOpeningId]);
   const editOpening = (id: string, fn: (o: Opening) => void) =>
     edit((w) => {
       const o = w.openings.find((x) => x.id === id);
       if (o) fn(o);
     });
+  const add = (o: Opening) => {
+    setOpenId(o.id);
+    edit((w) => void w.openings.push(o));
+  };
   return (
-    <div className="openings">
-      {wall.openings.map((o, i) => (
-        <div key={o.id} className={`opening ${o.id === activeOpeningId ? 'active' : ''}`} data-opening={o.id}>
-          <div className="opening-head">
-            <strong>
-              {o.kind === 'door' ? (existing ? 'Drzwi wejściowe' : 'Drzwi') : 'Okno'} {i + 1}
-            </strong>
-            <button className="btn ghost small danger" onClick={() => edit((w) => void (w.openings = w.openings.filter((x) => x.id !== o.id)))}>
-              Usuń
+    <section className="openings">
+      <h4 className="openings-title">Otwory</h4>
+      {wall.openings.map((o, i) => {
+        const name = `${o.kind === 'door' ? (existing ? 'Drzwi wejściowe' : 'Drzwi') : 'Okno'} ${i + 1}`;
+        const isOpen = o.id === openId;
+        if (!isOpen)
+          return (
+            <button key={o.id} type="button" className="opening-row" data-opening={o.id} aria-expanded={false} onClick={() => setOpenId(o.id)}>
+              <span>{openingSummary(o, name)}</span>
+              <span aria-hidden>›</span>
             </button>
-          </div>
-          <div className="grid-4">
-            <DimInput label="Szerokość" value={o.width} min={20} max={L} onChange={(v) => editOpening(o.id, (x) => void (x.width = v))} />
-            <DimInput label="Wysokość" value={o.height} min={20} max={wall.height} onChange={(v) => editOpening(o.id, (x) => void (x.height = v))} />
-            {o.kind === 'window' && (
-              <DimInput label="Parapet" value={o.sill} min={0} max={wall.height} onChange={(v) => editOpening(o.id, (x) => void (x.sill = v))} />
+          );
+        return (
+          <div key={o.id} className={`opening ${o.id === activeOpeningId ? 'active' : ''}`} data-opening={o.id}>
+            <div className="opening-head">
+              <button type="button" className="opening-toggle" aria-expanded onClick={() => setOpenId(undefined)}>
+                <strong>{name}</strong>
+              </button>
+              <button className="btn ghost small danger" onClick={() => edit((w) => void (w.openings = w.openings.filter((x) => x.id !== o.id)))}>
+                Usuń
+              </button>
+            </div>
+            <div className="grid-4">
+              <DimInput label="Szerokość" value={o.width} min={20} max={L} onChange={(v) => editOpening(o.id, (x) => void (x.width = v))} />
+              <DimInput label="Wysokość" value={o.height} min={20} max={wall.height} onChange={(v) => editOpening(o.id, (x) => void (x.height = v))} />
+              {o.kind === 'window' && (
+                <DimInput label="Parapet" value={o.sill} min={0} max={wall.height} onChange={(v) => editOpening(o.id, (x) => void (x.sill = v))} />
+              )}
+              <DimInput label="Od początku" value={o.offset} min={0} max={L} onChange={(v) => editOpening(o.id, (x) => void (x.offset = v))} />
+            </div>
+            {!existing && (
+              <label className="check">
+                <input type="checkbox" checked={o.reinforced} onChange={(e) => editOpening(o.id, (x) => void (x.reinforced = e.target.checked))} />
+                Ościeże z profili UA (ciężkie drzwi)
+              </label>
             )}
-            <DimInput label="Od początku" value={o.offset} min={0} max={L} onChange={(v) => editOpening(o.id, (x) => void (x.offset = v))} />
           </div>
-          {!existing && (
-          <label className="check">
-            <input type="checkbox" checked={o.reinforced} onChange={(e) => editOpening(o.id, (x) => void (x.reinforced = e.target.checked))} />
-            Ościeże z profili UA (ciężkie drzwi)
-          </label>
-          )}
-        </div>
-      ))}
+        );
+      })}
       <div className="actions wrap">
-        <button className="btn small" onClick={() => edit((w) => void w.openings.push(createOpening('door', Math.max(0, L / 2 - 45), existing ? { reinforced: false } : {})))}>
+        <button className="btn link small" onClick={() => add(createOpening('door', Math.max(0, L / 2 - 45), existing ? { reinforced: false } : {}))}>
           + Drzwi
         </button>
-        <button className="btn small" onClick={() => edit((w) => void w.openings.push(createOpening('window', Math.max(0, L / 2 - 60))))}>
+        <button className="btn link small" onClick={() => add(createOpening('window', Math.max(0, L / 2 - 60)))}>
           + Okno
         </button>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -449,6 +482,14 @@ export function CeilingEditor({
         { x: b.minX, y: b.minY + h },
       ];
     });
+  const woolMm = ceilingInsulation({ ...ceiling, insulation: true })?.thickness ?? 100;
+  const vaporSpec = ceilingVaporSpec(sys);
+  const vaporOn = vaporBarrierOn(ceiling.vaporBarrier, vaporSpec);
+  const summary = ceilingMoreSummary({
+    direction: DIRECTION_OPTIONS.find((o) => o.value === ceiling.direction)?.label ?? '',
+    wool: { on: ceiling.insulation, mm: woolMm },
+    vapor: vaporSpec.mode === 'none' ? undefined : vaporOn,
+  });
 
   return (
     <div className="editor">
@@ -482,7 +523,6 @@ export function CeilingEditor({
               })
             }
           />
-          <small className="hint">{sys.info}</small>
         </div>
         <div className="field">
           <label htmlFor={`cb-${ceiling.id}`}>Płyta</label>
@@ -492,8 +532,12 @@ export function CeilingEditor({
           })} />
         </div>
       </div>
+      <InfoLine more={sys.info}>
+        <span className="muted small">Opis systemu</span>
+      </InfoLine>
       <Warnings items={r?.warnings} />
-      <div className="grid-2">
+      {!rect && <small className="hint">Kształt sufitu zmienisz na planie, przeciągając jego narożniki.</small>}
+      <MoreOptions kind="ceiling" summary={summary}>
         <div className="field">
           <label htmlFor={`cd-${ceiling.id}`}>{sys.kind === 'cw-span' || sys.kind === 'ua-span' ? 'Profile przęsłowe biegną' : 'Profile nośne biegną'}</label>
           <Picker
@@ -505,25 +549,19 @@ export function CeilingEditor({
             onChange={(v) => edit((c) => void (c.direction = v))}
           />
         </div>
-      </div>
-      <WoolField
-        id={`wool-${ceiling.id}`}
-        enabled={ceiling.insulation}
-        thickness={ceilingInsulation({ ...ceiling, insulation: true })?.thickness ?? 100}
-        options={CEILING_WOOL_OPTIONS}
-        layers={1}
-        areaM2={r?.areaM2}
-        wool={wool}
-        onToggle={(on) => edit((c) => void (c.insulation = on))}
-        onThickness={(mm) => edit((c) => void (c.insulationThickness = mm))}
-      />
-      <VaporField
-        spec={ceilingVaporSpec(sys)}
-        enabled={vaporBarrierOn(ceiling.vaporBarrier, ceilingVaporSpec(sys))}
-        areaM2={r?.areaM2}
-        onToggle={(on) => edit((c) => void (c.vaporBarrier = on))}
-      />
-      {!rect && <small className="hint">Kształt sufitu zmienisz na planie, przeciągając jego narożniki.</small>}
+        <WoolField
+          id={`wool-${ceiling.id}`}
+          enabled={ceiling.insulation}
+          thickness={woolMm}
+          options={CEILING_WOOL_OPTIONS}
+          layers={1}
+          areaM2={r?.areaM2}
+          wool={wool}
+          onToggle={(on) => edit((c) => void (c.insulation = on))}
+          onThickness={(mm) => edit((c) => void (c.insulationThickness = mm))}
+        />
+        <VaporField spec={vaporSpec} enabled={vaporOn} areaM2={r?.areaM2} onToggle={(on) => edit((c) => void (c.vaporBarrier = on))} />
+      </MoreOptions>
     </div>
   );
 }
@@ -783,10 +821,18 @@ function CeilingHeights({ ceiling, edit }: { ceiling: Ceiling; edit: (fn: (c: Ce
           }
         />
       </div>
-      <small className="hint">
-        Min. {Math.round(lv.depth.minMm / 10)} cm od stropu do spodu płyt ({lv.depth.source}) · sufit najwyżej na {fmtNum(top / 100)} m
-        {hung ? ` · zwieszenie od wierzchu rusztu do stropu ${fmtNum(Math.round(lv.hangerGap * 10) / 10)} cm` : ''}
-      </small>
+      <InfoLine
+        more={
+          <>
+            Minimalna wysokość zabudowy: {lv.depth.source}.
+            {hung ? ` Zwieszenie od wierzchu rusztu do stropu ${fmtNum(Math.round(lv.hangerGap * 10) / 10)} cm.` : ''}
+          </>
+        }
+      >
+        <small className="muted">
+          Min. {Math.round(lv.depth.minMm / 10)} cm od stropu · sufit najwyżej {fmtNum(top / 100)} m
+        </small>
+      </InfoLine>
     </>
   );
 }
