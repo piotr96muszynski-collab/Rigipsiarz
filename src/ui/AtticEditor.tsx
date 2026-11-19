@@ -1,13 +1,12 @@
 import { useId } from 'react';
-import { allCeilingSystems, ceilingSystemById } from '../catalog/rigips';
-import { isAtticSystem } from '../calc/recommend';
+import { ceilingSystemById } from '../catalog/rigips';
 import { ATTIC_REVEAL, atticFrameOf, atticGrid, pitchForRidge, ridgeHeightFor, type AtticGrid } from '../calc/attic';
 import { ATTIC_WOOL_BETWEEN, ATTIC_WOOL_UNDER, type AtticResult } from '../calc/atticMaterials';
 import type { Attic } from '../model/types';
 import { DimInput } from './DimInput';
 import { Picker, type PickOption } from './Picker';
 import { BOARD_OPTIONS } from './ElementsPanel';
-import { Warnings } from './SystemSelect';
+import { AtticSystemSelect, Warnings } from './SystemSelect';
 import { VaporField } from './WoolField';
 import { ceilingVaporSpec, vaporBarrierOn } from '../calc/vaporBarrier';
 import { fmtNum } from './wallStyle';
@@ -25,12 +24,6 @@ const COLLAR_OPTIONS: PickOption<0 | 1>[] = [
   { value: 0, label: 'skosy do kalenicy' },
 ];
 const mmOptions = (list: number[]): PickOption<number>[] => list.map((v) => ({ value: v, label: v ? `${v} mm` : 'bez wełny', short: v ? `${v} mm` : 'bez wełny' }));
-const MAKER_GROUP: Record<string, string> = { rigips: 'Rigips', norgips: 'Norgips', knauf: 'Knauf', siniat: 'Siniat' };
-const systemOptions = (): PickOption<string>[] =>
-  allCeilingSystems()
-    .filter(isAtticSystem)
-    .map((s) => ({ value: s.id, label: s.name, hint: s.info, group: s.custom ? 'Systemy własne' : (MAKER_GROUP[s.maker ?? 'rigips'] ?? 'Inne') }));
-
 /** Pole liczbowe bez jednostki długości (kąt dachu) */
 function AngleInput({ label, value, onChange, hint }: { label: string; value: number; onChange: (v: number) => void; hint?: string }) {
   const id = useId();
@@ -74,6 +67,15 @@ export function AtticEditor({ attic, edit, result }: Props) {
   const mono = attic.roof === 'mono';
   const hangers = result?.hangers ?? grid.surfaces.reduce((n, g) => n + (g.fixS.length || g.cd.length) * g.hangerU.length, 0);
   const area = grid.surfaces.reduce((s, g) => s + g.areaM2, 0);
+  const pickSystem = (id: string, boardId: string) =>
+    edit((a) => {
+      const s = ceilingSystemById(id);
+      a.systemId = s.id;
+      a.boardId = boardId;
+      // ruszt przykręcony do krokwi albo między krokwiami nie zostawia miejsca na wełnę pod krokwiami
+      const fr = atticFrameOf(s);
+      if (fr.mount === 'between' || (fr.mount === 'direct' && a.woolUnder > (fr.battens?.[fr.battens.length - 1].mm ?? fr.profileMm))) a.woolUnder = 0;
+    });
 
   return (
     <div className="editor attic-editor">
@@ -159,24 +161,13 @@ export function AtticEditor({ attic, edit, result }: Props) {
 
       <h4 className="attic-sub">Zabudowa</h4>
       <div className="grid-2">
-        <div className="field">
+        <div className="field attic-system">
           <label htmlFor={`as-${attic.id}`}>System</label>
-          <Picker
+          <AtticSystemSelect
             id={`as-${attic.id}`}
-            label="System zabudowy poddasza"
             value={sys.id}
-            mode="sheet"
-            options={systemOptions()}
-            onChange={(id) =>
-              edit((a) => {
-                const s = ceilingSystemById(id);
-                a.systemId = s.id;
-                a.boardId = s.defaultBoard;
-                // ruszt przykręcony do krokwi albo między krokwiami nie zostawia miejsca na wełnę pod krokwiami
-                const fr = atticFrameOf(s);
-                if (fr.mount === 'between' || (fr.mount === 'direct' && a.woolUnder > (fr.battens?.[fr.battens.length - 1].mm ?? fr.profileMm))) a.woolUnder = 0;
-              })
-            }
+            onChange={(id) => pickSystem(id, ceilingSystemById(id).defaultBoard)}
+            onPick={(p) => pickSystem(p.system.id, p.boardId)}
           />
           <small className="hint">{sys.info}</small>
         </div>

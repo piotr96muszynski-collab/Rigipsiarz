@@ -1,6 +1,7 @@
 // Krótki, czytelny opis systemu (ruszt i płyty) zamiast samego numeru z katalogu producenta.
 
-import { boardById, layerBoards, type WallSystem } from './rigips';
+import { MAKER_LABEL, boardById, layerBoards, type CeilingSystem, type WallSystem } from './rigips';
+import { atticFrameKind, atticFrameOf } from '../calc/attic';
 
 /** Grubość płyty w mm po polsku: 12.5 → „12,5” */
 const mm = (t: number) => String(t).replace('.', ',');
@@ -70,4 +71,32 @@ function sideBShort(s: WallSystem): string {
     else groups.push({ t, n: 1 });
   }
   return ' / ' + groups.map((g) => `${g.n}×${mm(g.t)}`).join(' + ');
+}
+
+/** Ruszt poddasza: „CD 60 + uchwyt ES”, „Kapelusz do krokwi”, „Ruszt krzyżowy CD 60 + element ES60”… */
+function atticFrameLabel(s: CeilingSystem): string {
+  const f = atticFrameOf(s);
+  const profile = f.profileLabel.replace(/^profil(e)? /, '').replace(/ pod płyty$/, '');
+  switch (atticFrameKind(s)) {
+    case 'cross':
+      return `Ruszt krzyżowy ${f.carrier!.product.startsWith('MF') ? 'MF' : 'CD 60'}${f.hangerLabel ? ` + ${f.hangerLabel}` : ''}`;
+    case 'between':
+      return f.battens || f.profile.startsWith('LATA') ? 'Łaty między krokwiami' : `${profile.replace(/^ruszt z profili /, '')} między krokwiami`;
+    case 'battens':
+      return 'Łaty do krokwi';
+    case 'hat':
+      return 'Kapelusz do krokwi';
+    case 'hanger':
+      return f.hangerLabel ? `${profile} + ${f.hangerLabel}` : profile;
+  }
+}
+
+/**
+ * Krótki opis systemu poddasza z producentem, np. „Rigips: CD 60 + uchwyt elastyczny, 1×12,5”
+ * albo „Siniat: Kapelusz do krokwi, 2×12,5”. `boardId` – płyta wybrana przez użytkownika.
+ */
+export function atticSystemShort(s: CeilingSystem, boardId?: string): string {
+  const t = boardById(boardId ?? s.defaultBoard).thickness;
+  const maker = s.custom ? '' : `${MAKER_LABEL[s.maker ?? 'rigips']}: `;
+  return `${maker}${atticFrameLabel(s)}, ${s.layers}×${mm(t)}`;
 }
