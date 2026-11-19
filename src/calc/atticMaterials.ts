@@ -8,15 +8,18 @@ import { boardById, ceilingSystemById, type CeilingSystem } from '../catalog/rig
 import { resolveFinishing, type FinishingSettings } from '../catalog/finishing';
 import type { Attic } from '../model/types';
 import { atticFrameOf, atticGrid, type AtticGrid } from './attic';
-import { addAtticWindows, atticWindowGeometry, cdLineSegments, cutoutM2, type AtticWindowsResult } from './atticWindows';
+import { addAtticWindows, atticWindowCutouts, atticWindowGeometry, cdLineSegments, cutoutM2, type AtticWindowsResult } from './atticWindows';
+import { atticBoardLayout, type AtticBoards } from './atticBoards';
 import { layerBoards } from './ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
 import { joinsFor, profileMaxStock } from './profileLength';
-import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, pickBoardLength, type Requirement } from './materials';
+import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, type Requirement } from './materials';
 
 export interface AtticResult {
   req: Requirement;
   grid: AtticGrid;
+  /** Rozkład płyt na płaszczyznach (rysunki, 3D, lista zakupów) */
+  boards: AtticBoards;
   /** Powierzchnia zabudowy (skosy + sufit), m² */
   areaM2: number;
   /** Długość profilu przyściennego na ścianach, m */
@@ -107,14 +110,24 @@ export function atticRequirement(
       edge(run);
     }
 
-    const sheetLen = pickBoardLength(a.boardId, Math.min(Math.max(g.surface.run, 200), 300));
-    for (const id of boards) add(req.boardArea, `${id}|${id === a.boardId ? sheetLen : pickBoardLength(id, 300)}`, A);
     // do łat drewnianych płyty kręci się wkrętami TD 3,5×35 (karty Rigips 4.70.01, 4.70.81, 4.71.11)
     if (grid.profile.startsWith('LATA')) add(req.counts, 'TD35', A * sys.screwsOuter);
     else addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
     // więźba widoczna: płyty cięte na pasy między krokwiami – karty 4.71.11 i 4.71.12 podają 3 mb taśmy na m²
     addJointing(req, A, sys.layers, a.boardId, between ? 3 : 1.4, fin);
   }
+
+  // płyty z rozkładu (ten sam co na rysunku i w 3D): elementy + resztki, z których nic się już nie wytnie
+  const layout = atticBoardLayout(a, sys, grid, atticWindowCutouts(a, grid));
+  for (const u of layout.sheets) {
+    const key = `${u.boardId}|${u.sheetLen}`;
+    add(req.boardArea, key, u.netM2 + u.wasteM2);
+    if (u.wasteM2 > 0) add((req.boardCutWaste ??= {}), key, u.wasteM2);
+  }
+  warnings.push(...layout.warnings);
+  assumptions.push(
+    'Płyty dłuższą krawędzią w poprzek rusztu (wzdłuż krokwi), styki krótkich krawędzi na elemencie rusztu, w sąsiednich pasach i warstwach przesunięte o min. 40 cm; bez docinków węższych niż 30 cm.',
+  );
 
   // profil przyścienny wzdłuż ścianek kolankowych i ściany wysokiej (dach jednospadowy)
   const slopes = grid.section.surfaces.filter((s) => s.kind === 'slope');
@@ -151,5 +164,5 @@ export function atticRequirement(
   warnings.push(...windows.warnings);
   assumptions.push(...windows.assumptions);
 
-  return { req, grid, areaM2, perimeterM, hangers, warnings, assumptions, windows };
+  return { req, grid, boards: layout, areaM2, perimeterM, hangers, warnings, assumptions, windows };
 }

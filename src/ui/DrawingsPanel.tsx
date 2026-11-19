@@ -1,4 +1,4 @@
-import { AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
+import { AtticBoardsDrawing, AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
 import { AtticWindowSection } from '../drawings/AtticWindowDrawing';
 import { windowLabel } from '../calc/atticWindows';
 import { useMemo, useState } from 'react';
@@ -250,6 +250,24 @@ export function DrawingsPanel({ project, calc }: Props) {
                   windows={r.windows.list}
                   maxHanger={sys.hangerSpacing || 100}
                 />
+                {(() => {
+                  const layers = r.boards.surfaces.find((b) => b.id === g.surface.id)?.layers ?? [];
+                  // lico na wierzchu: najpierw warstwa widoczna, potem kolejne w stronę rusztu
+                  return [...layers].reverse().map((l) => (
+                    <div key={l.layer}>
+                      <h4>
+                        {g.surface.label} – rozkład płyt{layers.length > 1 ? `, warstwa ${l.layer + 1}` : ''}
+                      </h4>
+                      <AtticBoardsDrawing
+                        attic={a}
+                        g={g}
+                        layer={l}
+                        layers={layers.length}
+                        title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()} – płyty${layers.length > 1 ? ` warstwa ${l.layer + 1}` : ''}`}
+                      />
+                    </div>
+                  ));
+                })()}
               </div>
             ))}
             {r.windows.list.map((x, k) => (

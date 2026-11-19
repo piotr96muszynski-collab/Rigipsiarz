@@ -210,7 +210,11 @@ describe('poddasze w 3D', () => {
     const lines = r.grid.surfaces.reduce((n, g) => n + g.cd.length, 0);
     expect(boxes.filter((x) => x.mat === 'cdMain')).toHaveLength(lines);
     expect(boxes.filter((x) => x.mat === 'hanger')).toHaveLength(r.hangers);
-    expect(boxes.filter((x) => x.mat.startsWith('board:'))).toHaveLength(r.grid.surfaces.length);
+    // płyty: każdy element z rozkładu (ten sam co na rysunku i liście zakupów) to osobna bryła
+    const pieces = r.boards.surfaces.flatMap((s) => s.layers.flatMap((l) => l.pieces));
+    const plates = boxes.filter((x) => x.mat.startsWith('board:')) as BoxPart[];
+    expect(plates).toHaveLength(pieces.length);
+    expect(plates.reduce((t, b) => t + b.s[0] * b.s[2], 0)).toBeCloseTo(r.areaM2, 4);
     // krokwie po obu stronach przy każdej osi + jętki
     expect(boxes.filter((x) => x.mat === 'timber')).toHaveLength(r.grid.rafters.length * 3);
     expect(boxes.filter((x) => x.mat === 'vapor')).toHaveLength(r.grid.surfaces.length);
@@ -247,8 +251,8 @@ describe('poddasze w 3D', () => {
   it('skosy są pochylone o kąt dachu, sufit poziomy na wysokości jętek', () => {
     const m = buildModel3D(project());
     const boards = m.parts.filter((x) => x.type === 'box' && x.mat.startsWith('board:')) as BoxPart[];
-    const tilt = boards.map((b) => Math.round((Math.abs(b.rotX ?? 0) * 180) / Math.PI)).sort((a, b) => a - b);
-    expect(tilt).toEqual([0, 45, 45]);
+    const tilt = [...new Set(boards.map((b) => Math.round((Math.abs(b.rotX ?? 0) * 180) / Math.PI)))].sort((a, b) => a - b);
+    expect(tilt).toEqual([0, 45]);
     const flat = boards.find((b) => !b.rotX)!;
     // lico płyt 45 mm pod jętką (karta 4.70.06), środek płyty 12,5 mm wyżej o połowę grubości
     expect(flat.c[1]).toBeCloseTo(2.6 - 0.045 + 0.00625, 4);
