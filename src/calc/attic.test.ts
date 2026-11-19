@@ -179,7 +179,17 @@ describe('materiały poddasza', () => {
     const r = atticRequirement(attic({ woolBetween: 150, woolUnder: 50 }));
     expect(r.req.area.WELNA150).toBeCloseTo((r.areaM2 * (90 - 8 + 1.5)) / 90, 6);
     expect(r.req.area.WELNA50).toBeCloseTo(r.areaM2, 6);
-    expect(atticRequirement(attic({ woolBetween: 0 })).req.area).toEqual({});
+    expect(atticRequirement(attic({ woolBetween: 0, vaporBarrier: false })).req.area).toEqual({});
+  });
+
+  it('paroizolacja domyślnie włączona: folia 1,18 m²/m² i taśmy wg karty Rigips 4.70', () => {
+    const r = atticRequirement(attic());
+    expect(r.req.area.FOLIA_PAROIZ).toBeCloseTo(r.areaM2 * 1.18, 6);
+    expect(r.req.meters.TASMA_PAROIZ).toBeCloseTo(r.areaM2 * 0.98, 6);
+    expect(r.req.meters.TASMA_DWUSTR).toBeCloseTo(r.areaM2 * 0.5, 6);
+    const off = atticRequirement(attic({ vaporBarrier: false }));
+    expect(off.req.area.FOLIA_PAROIZ).toBeUndefined();
+    expect(off.req.meters.TASMA_PAROIZ).toBeUndefined();
   });
 
   it('dwie warstwy płyt i system Knauf D612', () => {

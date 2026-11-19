@@ -1,3 +1,4 @@
+import { AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
 import { useMemo, useState } from 'react';
 import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc/layout';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
@@ -137,11 +138,13 @@ export function DrawingsPanel({ project, calc }: Props) {
     return [...m.values()];
   }, [walls]);
 
-  if (!walls.length && !ceilings.length && !linings.length)
+  const attics = (project.attics ?? []).filter((a) => calc.attics.has(a.id));
+
+  if (!walls.length && !ceilings.length && !linings.length && !attics.length)
     return (
       <div className="empty">
         <h3>Brak rysunków</h3>
-        <p>Dodaj ścianę lub sufit, a rysunki montażowe przygotują się automatycznie.</p>
+        <p>Dodaj ścianę, sufit lub poddasze, a rysunki montażowe przygotują się automatycznie.</p>
       </div>
     );
 
@@ -215,6 +218,35 @@ export function DrawingsPanel({ project, calc }: Props) {
             )}
             <h4>Rozkład płyt</h4>
             <CeilingBoardsDrawing c={c} title={`Sufit ${i} – płyty`} />
+            <CutTable req={r.req} title="Lista cięć profili" />
+          </section>
+        );
+      })}
+
+      {attics.map((a, i) => {
+        const r = calc.attics.get(a.id)!;
+        const sys = ceilingSystemById(a.systemId);
+        const hangerLabel = sys.hangerType === 'attic' ? 'wieszak do poddaszy' : sys.hangerType === 'elastic' ? 'uchwyt elastyczny' : 'wieszak ES';
+        return (
+          <section key={a.id} className="card sheet">
+            <header className="sheet-head">
+              <h3>Poddasze {i + 1}</h3>
+              <span className="muted small">
+                {fmtNum(r.areaM2, 1)} m² zabudowy · {r.hangers} wieszaków · {sys.name}
+              </span>
+            </header>
+            <h4>Przekrój poprzeczny</h4>
+            <AtticSectionDrawing attic={a} grid={r.grid} title={`Poddasze ${i + 1} – przekrój`} />
+            {r.grid.surfaces.map((g) => (
+              <div key={g.surface.id}>
+                <h4>{g.surface.label} – ruszt i punkty mocowania wieszaków</h4>
+                <AtticSurfaceDrawing attic={a} g={g} title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()}`} hangerLabel={hangerLabel} />
+              </div>
+            ))}
+            <p className="small">
+              Wieszaki mocuje się do krokwi (na suficie do jętek) w miejscach przecięcia z profilami CD. Wymiary czerwone: osie krokwi z wieszakami od ściany
+              szczytowej. Wymiary niebieskie: profile CD od dolnej krawędzi płaszczyzny, mierzone po licu zabudowy.
+            </p>
             <CutTable req={r.req} title="Lista cięć profili" />
           </section>
         );
