@@ -679,6 +679,11 @@ export interface WallSystem {
   /** Szerokość przestrzeni między rusztami (ściana instalacyjna), cm */
   gap?: number;
   /**
+   * Rzędy rusztu rozsuniętego połączone łącznikami zamiast pasków płyty (Siniat SLA – łączniki akustyczne
+   * Phoni SL): produkt i zużycie na m² ściany wg karty, zależnie od rozstawu słupków. Wełna w obu rzędach.
+   */
+  rowTie?: { product: string; perM2: Partial<Record<StudSpacing, number>> };
+  /**
    * Słupki z innych profili niż CW (ruszt `single`):
    * - UA: profile usztywniające UA (blacha 2 mm), na każdym końcu kątownik UA ze śrubami M8;
    *   słupki podwójne = dwa UA skręcone śrubami M8 (Siniat UAR/UARUAR),
@@ -710,12 +715,25 @@ export interface WallSystem {
  * strona B 1×12,5 płyta cementowa AQUAROC (karta). Wartości z karty i kalkulatora zużycia rigips.pl
  * (data/rigips-systemy.json); kalkulator podaje w zestawieniu Glasroc X Ocean 12,5 zamiast Aquaroc – obie do wyboru.
  */
+/** Krótkie nazwy płyt do opisów odmian (boardById jest zdefiniowane niżej w pliku) */
+const SHORT: Record<string, string> = {
+  'RBI12.5': 'GKBI',
+  'RB12.5': 'GKB',
+  'RF12.5': 'GKF',
+  'RFP12.5': 'Fire+',
+  'RFI12.5': 'GKFI',
+  'AKU12.5': 'Aku',
+  'AKUF12.5': 'Aku Fire+ H',
+  'AQUAROC12.5': 'Aquaroc',
+  'XOCEAN12.5': 'X Ocean',
+};
+
 const rigipsWetWall = (o: { code: string; profile: 50 | 75 | 100; aku?: boolean; maxHeight: number; thickness: number; mass: number; ra1?: number; slug: string }): WallSystem => {
   const boards = o.aku ? ['AKU12.5', 'AKUF12.5'] : ['RBI12.5', 'RB12.5', 'RF12.5', 'RFP12.5', 'RFI12.5'];
   const variants: SystemVariant[] = boards.flatMap((board) =>
     (['AQUAROC12.5', 'XOCEAN12.5'] as const).map((b) => ({
       code: o.code,
-      label: `2×12,5 ${boardById(board).short} / 1×12,5 ${boardById(b).short}${b === 'XOCEAN12.5' ? ' (wg kalkulatora Rigips)' : ''} · słupki co 60 cm`,
+      label: `2×12,5 ${SHORT[board]} / 1×12,5 ${SHORT[b]}${b === 'XOCEAN12.5' ? ' (wg kalkulatora Rigips)' : ''} · słupki co 60 cm`,
       board,
       sideB: [b],
       studSpacing: 60 as const,
@@ -777,7 +795,7 @@ const RIGIPS_SIDE_B_WALLS: WallSystem[] = [
     source: { label: 'Karta systemu Rigips 3.41.021 AKU', url: 'https://www.rigips.pl/system/sciany-dzialowe/3_41_021_aku' },
     variants: (['AKU12.5', 'AKUF12.5'] as const).map((board) => ({
       code: '3.41.021 AKU',
-      label: `2×12,5 ${boardById(board).short} obustronnie + 1×12,5 między profilami · słupki co 60 cm · wełna 2×75 mm`,
+      label: `2×12,5 ${SHORT[board]} obustronnie + 1×12,5 między profilami · słupki co 60 cm · wełna 2×75 mm`,
       board,
       studSpacing: 60 as const,
       maxHeight: 600,

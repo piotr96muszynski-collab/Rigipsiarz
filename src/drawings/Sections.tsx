@@ -116,7 +116,7 @@ export function WallSection({
   else
     legend.push({
       n: 2,
-      label: `${sys.studKind === 'UA' ? 'profil UA' : sys.studKind === 'UU' ? 'słupek z dwóch profili U' : 'profil CW'} ${P} co ${cm(spacing * 10)} mm, w UW ${P} przy posadzce i stropie${sys.studKind === 'UA' ? ', kątowniki UA na końcach' : ''}${sys.wallTie ? `, ${sys.wallTie.kind === 'angle' ? 'kątowniki' : 'przewiązki PWA'} do ściany co ${sys.wallTie.spacing} cm` : ''}${rows.length > 1 ? (frame === 'double' ? ' – dwa rzędy obok siebie' : ` – dwa rzędy rozsunięte (${sys.gap ?? 10} cm), łączone paskami płyty`) : ''}`,
+      label: `${sys.studKind === 'UA' ? 'profil UA' : sys.studKind === 'UU' ? 'słupek z dwóch profili U' : 'profil CW'} ${P} co ${cm(spacing * 10)} mm, w UW ${P} przy posadzce i stropie${sys.studKind === 'UA' ? ', kątowniki UA na końcach' : ''}${sys.wallTie ? `, ${sys.wallTie.kind === 'angle' ? 'kątowniki' : 'przewiązki PWA'} do ściany co ${sys.wallTie.spacing} cm` : ''}${rows.length > 1 ? (frame === 'double' ? ' – dwa rzędy obok siebie' : ` – dwa rzędy rozsunięte (${sys.gap ?? 10} cm), łączone ${sys.rowTie ? (PRODUCTS[sys.rowTie.product]?.name.toLowerCase() ?? 'łącznikami') : 'paskami płyty'}`) : ''}`,
     });
   const woolOn = !!wool && !glued;
   const woolH = wool ? Math.min(core, wool.thickness) : 0;

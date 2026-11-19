@@ -192,7 +192,7 @@ export function wallInsulation(w: Wall, sys: WallSystem = wallSystemById(w.syste
   const options = wallWoolOptions(sys);
   if (!w.insulation || !options.length) return null;
   const thickness = options.includes(w.insulationThickness ?? -1) ? w.insulationThickness! : options[options.length - 1];
-  return { thickness, layers: sys.frame === 'double' ? 2 : 1 };
+  return { thickness, layers: sys.frame === 'double' || sys.rowTie ? 2 : 1 };
 }
 
 /** Grubości wełny na sufit (układana na płytach / między profilami), mm */
@@ -404,7 +404,12 @@ export function wallRequirement(
   }
 
   // --- Ściana instalacyjna: rzędy łączone paskami płyty (ok. 30 cm) co ~1/3 wysokości ---
-  if (sys.frame === 'separate') {
+  if (sys.frame === 'separate' && sys.rowTie) {
+    // łączniki między rzędami wg zużycia z karty (Siniat SLA: Phoni SL 0,8 / 1,0 / 1,6 szt./m² przy 60 / 40 / 30 cm)
+    const per = sys.rowTie.perM2[w.studSpacing] ?? Math.max(...Object.values(sys.rowTie.perM2).map(Number));
+    const net0 = Math.max(0, L * H - openings.reduce((a, o) => a + o.w * o.h, 0));
+    add(req.counts, sys.rowTie.product, Math.ceil(net0 * per - 1e-9));
+  } else if (sys.frame === 'separate') {
     const perStud = Math.max(2, Math.ceil(H / 1.2) - 1);
     const strips = positions.length * perStud;
     const stripArea = 0.3 * ((sys.gap ?? 10) / 100 + (2 * sys.profile) / 1000);

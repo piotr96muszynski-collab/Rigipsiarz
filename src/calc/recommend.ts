@@ -238,8 +238,9 @@ function costKey(p: WallPick): number[] {
   const frameCost =
     s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'cd-lining' ? 2 : s.frame === 'hat-lining' ? 2.5 : s.frame === 'single' ? (s.studKind ? 3.5 : 3) : 4;
   return [
-    sideLayers(s)[0] + sideLayers(s)[1],
-    boardCost(p.boardId),
+    // inne poszycie stron: liczy się strona z większą liczbą warstw i droższa płyta (np. Aquaroc na stronie B)
+    2 * Math.max(...sideLayers(s)),
+    Math.max(boardCost(p.boardId), ...(s.sides === 2 ? (p.sideBBoards ?? s.sideB ?? []).map(boardCost) : [])),
     frameCost,
     (p.doubleStuds ? 2 : 1) / p.studSpacing,
     hasStudProfile(s) ? s.profile : 0,
