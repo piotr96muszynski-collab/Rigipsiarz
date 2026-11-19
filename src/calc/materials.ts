@@ -33,6 +33,7 @@ import type { Ceiling, Lining, Point, Project, Wall } from '../model/types';
 import { createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
+import { atticRequirement, type AtticResult } from './atticMaterials';
 import { ceilingLevels, ceilingWallWarnings, hangerGapClass, layerBoards, type CeilingLevels } from './ceilingLevels';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
 import { OFFCUT_MIN, bracketPositions, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
@@ -66,12 +67,12 @@ export interface Requirement {
 
 const fmtLen = (m: number) => m.toFixed(2).replace('.', ',');
 
-const emptyReq = (): Requirement => ({ pieces: {}, boardArea: {}, counts: {}, meters: {}, kg: {}, area: {} });
+export const emptyReq = (): Requirement => ({ pieces: {}, boardArea: {}, counts: {}, meters: {}, kg: {}, area: {} });
 
-const add = (rec: Record<string, number>, key: string, v: number) => {
+export const add = (rec: Record<string, number>, key: string, v: number) => {
   if (v > 0) rec[key] = (rec[key] ?? 0) + v;
 };
-const addPiece = (req: Requirement, product: string, len: number) => {
+export const addPiece = (req: Requirement, product: string, len: number) => {
   if (len <= 0.01) return;
   (req.pieces[product] ??= []).push(len);
 };
@@ -120,7 +121,7 @@ export function screwForBoard(depthMm: number, layer: Board, outer: Board = laye
 export { layerBoards };
 
 /** Wkręty do kolejnych warstw płyt: wewnętrzne rzadziej, zewnętrzna gęsto */
-function addBoardScrews(req: Requirement, area: number, boards: string[], outerPerM2: number, innerPerM2: number) {
+export function addBoardScrews(req: Requirement, area: number, boards: string[], outerPerM2: number, innerPerM2: number) {
   const outer = boardById(boards[boards.length - 1]);
   let depth = 0;
   boards.forEach((id, i) => {
@@ -135,7 +136,7 @@ function addBoardScrews(req: Requirement, area: number, boards: string[], outerP
  * masa wg karty wybranej masy na każdą warstwę płyt (warstwy wewnętrzne tylko wypełnione).
  * Gładzie (Q2–Q4) nie są liczone.
  */
-function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number, fin: FinishingSettings) {
+export function addJointing(req: Requirement, area: number, layers: number, boardId: string, tapePerM2: number, fin: FinishingSettings) {
   if (boardById(boardId).kind === 'cement') {
     add(req.meters, 'TASMA_AQ', area * tapePerM2);
     add(req.kg, 'MASA_AQ', area * (0.5 + 0.25 * (layers - 1)));
@@ -650,7 +651,7 @@ export interface CeilingResult {
   levels?: CeilingLevels;
 }
 
-const addNote = (req: Requirement, pid: string, text: string) => {
+export const addNote = (req: Requirement, pid: string, text: string) => {
   const list = ((req.notes ??= {})[pid] ??= []);
   if (!list.includes(text)) list.push(text);
 };
@@ -969,10 +970,12 @@ export interface ProjectCalc {
   /** Okładziny istniejących ścian, klucz z `liningKey` */
   linings: Map<string, LiningResult>;
   ceilings: Map<string, CeilingResult>;
+  /** Zabudowy poddaszy */
+  attics: Map<string, AtticResult>;
   /** Połączenia ścian, styki i krawędzie otworów z materiałami */
   joints: Joint[];
   total: MaterialLine[];
-  stats: { wallLengthM: number; wallAreaM2: number; ceilingAreaM2: number; openings: number; liningAreaM2: number };
+  stats: { wallLengthM: number; wallAreaM2: number; ceilingAreaM2: number; openings: number; liningAreaM2: number; atticAreaM2: number };
 }
 
 export function calculateProject(p: Project): ProjectCalc {
@@ -1011,18 +1014,26 @@ export function calculateProject(p: Project): ProjectCalc {
     ceilings.set(c.id, r);
     ceilingAreaM2 += r.areaM2;
   }
+  const attics = new Map<string, AtticResult>();
+  let atticAreaM2 = 0;
+  for (const a of p.attics ?? []) {
+    const r = atticRequirement(a, undefined, resolveFinishing(p.settings.finishing));
+    attics.set(a.id, r);
+    atticAreaM2 += r.areaM2;
+  }
   const joints = analyzeJoints(p);
   const total = summarize(
     [
       ...[...walls.values()].map((x) => x.req),
       ...[...linings.values()].map((x) => x.req),
       ...[...ceilings.values()].map((x) => x.req),
+      ...[...attics.values()].map((x) => x.req),
       ...joints.map((j) => j.req),
     ],
     p.settings.wasteEnabled ? p.settings.waste : 0,
     { wool: p.settings.wool },
   );
-  return { walls, linings, ceilings, joints, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings, liningAreaM2 } };
+  return { walls, linings, ceilings, attics, joints, total, stats: { wallLengthM, wallAreaM2, ceilingAreaM2, openings, liningAreaM2, atticAreaM2 } };
 }
 
 export function materialsToCsv(lines: MaterialLine[]): string {

@@ -2783,6 +2783,7 @@ export const NORGIPS_CEILING_SYSTEMS: CeilingSystem[] = [
       { product: 'MASA', label: 'Masa szpachlowa (Start / Start & Finish)', qty: 0.2, unit: 'kg' },
     ],
     maker: 'norgips',
+    attic: true,
     basic: true,
     variants: [
       { label: '1×12,5 GKB (A) · wieszak ES · CD co 50 cm · zabudowa 43–138 mm', board: 'NG-GKB12.5', thickness: 43, mass: 9 },
@@ -2833,6 +2834,7 @@ export const NORGIPS_CEILING_SYSTEMS: CeilingSystem[] = [
       { product: 'MASA', label: 'Masa szpachlowa (Start / Start & Finish)', qty: 0.4, unit: 'kg' },
     ],
     maker: 'norgips',
+    attic: true,
     basic: true,
     variants: [
       { label: '2×12,5 GKB (A) · wieszak ES · CD co 40 cm · zabudowa 55–150 mm', board: 'NG-GKB12.5', thickness: 55, mass: 16 },

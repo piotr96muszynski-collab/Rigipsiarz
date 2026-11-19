@@ -107,6 +107,45 @@ export interface Ceiling {
   slabHeight?: number;
 }
 
+/**
+ * Zabudowa poddasza opisana przekrojem poprzecznym: pomieszczenie prostokątne pod dachem
+ * dwuspadowym albo jednospadowym. Wysokości mierzone od posadzki do spodu konstrukcji
+ * (krokwi, jętek), szerokość między licami ścian okapowych.
+ */
+export interface Attic {
+  id: Id;
+  name?: string;
+  /** gable = dwuspadowy (skosy z obu stron), mono = jednospadowy (skos rośnie od lewej ściany do prawej) */
+  roof: 'gable' | 'mono';
+  /** Szerokość pomieszczenia w poprzek kalenicy, między ścianami okapowymi, cm */
+  width: number;
+  /** Długość wzdłuż kalenicy, między ścianami szczytowymi, cm */
+  length: number;
+  /** Wysokość ścianki kolankowej: od posadzki do spodu krokwi przy licu ściany, cm (0 = skos od podłogi) */
+  kneeLeft: number;
+  /** Jak wyżej dla prawej strony (pomijane w dachu jednospadowym) */
+  kneeRight: number;
+  /** Kąt nachylenia połaci, stopnie */
+  pitch: number;
+  /** Spód jętek od posadzki, cm; brak = skosy do samej kalenicy (bez sufitu poziomego) */
+  collarHeight?: number;
+  /** Rozstaw osiowy krokwi, cm */
+  rafterSpacing: number;
+  /** Przekrój krokwi: szerokość i wysokość, cm */
+  rafterWidth: number;
+  rafterHeight: number;
+  /** Oś pierwszej krokwi od lica ściany szczytowej, cm */
+  firstRafter: number;
+  systemId: string;
+  boardId: string;
+  /** Wełna między krokwiami, mm (0 = bez) */
+  woolBetween: number;
+  /** Wełna pod krokwiami (druga warstwa, w poprzek krokwi), mm (0 = bez) */
+  woolUnder: number;
+  /** Paroizolacja pod płytami (brak = wg systemu: w poddaszach włączona) */
+  vaporBarrier?: boolean;
+}
+
 /** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */
 export interface WallDefaults {
   boardId?: string;
@@ -155,6 +194,8 @@ export interface Project {
   nodes: PlanNode[];
   walls: Wall[];
   ceilings: Ceiling[];
+  /** Zabudowy poddaszy (brak = projekt sprzed ich wprowadzenia) */
+  attics?: Attic[];
   settings: ProjectSettings;
   /** Lista zakupów: pozycje odhaczone jako kupione */
   bought: Record<string, boolean>;
