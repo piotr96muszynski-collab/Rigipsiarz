@@ -9,6 +9,7 @@ import { resolveFinishing, type FinishingSettings } from '../catalog/finishing';
 import type { Attic } from '../model/types';
 import { atticFrameOf, atticGrid, type AtticGrid } from './attic';
 import { atticBoardLayout, type AtticBoards } from './atticBoards';
+import { addAtticWalls, atticWallFaces, atticWallLayout, type AtticWallLayout } from './atticWalls';
 import { layerBoards } from './ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
 import { joinsFor, profileMaxStock } from './profileLength';
@@ -21,6 +22,10 @@ export interface AtticResult {
   boards: AtticBoards;
   /** Powierzchnia zabudowy (skosy + sufit), m² */
   areaM2: number;
+  /** Okładziny ścianek kolankowych i ścian szczytowych (rysunki, 3D) */
+  walls: AtticWallLayout[];
+  /** Powierzchnia okładzin ścian (obie ściany szczytowe razem), m² */
+  wallAreaM2: number;
   /** Długość profilu przyściennego na ścianach, m */
   perimeterM: number;
   /** Liczba mocowań rusztu do krokwi (wieszaki albo punkty przykręcenia profilu / łaty) */
@@ -150,5 +155,14 @@ export function atticRequirement(
   const vapor = ceilingVaporSpec(sys);
   if (vaporBarrierOn(a.vaporBarrier, vapor)) vaporBarrierLines(req, areaM2, vapor);
 
-  return { req, grid, boards: layout, areaM2, perimeterM, hangers, warnings, assumptions };
+  // okładziny ścianek kolankowych i ścian szczytowych (systemy okładzin muru, profile docięte do skosu)
+  const walls = atticWallFaces(a, grid).map(atticWallLayout);
+  const wallAreaM2 = addAtticWalls(req, walls, fin);
+  for (const w of walls) warnings.push(...w.warnings);
+  if (walls.length)
+    assumptions.push(
+      'Okładziny ścian poddasza: profile pionowe co rozstaw, docięte do lica skosu; profil przyścienny UD po obwodzie każdej ściany; płyty pionowo, docinane pod kątem skosu. Okładzina dochodzi do lica zabudowy skosów i sufitu.',
+    );
+
+  return { req, grid, boards: layout, areaM2, walls, wallAreaM2, perimeterM, hangers, warnings, assumptions };
 }

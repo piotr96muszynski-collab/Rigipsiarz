@@ -163,6 +163,10 @@ export interface Attic {
   vaporBarrier?: boolean;
   /** Widoczna część krokwi poniżej lica płyt, cm – tylko systemy z widoczną więźbą (płyty między krokwiami) */
   reveal?: number;
+  /** Okładzina ścianek kolankowych (i wysokiej ściany dachu jednospadowego); brak = bez okładziny. `side` nieużywane */
+  kneeLining?: Lining;
+  /** Okładzina obu ścian szczytowych, do lica skosów i sufitu; brak = bez okładziny. `side` nieużywane */
+  gableLining?: Lining;
 }
 
 /** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */

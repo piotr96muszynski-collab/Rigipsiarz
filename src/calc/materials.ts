@@ -164,10 +164,10 @@ export function addJointing(
 }
 
 /** Wkręty na m² jednej strony ściany przy rozstawie 60 cm (karta 3.40.05: 9 + 24 szt. na 2 strony) */
-const WALL_SCREWS_OUTER = 12;
-const WALL_SCREWS_INNER = 4.5;
+export const WALL_SCREWS_OUTER = 12;
+export const WALL_SCREWS_INNER = 4.5;
 /** Klej gipsowy pod płytę klejoną (placki), kg/m² – orientacyjnie */
-const GLUE_PER_M2 = 5; // kalkulator Rigips 3.10.00: 500 kg na 100 m²
+export const GLUE_PER_M2 = 5; // kalkulator Rigips 3.10.00: 500 kg na 100 m²
 
 export interface WallBreakdown {
   lengthM: number;
@@ -546,7 +546,7 @@ export function pointFixCount(L: number, H: number, sx: number, sy: number, hole
 }
 
 /** Spoinowanie w systemie ATLAS: taśma, STONER na każdą warstwę, GTA na wierzch (zużycie orientacyjne) */
-function addAtlasJointing(req: Requirement, area: number, layers: number, tapePerM2: number) {
+export function addAtlasJointing(req: Requirement, area: number, layers: number, tapePerM2: number) {
   add(req.meters, 'TASMA_SPOIN', area * tapePerM2);
   add(req.kg, 'ATLAS_STONER', area * 0.25 * layers);
   add(req.kg, 'ATLAS_GTA', area * 0.1);
