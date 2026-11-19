@@ -8,8 +8,11 @@ import {
   ceilingSystemById,
   wallFrameDepth,
   wallMaxHeight,
+  wallMidBoard,
+  wallStudLabel,
   wallSystemById,
 } from '../catalog/rigips';
+import { wallThicknessMm } from './joints';
 import { KNAUF_BOARDS, KNAUF_CEILING_SYSTEMS, KNAUF_WALL_SYSTEMS } from '../catalog/knauf';
 import { ceilingConsumption, wallConsumption, type ConsumptionLine } from './materials';
 import { recommendCeilings, recommendWalls } from './recommend';
@@ -128,6 +131,45 @@ describe('katalog Knauf – zeszyt techniczny W11.pl (W115W, W114)', () => {
     expect(s.variants!.find((v) => v.board === 'KN-SIL')).toMatchObject({ innerBoards: ['KN-DIA13'], rw: 71, mass: 126.5 });
     expect(wallSystemById('KN-W113P-CW100').id).toBe('KN-W114-CW100');
     expect(KNAUF_WALL_SYSTEMS.some((w) => w.name.includes('W113+'))).toBe(false);
+  });
+});
+
+describe('katalog Knauf – W635 (szyb na słupkach 2×UW z płytą pośrednią)', () => {
+  it('8 konstrukcji z Systemfindera: UW 75 do 4,5 m, UW 100 do 5,25 m, wartości z tabeli', () => {
+    const ids = KNAUF_WALL_SYSTEMS.filter((s) => s.id.startsWith('KN-W635')).map((s) => s.id);
+    expect(ids).toEqual([
+      'KN-W635-UW75-2+1', 'KN-W635-UW75-2+2', 'KN-W635-UW75-3+2', 'KN-W635-UW75-4+1',
+      'KN-W635-UW100-2+1', 'KN-W635-UW100-2+2', 'KN-W635-UW100-3+2', 'KN-W635-UW100-4+1',
+    ]);
+    const s = wallSystemById('KN-W635-UW75-2+1');
+    expect([s.category, s.frame, s.sides, s.layers, s.studKind, s.defaultBoard, s.midBoard]).toEqual(['szacht', 'single', 1, 2, 'UW2', 'KN-F15', 'KN-F13']);
+    expect(wallStudLabel(s)).toBe('2×UW 75');
+    expect(s.maxHeight).toEqual({ 60: 450 });
+    expect(s.variants![0]).toMatchObject({ fire: 60, rw: 52, ra1: 50, thickness: 105, mass: 40 });
+    expect(wallSystemById('KN-W635-UW100-2+1').maxHeight).toEqual({ 60: 525 });
+    const d = wallSystemById('KN-W635-UW75-2+2');
+    expect([d.defaultBoard, d.midBoard, d.midLayers, d.fire]).toEqual(['KN-DIA13', 'KN-DIA13', 2, 'EI 30']);
+    const f = wallSystemById('KN-W635-UW100-4+1');
+    expect([f.defaultBoard, f.innerBoard, f.innerLayers, f.fire]).toEqual(['KN-F13', 'KN-F15', 2, 'EI 120']);
+  });
+  it('płyta pośrednia wg poszycia (F15 → F13, HF15 → HF13) i w głębokości profilu', () => {
+    const s = wallSystemById('KN-W635-UW75-2+1');
+    expect(wallMidBoard(s, 'KN-F15')).toBe('KN-F13');
+    expect(wallMidBoard(s, 'KN-HF15')).toBe('KN-HF13');
+    // grubość z karty: profil 75 + 2×15 = 105 mm (płyta pośrednia mieści się w profilu)
+    expect(wallThicknessMm(s, 'KN-F15')).toBe(105);
+    expect(wallThicknessMm(wallSystemById('KN-W635-UW100-3+2'), 'KN-DIA13')).toBe(137.5);
+  });
+  it('zużycie: 2 m² poszycia + płyta pośrednia, słupki z dwóch UW zamiast CW', () => {
+    const s = wallSystemById('KN-W635-UW75-2+1');
+    const c = wallConsumption(s);
+    expect(q(c, 'board:KN-F15')).toBeCloseTo(2);
+    expect(q(c, 'board:KN-F13')).toBeCloseTo(1);
+    expect(q(c, 'CW75')).toBe(0);
+    // dwa UW na słupek co 60 cm (≈ 3,3 mb/m²) + UW przy posadzce i stropie
+    expect(q(c, 'UW75')).toBeGreaterThan(3.3);
+    expect(q(wallConsumption({ ...s, defaultBoard: 'KN-HF15' }), 'board:KN-HF13')).toBeCloseTo(1);
+    expect(q(wallConsumption(wallSystemById('KN-W635-UW75-2+2')), 'board:KN-DIA13')).toBeCloseTo(4);
   });
 });
 
