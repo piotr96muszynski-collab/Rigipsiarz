@@ -307,3 +307,69 @@ describe('ruszty poddaszy inne niż CD 60 na uchwytach (karty Rigips 4.70.01–4
     expect(l.warnings.join(' ')).not.toMatch(/nie zmieści się/);
   });
 });
+
+describe('ruszt krzyżowy poddasza (Siniat ES/DK, EL/DK, DK/MFC)', () => {
+  const es = (o: Partial<Attic> = {}) => attic({ systemId: 'SN-P-ESDK-1', boardId: 'SN-EXP12.5', woolUnder: 0, ...o });
+
+  it('profile nośne pod każdą krokwią, mocowania co max 100 cm, profile pod płyty co 40 cm', () => {
+    const g = atticGrid(es());
+    expect(g.carrier?.product).toBe('CD60');
+    expect(g.cdSpacing).toBe(40);
+    // zabudowa min. 73 mm z karty
+    expect(g.depthMm).toBe(73);
+    for (const s of g.surfaces) {
+      expect(s.hangerU).toEqual(g.rafters);
+      expect(s.fixS).toEqual(cdLinePositions(s.surface.run, 100));
+      expect(s.cd).toEqual(cdLinePositions(s.surface.run, 40));
+    }
+    expect(g.warnings.some((w) => w.includes('profili nośnych'))).toBe(false);
+  });
+
+  it('zestawienie: CD nośne + montażowe, ES na nośnych, łącznik krzyżowy na każdym skrzyżowaniu', () => {
+    const r = atticRequirement(es());
+    const g = r.grid;
+    const R = g.rafters.length;
+    const crossings = g.surfaces.reduce((n, s) => n + s.cd.length * R, 0);
+    const fixes = g.surfaces.reduce((n, s) => n + s.fixS.length * R, 0);
+    expect(r.req.counts.LACZNIK_KRZ).toBe(crossings);
+    expect(r.req.counts.WIESZAK_ES).toBe(fixes);
+    expect(r.hangers).toBe(fixes);
+    expect(r.req.counts.WKRET_DREWNO).toBe(fixes * 2);
+    // zużycie CD na m² blisko karty (3,8 mb/m²); krótkie skosy mają skrajne profile przy obu krawędziach, więc trochę więcej
+    const cdM = (r.req.pieces.CD60 ?? []).reduce((t, x) => t + x, 0);
+    const perM2 = cdM / r.areaM2;
+    expect(perM2).toBeGreaterThan(3.4);
+    expect(perM2).toBeLessThan(4.3);
+    // ES na m²: karta 1,6 szt.
+    expect(fixes / r.areaM2).toBeGreaterThan(1);
+    expect(fixes / r.areaM2).toBeLessThan(2);
+  });
+
+  it('krokwie rzadziej niż 100 cm – ostrzeżenie o rozstawie profili nośnych', () => {
+    const g = atticGrid(es({ rafterSpacing: 120 }));
+    expect(g.warnings.some((w) => w.includes('profili nośnych'))).toBe(true);
+  });
+
+  it('elementy elastyczne EL60 zamiast ES60', () => {
+    const r = atticRequirement(attic({ systemId: 'SN-P-ELDK-1', boardId: 'SN-EXP12.5' }));
+    expect(r.req.counts.UCHWYT_ELAST).toBe(r.hangers);
+    expect(r.req.counts.WIESZAK_ES).toBeUndefined();
+  });
+
+  it('DK/MFC: profile MF, kątowniki, bez łączników krzyżowych CD', () => {
+    const r = atticRequirement(attic({ systemId: 'SN-P-DKMFC-1', boardId: 'SN-EXP12.5' }));
+    const g = r.grid;
+    expect(r.req.pieces.MFCP44?.length).toBe(g.rafters.length * g.surfaces.length);
+    expect(r.req.pieces.MFCC50?.length).toBe(g.surfaces.reduce((n, s) => n + s.cd.length, 0));
+    expect(r.req.pieces.MFCE26?.length).toBeGreaterThan(0);
+    expect(r.req.pieces.CD60).toBeUndefined();
+    expect(r.req.counts.MFC2330).toBe(r.hangers);
+    expect(r.req.counts.LACZNIK_KRZ).toBeUndefined();
+    expect(g.depthMm).toBe(83);
+  });
+
+  it('wełna pod krokwiami ponad zasięg ES60 + drugi poziom – ostrzeżenie', () => {
+    expect(atticGrid(es({ woolUnder: 100 })).warnings.some((w) => w.includes('nie zmieści się na tym wieszaku'))).toBe(false);
+    expect(atticGrid(es({ woolUnder: 150 })).warnings.some((w) => w.includes('nie zmieści się na tym wieszaku'))).toBe(true);
+  });
+});

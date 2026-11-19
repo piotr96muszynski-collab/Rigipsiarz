@@ -164,7 +164,7 @@ describe('Siniat – systemy dodane po PR #55 (różne grubości płyt, płyta d
   it('sufit DK/MFC: profile MF zamiast CD 60, zawiesia z kątownika MFC2330, bez łączników krzyżowych', () => {
     const s = ceilingSystemById('SN-S-DKMFC-1');
     expect([s.kind, s.mainSpacing, s.secondarySpacing, s.hangerSpacing]).toEqual(['two-level', 120, 40, 120]);
-    expect(s.profiles).toMatchObject({ main: 'MFCP44', secondary: 'MFCC50', edge: 'MFCE26', hangerAngle: 'MFC2330' });
+    expect(s.profiles).toMatchObject({ main: 'MFCP44', secondary: 'MFCC50', edge: 'MFCE26', hangerAngle: 'MFC2330_MB' });
     const c = ceilingConsumption(s);
     // karta s. 31: MFCP44 1,0 mb, MFCC50 2,8 mb, MFCE26 0,6 mb na m² (ruszt wzorcowy ±25%)
     expect(q(c, 'MFCP44')).toBeGreaterThan(0.75);
@@ -172,7 +172,7 @@ describe('Siniat – systemy dodane po PR #55 (różne grubości płyt, płyta d
     expect(q(c, 'MFCC50')).toBeGreaterThan(2.1);
     expect(q(c, 'MFCC50')).toBeLessThan(3.5);
     expect(q(c, 'MFCE26')).toBeGreaterThan(0);
-    expect(q(c, 'MFC2330')).toBeGreaterThan(0);
+    expect(q(c, 'MFC2330_MB')).toBeGreaterThan(0);
     for (const k of ['CD60', 'UD30', 'LACZNIK_KRZ', 'WIESZAK_NONIUSZ', 'LACZNIK_WZDL']) expect(q(c, k), k).toBe(0);
     expect(q(c, 'WKRET_FLAT13')).toBeGreaterThan(4);
     expect(ceilingDepth(s, 'SN-EXP12.5').minMm).toBe(83); // 82,5 mm z karty, zaokrąglone
@@ -184,7 +184,7 @@ describe('Siniat – systemy dodane po PR #55 (różne grubości płyt, płyta d
       const c = createCeiling(p, [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }], { systemId: s.id, boardId: s.defaultBoard });
       c.slabHeight = slab;
       c.height = 250;
-      return { m: ceilingRequirement(c, s).req.meters.MFC2330, gap: ceilingLevels(c, s).hangerGap };
+      return { m: ceilingRequirement(c, s).req.meters.MFC2330_MB, gap: ceilingLevels(c, s).hangerGap };
     };
     const low = at(260);
     const high = at(300);

@@ -24,6 +24,7 @@ import {
   type WallCategory,
   type WallFrame,
   type WallSystem,
+  wallStudLabel,
 } from '../catalog/rigips';
 import type { PointFixer } from '../catalog/atlas';
 import { REF_CEILING, REF_WALL, ceilingConsumption, wallConsumption, type ConsumptionLine } from '../calc/materials';
@@ -151,7 +152,7 @@ function WallList({ onCopy, onEdit, onRemove }: { onCopy: (s: WallSystem) => voi
                 maker={makerOf(s)}
                 params={[
                   ['Ruszt', WALL_FRAME_LABEL[s.frame]],
-                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : `CW ${s.profile} / UW ${s.profile}`]] as [string, string][])),
+                  ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Profil', s.frame === 'cd-lining' ? 'CD 60 / UD 30' : `${wallStudLabel(s)} / UW ${s.profile}`]] as [string, string][])),
                   ['Płyty', `${s.layers}× ${boardById(s.defaultBoard).name}${s.sides === 2 ? ', obustronnie' : ', jednostronnie'}`],
                   ...(s.frame === 'glued' || s.frame === 'point-fix' ? [] : ([['Rozstaw profili', `${s.studSpacing} cm`]] as [string, string][])),
                   ...(s.frame === 'point-fix'
@@ -217,7 +218,11 @@ function ceilingParams(s: CeilingSystem): [string, string][] {
   } else if (s.atticFrame) {
     const fr = s.atticFrame;
     const name = fr.profileLabel.charAt(0).toUpperCase() + fr.profileLabel.slice(1);
-    out.push([name, `co ${s.secondarySpacing} cm`]);
+    if (fr.carrier) {
+      const c = fr.carrier;
+      out.push([c.label.charAt(0).toUpperCase() + c.label.slice(1), `pod każdą krokwią (krokwie co max ${c.maxSpacing} cm)${c.cross ? `, ${c.crossLabel ?? 'łącznik krzyżowy'} na skrzyżowaniach` : ''}`]);
+    }
+    out.push([name, `${fr.carrier ? 'w poprzek krokwi ' : ''}co ${s.secondarySpacing} cm`]);
     out.push([
       'Mocowanie',
       fr.mount === 'hanger' ? `${fr.hangerLabel} co max ${s.hangerSpacing} cm` : fr.mount === 'direct' ? `wprost do krokwi, co max ${s.hangerSpacing} cm` : 'między krokwiami – więźba widoczna',

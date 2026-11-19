@@ -628,8 +628,12 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   const timber = grid.profile.startsWith('LATA');
   const pH = grid.profileMm / 1000;
   const pW = timber ? (grid.profile === 'LATA5030' ? 0.05 : 0.06) : grid.profile === 'KAPELUSZ' ? 0.08 : CD_W;
-  const pMat: MatKey = timber ? 'timber' : 'cdMain';
-  const cdShape = !timber && grid.profile !== 'KAPELUSZ' ? { profile: profileFor('cdMain', 'along', 'a-') } : {};
+  const carrier = grid.carrier;
+  // ruszt krzyżowy: profile pod płyty to „montażowe”, nośne biegną pod krokwiami
+  const pMat: MatKey = timber ? 'timber' : carrier ? 'cdSec' : 'cdMain';
+  const cH = (carrier?.mm ?? 0) / 1000;
+  const cW = carrier?.product === 'MFCP44' ? 0.03 : CD_W;
+  const cdShape = !timber && grid.profile !== 'KAPELUSZ' ? { profile: profileFor(pMat, 'along', 'a-') } : {};
   // więźba widoczna: płyty i ruszt osobno w każdym polu między krokwiami
   const spans = between ? grid.bays.map((bay) => ({ x: (bay.u + bay.w / 2) / 100, w: bay.w / 100 })) : [{ x: L / 2, w: L }];
 
@@ -648,9 +652,20 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
       for (const sp of spans)
         parts.push({ type: 'box', layer: 'ceilingFrame', mat: pMat, c: [sp.x, y, z], s: [sp.w, pH, pW], rotY: 0, rotX: f.rotX, owner: a.id, ...cdShape });
       // wieszak przy boku krokwi: od profilu do krokwi
-      if (fr.hanger) {
+      if (fr.hanger && !carrier) {
         const hh = Math.max(0.03, depth - tb + 0.04);
         for (const u of g.hangerU) tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + hh / 2, [0.004, hh, ES_W]);
+      }
+    }
+    if (carrier) {
+      // profile nośne pod każdą krokwią, nad profilami pod płyty; wieszaki na nośnych przy boku krokwi
+      const hh = Math.max(0.03, depth - tb - pH + 0.04);
+      for (const u of g.hangerU) {
+        tilted('ceilingFrame', 'cdMain', f, u / 100, f.run / 2, tb + pH + cH / 2, [cW, cH, f.run]);
+        for (const s of g.fixS) {
+          const k = (f.flipped ? g.surface.run - s : s) / 100;
+          tilted('ceilingFrame', 'hanger', f, u / 100 + rw / 2 + 0.002, k, tb + pH + hh / 2, [0.004, hh, ES_W]);
+        }
       }
     }
     if (between) {
