@@ -203,7 +203,11 @@ export function AtticEditor({ attic, edit, result }: Props) {
             <label htmlFor={`aw2-${attic.id}`}>Wełna pod krokwiami</label>
             <Picker id={`aw2-${attic.id}`} label="Wełna pod krokwiami" value={attic.woolUnder} mode="sheet" options={mmOptions(ATTIC_WOOL_UNDER)} onChange={(v) => edit((a) => void (a.woolUnder = v))} />
             <small className="hint">
-              {grid.frame.mount === 'direct' ? `ruszt leży na krokwiach: mieści się najwyżej ${Math.round(grid.profileMm)} mm` : 'druga warstwa w poprzek krokwi, obniża zabudowę'}
+              {grid.frame.mount === 'direct'
+                ? `ruszt leży na krokwiach: mieści się najwyżej ${Math.round(grid.profileMm)} mm`
+                : grid.hangerSize
+                  ? `druga warstwa w poprzek krokwi, obniża zabudowę · dobrany ${grid.frame.hangerLabel ?? 'wieszak'}: ${grid.hangerSize.name}`
+                  : 'druga warstwa w poprzek krokwi, obniża zabudowę'}
             </small>
           </div>
         )}

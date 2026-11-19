@@ -28,7 +28,7 @@ export interface AtticResult {
 
 /** Grubości wełny do wyboru między krokwiami i pod krokwiami, mm */
 export const ATTIC_WOOL_BETWEEN = [0, 100, 150, 180, 200];
-export const ATTIC_WOOL_UNDER = [0, 50, 75, 100, 150];
+export const ATTIC_WOOL_UNDER = [0, 50, 75, 100, 150, 200];
 
 export function atticRequirement(
   a: Attic,
@@ -122,7 +122,7 @@ export function atticRequirement(
 
   if (frame.hanger) {
     const gapMm = Math.max(0, grid.depthMm - boards.reduce((t, id) => t + boardById(id).thickness, 0) - grid.profileMm - (grid.carrier?.mm ?? 0));
-    addNote(req, frame.hanger, `poddasze: ${grid.carrier ? grid.carrier.label : frame.profileLabel} ok. ${Math.round(gapMm)} mm pod krokwią`);
+    addNote(req, frame.hanger, `poddasze: ${grid.hangerSize ? `dobrano ${grid.hangerSize.name}, ` : ''}${grid.carrier ? grid.carrier.label : frame.profileLabel} ok. ${Math.round(gapMm)} mm pod krokwią`);
   }
 
   // wełna: między krokwiami (pasy o 1–2 cm szersze niż światło – wytyczne Isover/Rigips) i pod krokwiami na całej powierzchni

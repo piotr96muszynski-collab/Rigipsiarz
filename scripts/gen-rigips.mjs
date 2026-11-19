@@ -391,6 +391,9 @@ const ATTIC_FRAMES = {
     frame: {
       mount: 'hanger', profile: 'C_RIGISTIL', profileLabel: 'profil C RIGISTIL', profileMm: 18, edge: 'U_RIGISTIL', hanger: 'WIESZAK_RIGISTIL', hangerLabel: 'wieszak RIGISTIL', hangerLn9: 0,
       joiner: 'LACZNIK_GL3', woodScrews: 2, maxUnderMm: 150, maxUnderWhy: 'karta 4.70.07: do 150 mm wełny pod krokwiami',
+      // wieszak mocowany do boku krokwi: zasięg = długość minus ok. 7 cm zakładu (założenie), nie więcej niż układ z karty
+      hangerSizes: [{ name: '170 mm', reachMm: 100 }, { name: '300 mm', reachMm: 150 }],
+      hangerSizesNote: 'Długość wieszaka RIGISTIL (170 lub 300 mm wg karty) dobrana do zabudowy pod krokwią; przyjęto ok. 7 cm zakładu wieszaka na bok krokwi – karta nie podaje zasięgu.',
     },
   },
   '4.70.08': {
@@ -398,6 +401,8 @@ const ATTIC_FRAMES = {
     frame: {
       mount: 'hanger', profile: 'C_RIGISTIL', profileLabel: 'profil C RIGISTIL', profileMm: 18, edge: 'U_RIGISTIL', hanger: 'UCHWYT_GL', hangerLabel: 'uchwyt GL 2 / GL 9', hangerLn9: 4,
       joiner: 'LACZNIK_GL3', woodScrews: 2, maxUnderMm: 120, maxUnderWhy: 'uchwyt GL 9 o długości 125 mm',
+      hangerSizes: [{ name: 'GL 2 (75 mm)', reachMm: 70 }, { name: 'GL 9 (125 mm)', reachMm: 120 }],
+      hangerSizesNote: 'Uchwyt GL 2 (75 mm) albo GL 9 (125 mm) dobrany do zabudowy pod krokwią; zasięg liczony 5 mm krócej niż długość uchwytu.',
     },
   },
   '4.70.81': { title: 'łaty drewniane do krokwi', frame: { mount: 'direct', profile: 'LATA5030', profileLabel: 'łata drewniana', profileMm: 30, woodScrews: 2 }, battens: true, plural: 'Łaty drewniane' },

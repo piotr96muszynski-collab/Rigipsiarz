@@ -886,6 +886,13 @@ export interface AtticFrame {
   /** Największa zabudowa pod krokwią (zasięg wieszaka), mm, i skąd ta wartość */
   maxUnderMm?: number;
   maxUnderWhy?: string;
+  /**
+   * Długości wieszaka od najkrótszej: nazwa i zasięg, czyli największy odstęp spodu krokwi od płyt
+   * (przy ruszcie krzyżowym – od profilu nośnego), mm. Aplikacja dobiera najkrótszy, który wystarcza.
+   */
+  hangerSizes?: { name: string; reachMm: number }[];
+  /** Skąd zasięgi w `hangerSizes` – trafia do założeń wyliczeń */
+  hangerSizesNote?: string;
   /** Przekroje łat z największym rozstawem mocowania (krokwi) z karty, cm */
   battens?: { product: string; size: string; mm: number; maxFix: number }[];
   /** Największy rozstaw mocowania elementów wzdłuż krokwi (ruszt między krokwiami), cm */
