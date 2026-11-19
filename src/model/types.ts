@@ -201,6 +201,11 @@ export interface RoofWindow {
   id: Id;
   /** Skos z oknem; w dachu jednospadowym zawsze 'left' */
   side: 'left' | 'right';
+  /**
+   * Dach z narożnikami / koszami: połać z oknem (klucz połaci: 'left', 'right', 'hip0', 'hip1', 'w0a'…);
+   * brak = skos główny `side`. Oś `u` liczona wtedy wzdłuż okapu tej połaci (jak profile rusztu).
+   */
+  face?: string;
   /** Wymiary zewnętrzne ościeżnicy: szerokość (wzdłuż kalenicy) i wysokość (po skosie), cm */
   width: number;
   height: number;

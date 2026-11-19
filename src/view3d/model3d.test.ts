@@ -281,17 +281,35 @@ describe('poddasze z narożnikami i koszami w 3D', () => {
     const r = buildModel3D(quickAtticProject({ ...a, planRot: 90 }));
     expect(r.parts.length).toBe(m.parts.length);
   });
+
+  it('płyty z rozkładu na połaciach i okna dachowe w połaci narożnej', () => {
+    const a = createAttic({ width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 45, collarHeight: undefined, ends: ['hip', 'hip'] });
+    const base = buildModel3D(quickAtticProject(a)).parts;
+    const r0 = atticRequirement(a);
+    const pieces = r0.boards.roof!.faces.flatMap((f) => f.layers.flatMap((l) => l.pieces.flatMap((p) => p.polys)));
+    const boardFaces = (list: typeof base) => list.filter((x) => x.type === 'face' && x.layer === 'ceilingBoards' && x.mat.startsWith('board:'));
+    expect(boardFaces(base)).toHaveLength(pieces.length);
+    const w = { ...a, windows: [{ id: 'w', side: 'left' as const, face: 'hip0', width: 78, height: 118, u: 355, sill: 160 }] };
+    const parts = buildModel3D(quickAtticProject(w)).parts;
+    expect(parts.filter((x) => x.mat === 'glass')).toHaveLength(1);
+    // 4 glify i elementy płyt z wycięciem (kilka wypukłych części)
+    expect(boardFaces(parts).length).toBeGreaterThan(boardFaces(base).length + 4);
+  });
 });
 
 describe('dach kopertowy z dobudówką (T) w 3D', () => {
   const a = createAttic({ width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 40, collarHeight: 400, ends: ['hip', 'gable'], wings: [{ id: 'w', side: 'left', at: 500, width: 480, length: 300, end: 'gable' }] });
   const m = buildModel3D(quickAtticProject(a));
   const faces = m.parts.filter((x): x is FacePart => x.type === 'face');
-  it('jedna płyta (obrys) na płaszczyznę – bez fałszywych załamań z kawałków', () => {
-    const boards = faces.filter((x) => x.layer === 'ceilingBoards');
-    // 6 płaszczyzn: skosy, połać narożna, sufit pod jętkami, 2 skosy dobudówki; płyta jednowarstwowa
-    expect(boards).toHaveLength(6);
-    expect(boards.find((b) => b.pts.length === 7)).toBeDefined();
+  it('folia jednym obrysem na płaszczyznę – bez fałszywych załamań z kawałków; płyty z rozkładu', () => {
+    const foil = faces.filter((x) => x.mat === 'vapor');
+    // 6 płaszczyzn: skosy, połać narożna, sufit pod jętkami, 2 skosy dobudówki
+    expect(foil).toHaveLength(6);
+    expect(foil.find((b) => b.pts.length === 7)).toBeDefined();
+    // płyty: elementy rozkładu (pasy arkuszy przycięte do połaci), pole jak zabudowa
+    const r = atticRequirement(a);
+    const polys = r.boards.roof!.faces.flatMap((f) => f.layers.flatMap((l) => l.pieces.flatMap((p) => p.polys)));
+    expect(faces.filter((x) => x.layer === 'ceilingBoards')).toHaveLength(polys.length);
   });
   it('profile przy koszach od strony połaci, nie w pomieszczeniu', () => {
     // profil wzdłuż kosza po stronie skosu głównego leży nad koszem (v > u − 260), nie pod dobudówką
