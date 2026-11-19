@@ -85,7 +85,8 @@ describe('ATLAS M-System 3G – wyliczenia', () => {
   });
   it('sufit 10×8 m: łączniki jak w prostokątnej siatce 40×50, bez profili CD/UD', () => {
     const c = ceilingConsumption(ceilingSystemById('A-S-L100'));
-    expect(q(c, 'ATLAS_3G_L100')).toBeCloseTo((26 * 17) / 80);
+    // 50 cm wzdłuż płyt (10 m: 7, 50 … 950, 993 = 21), 40 cm w poprzek (8 m: 7, 40 … 760, 793 = 21)
+    expect(q(c, 'ATLAS_3G_L100')).toBeCloseTo((21 * 21) / 80);
     expect(q(c, 'CD60')).toBe(0);
     expect(q(c, 'UD30')).toBe(0);
     expect(q(c, 'KOTWA')).toBe(0);
@@ -109,8 +110,8 @@ describe('ATLAS M-System 3G – wyliczenia', () => {
     );
     expect(ceilingGrid(c)).toEqual([]);
     const r = ceilingRequirement(c);
-    // (4/0,4 + 1)(3/0,5 + 1) = 11 × 7
-    expect(r.req.counts.ATLAS_3G_L100).toBe(77);
+    // wzdłuż płyt co 50 cm: 7, 50 … 350, 393 (9); w poprzek co 40 cm: 7, 40 … 280, 293 (9)
+    expect(r.req.counts.ATLAS_3G_L100).toBe(81);
     expect(r.warnings).toEqual([]);
   });
 });
