@@ -11,7 +11,7 @@ const near = (a: number, b: number, eps = 0.5) => Math.abs(a - b) < eps;
 
 export function atticRoofWallFaces(a: Attic, roof: AtticRoofGrid): AtticWallFace[] {
   // krawędzie przy ścianach pogrupowane po prostej (kierunek + odległość od początku układu)
-  const groups = new Map<string, { dir: P2; segs: { x0: number; x1: number; z0: number; z1: number }[] }>();
+  const groups = new Map<string, { dir: P2; off: number; segs: { x0: number; x1: number; z0: number; z1: number; inward: P2 }[] }>();
   for (const f of roof.roof.faces)
     for (const e of f.edges) {
       if (e.kind !== 'wall') continue;
@@ -28,12 +28,17 @@ export function atticRoofWallFaces(a: Attic, roof: AtticRoofGrid): AtticWallFace
       }
       const off = -dy * e.p.u + dx * e.p.v;
       const key = `${dx.toFixed(3)}|${dy.toFixed(3)}|${Math.round(off)}`;
-      const g = groups.get(key) ?? groups.set(key, { dir: { u: dx, v: dy }, segs: [] }).get(key)!;
+      const g = groups.get(key) ?? groups.set(key, { dir: { u: dx, v: dy }, off, segs: [] }).get(key)!;
+      // wnętrze poddasza: po stronie płaszczyzny (środek kawałka, przy którym leży krawędź)
+      const pc = f.pieces.find((x) => x.some((q) => Math.hypot(q.u - e.p.u, q.v - e.p.v) < 1)) ?? f.pieces[0];
+      const cu = pc.reduce((t, q) => t + q.u, 0) / pc.length - e.p.u;
+      const cv = pc.reduce((t, q) => t + q.v, 0) / pc.length - e.p.v;
+      const inward = -dy * cu + dx * cv >= 0 ? { u: -dy, v: dx } : { u: dy, v: -dx };
       const xp = dx * e.p.u + dy * e.p.v;
       const xq = dx * e.q.u + dy * e.q.v;
       const zp = Math.max(0, zAt(f.plane, e.p));
       const zq = Math.max(0, zAt(f.plane, e.q));
-      g.segs.push(xp <= xq ? { x0: xp, x1: xq, z0: zp, z1: zq } : { x0: xq, x1: xp, z0: zq, z1: zp });
+      g.segs.push(xp <= xq ? { x0: xp, x1: xq, z0: zp, z1: zq, inward } : { x0: xq, x1: xp, z0: zq, z1: zp, inward });
     }
 
   const out: AtticWallFace[] = [];
@@ -54,6 +59,7 @@ export function atticRoofWallFaces(a: Attic, roof: AtticRoofGrid): AtticWallFace
       const flat = run.every((s) => near(s.z0, s.z1, 1) && near(s.z0, run[0].z0, 1));
       const H = Math.max(...run.flatMap((s) => [s.z0, s.z1]));
       if (H < 5) continue;
+      const place = { o: { u: g.dir.u * x0 - g.dir.v * g.off, v: g.dir.v * x0 + g.dir.u * g.off }, dir: g.dir, inward: run[0].inward };
       if (flat) {
         if (!a.kneeLining) continue;
         out.push({
@@ -69,6 +75,7 @@ export function atticRoofWallFaces(a: Attic, roof: AtticRoofGrid): AtticWallFace
           width: W,
           height: H,
           lining: a.kneeLining,
+          place,
         });
       } else {
         if (!a.gableLining) continue;
@@ -81,7 +88,7 @@ export function atticRoofWallFaces(a: Attic, roof: AtticRoofGrid): AtticWallFace
         for (const p of [...chain].reverse()) if (!(p.z < 0.5 && (near(p.x, 0) || near(p.x, W)))) poly.push(p);
         const dedup = poly.filter((p, i) => i === 0 || !near(p.x, poly[i - 1].x) || !near(p.z, poly[i - 1].z));
         gables++;
-        out.push({ id: 'gable', label: `Ściana szczytowa ${gables}`, count: 1, poly: dedup, width: W, height: H, lining: a.gableLining });
+        out.push({ id: 'gable', label: `Ściana szczytowa ${gables}`, count: 1, poly: dedup, width: W, height: H, lining: a.gableLining, place });
       }
     }
   }

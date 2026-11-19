@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { calculateProject, ceilingGrid } from '../calc/materials';
 import { atticRequirement } from '../calc/atticMaterials';
-import { createAttic, createCeiling, createOpening, createProject, createWall, quickAtticProject, sampleProject, uid } from '../model/factory';
+import { createAttic, createCeiling, createLining, createOpening, createProject, createWall, quickAtticProject, sampleProject, uid } from '../model/factory';
 import type { Project } from '../model/types';
 import { overlapArea, wallSection } from '../geometry/contacts';
-import { boardSheets, buildModel3D, subtractRects, type BoxPart, type PanelPart } from './model3d';
+import { boardSheets, buildModel3D, subtractRects, type BeamPart, type BoxPart, type FacePart, type PanelPart } from './model3d';
 
 function wall(lengthCm: number, heightCm = 260, angleDeg = 0): Project {
   const p = createProject();
@@ -277,5 +277,35 @@ describe('poddasze z narożnikami i koszami w 3D', () => {
     // obrót kalenicy o 90° przenosi całość
     const r = buildModel3D(quickAtticProject({ ...a, planRot: 90 }));
     expect(r.parts.length).toBe(m.parts.length);
+  });
+
+  it('ruszt krzyżowy przy narożnikach: nośne pod krokwiami kulawymi, wieszaki na nośnych', () => {
+    const a = createAttic({ ends: ['hip', 'gable'], systemId: 'SN-P-ESDK-1', boardId: 'SN-EXP12.5', woolUnder: 0 });
+    const r = atticRequirement(a);
+    const beams = buildModel3D(quickAtticProject(a)).parts.filter((x): x is BeamPart => x.type === 'beam' && x.layer === 'ceilingFrame');
+    const carriers = r.grid.roof!.faces.reduce((n, g) => n + (g.carriers?.length ?? 0), 0) + r.grid.roof!.lineProfiles.length;
+    expect(beams.filter((b) => b.mat === 'cdMain')).toHaveLength(carriers);
+    expect(beams.filter((b) => b.mat === 'cdSec')).toHaveLength(r.grid.roof!.faces.reduce((n, g) => n + g.cd.length, 0));
+    expect(beams.filter((b) => b.mat === 'hanger')).toHaveLength(r.hangers);
+  });
+
+  it('okładziny ścianek kolankowych i szczytu przy narożniku w 3D', () => {
+    const a = createAttic({ ends: ['hip', 'gable'], kneeLining: createLining(1, 'O-CD-1'), gableLining: createLining(1, 'O-CD-1') });
+    const r = atticRequirement(a);
+    const parts = buildModel3D(quickAtticProject(a)).parts;
+    const boards = parts.filter((x): x is FacePart => x.type === 'face' && x.layer === 'wallBoards');
+    const area = r.walls.reduce((s, w) => s + w.layers.reduce((t, l) => t + l.pieces.reduce((k, pc) => k + pc.area, 0), 0), 0) / 10000;
+    expect(boards.length).toBe(r.walls.reduce((s, w) => s + w.layers.reduce((t, l) => t + l.pieces.length, 0), 0));
+    expect(area).toBeGreaterThan(5);
+    expect(parts.filter((x) => x.type === 'beam' && x.layer === 'wallFrame' && x.mat === 'cdMain')).toHaveLength(r.walls.reduce((s, w) => s + w.studs.length, 0));
+    // płyty okładzin leżą w obrysie poddasza (0–L, 0–W) i nie wyżej niż kalenica
+    for (const b of boards)
+      for (const [x, y, z] of b.pts) {
+        expect(x).toBeGreaterThan(-0.01);
+        expect(x).toBeLessThan(a.length / 100 + 0.01);
+        expect(z).toBeGreaterThan(-0.01);
+        expect(z).toBeLessThan(a.width / 100 + 0.01);
+        expect(y).toBeLessThan(5.1);
+      }
   });
 });

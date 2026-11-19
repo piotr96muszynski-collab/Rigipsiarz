@@ -41,6 +41,8 @@ export interface AtticWallFace {
   /** Największa wysokość, cm */
   height: number;
   lining: Lining;
+  /** Dach z narożnikami / koszami: położenie ściany w rzucie poddasza (początek x = 0, kierunek x, normalna do wnętrza), cm */
+  place?: { o: { u: number; v: number }; dir: { u: number; v: number }; inward: { u: number; v: number } };
 }
 
 export interface AtticWallPiece {

@@ -2,13 +2,15 @@
 // odcinki rusztu, wieszaki, profile wzdłuż krokwi narożnych / koszowych, krokwie (kulawe, narożne,
 // koszowe) i ścianki kolankowe – z tej samej siatki co zestawienie i rysunki.
 
-import { boardById, ceilingSystemById } from '../catalog/rigips';
+import { boardById, ceilingSystemById, wallFrameDepth } from '../catalog/rigips';
 import type { AtticGrid, AtticRoofGrid } from '../calc/attic';
 import { atticToPlan } from '../calc/atticPlan';
 import { faceRafterSpans, faceToPlan, zAt, type P2, type RoofFace } from '../calc/atticRoof';
 import { layerBoards } from '../calc/ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierOn } from '../calc/vaporBarrier';
 import type { Attic, Point } from '../model/types';
+import { atticRoofWallFaces } from '../calc/atticRoofWalls';
+import { atticWallLayout } from '../calc/atticWalls';
 import type { Layer3D, MatKey, Part3D } from './model3d';
 
 type V3 = [number, number, number];
@@ -19,6 +21,7 @@ const VAPOR_T = 0.002;
 const JETKA_H = 0.14;
 
 export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid }, parts: Part3D[], origin: Point) {
+  const walls = atticRoofWallFaces(a, grid.roof).map(atticWallLayout);
   const sys = ceilingSystemById(a.systemId);
   const boards = layerBoards(sys, a.boardId).map((id) => ({ id, t: boardById(id).thickness / 1000 }));
   const tb = boards.reduce((t, b) => t + b.t, 0);
@@ -27,7 +30,15 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
   const timber = grid.profile.startsWith('LATA');
   const pH = grid.profileMm / 1000;
   const pW = timber ? (grid.profile === 'LATA5030' ? 0.05 : 0.06) : grid.profile === 'KAPELUSZ' ? 0.08 : CD_W;
-  const pMat: MatKey = timber ? 'timber' : 'cdMain';
+  const carrier = grid.carrier;
+  const between = grid.frame.mount === 'between';
+  // ruszt krzyżowy: profile pod płyty to „montażowe”, nośne biegną pod krokwiami
+  const pMat: MatKey = timber ? 'timber' : carrier ? 'cdSec' : 'cdMain';
+  const cH = (carrier?.mm ?? 0) / 1000;
+  const cW = carrier?.product === 'MFCP44' ? 0.03 : CD_W;
+  // więźba widoczna: elementy wzdłuż krokwi z profilu przyściennego albo profilu rusztu
+  const sMat: MatKey = grid.frame.edge ? 'ud' : pMat;
+  const sW = grid.frame.edge ? UD_W : pW;
   const rw = a.rafterWidth / 100;
   const rh = a.rafterHeight / 100;
   const owner = a.id;
@@ -60,13 +71,13 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
     // płyty od lica w stronę rusztu, potem folia
     let h = 0;
     for (const b of [...boards].reverse()) {
-      for (const pc of fc.pieces) parts.push({ type: 'face', layer: 'ceilingBoards', mat: `board:${b.id}`, pts: pc.map((p) => on(fc, p, h)), normal: n, thickness: b.t, owner });
+      for (const pc of g.boardPieces ?? fc.pieces) parts.push({ type: 'face', layer: 'ceilingBoards', mat: `board:${b.id}`, pts: pc.map((p) => on(fc, p, h)), normal: n, thickness: b.t, owner });
       h += b.t;
     }
-    if (vapor) for (const pc of fc.pieces) parts.push({ type: 'face', layer: 'ceilingFrame', mat: 'vapor', pts: pc.map((p) => on(fc, p, tb)), normal: n, thickness: VAPOR_T, owner });
+    if (vapor) for (const pc of g.boardPieces ?? fc.pieces) parts.push({ type: 'face', layer: 'ceilingFrame', mat: 'vapor', pts: pc.map((p) => on(fc, p, tb)), normal: n, thickness: VAPOR_T, owner });
     for (const l of g.cd) {
       beam('ceilingFrame', pMat, on(fc, faceToPlan(fc, l.t0, l.s), tb + pH / 2), on(fc, faceToPlan(fc, l.t1, l.s), tb + pH / 2), n, pW, pH);
-      if (grid.frame.hanger) {
+      if (grid.frame.hanger && !carrier) {
         const hh = Math.max(0.03, depth - tb + 0.04);
         for (const t of l.fix) {
           const p = faceToPlan(fc, t + a.rafterWidth / 2 + 0.2, l.s);
@@ -75,8 +86,21 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
         }
       }
     }
+    // ruszt krzyżowy: profile nośne pod krokwiami kulawymi, nad profilami pod płyty; wieszaki na nośnych przy boku krokwi
+    for (const c of g.carriers ?? []) {
+      beam('ceilingFrame', 'cdMain', on(fc, faceToPlan(fc, c.t, c.s0), tb + pH + cH / 2), on(fc, faceToPlan(fc, c.t, c.s1), tb + pH + cH / 2), n, cW, cH);
+      if (!grid.frame.hanger) continue;
+      const hh = Math.max(0.03, depth - tb - pH + 0.04);
+      const across = unit(sub(on(fc, faceToPlan(fc, c.t, c.s0 + 1), 0), on(fc, faceToPlan(fc, c.t, c.s0), 0)));
+      for (const s of c.fix) {
+        const p = faceToPlan(fc, c.t + a.rafterWidth / 2 + 0.2, s);
+        beam('ceilingFrame', 'hanger', on(fc, p, tb + pH), on(fc, p, tb + pH + hh), across, ES_W, 0.004);
+      }
+    }
+    // więźba widoczna: elementy wzdłuż boków krokwi
+    for (const sd of g.sides ?? []) beam('ceilingFrame', sMat, on(fc, faceToPlan(fc, sd.t, sd.s0), tb + pH / 2), on(fc, faceToPlan(fc, sd.t, sd.s1), tb + pH / 2), n, sW, pH);
     // profil przyścienny na ścianach
-    if (grid.frame.edge)
+    if (grid.frame.edge && !between)
       for (const e of fc.edges) if (e.kind === 'wall') beam('ceilingFrame', 'ud', on(fc, e.p, tb + pH / 2), on(fc, e.q, tb + pH / 2), n, UD_W, pH);
   }
 
@@ -90,10 +114,21 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
     const L = Math.hypot(dir.u, dir.v) || 1;
     let side = { u: -dir.v / L, v: dir.u / L };
     if ((c.u - lp.line.p.u) * side.u + (c.v - lp.line.p.v) * side.v < 0) side = { u: -side.u, v: -side.v };
-    const k = (pW / 2 + 0.01) * 100;
+    // ruszt krzyżowy: profil nośny nad profilami pod płyty; więźba widoczna: element przy boku krokwi narożnej
+    const w = between ? sW : carrier ? cW : pW;
+    const k = (between ? rw / 2 + sW / 2 : w / 2 + 0.01) * 100;
     const p: P2 = { u: lp.line.p.u + side.u * k, v: lp.line.p.v + side.v * k };
     const q: P2 = { u: lp.line.q.u + side.u * k, v: lp.line.q.v + side.v * k };
-    beam('ceilingFrame', pMat, on(fc, p, tb + pH / 2), on(fc, q, tb + pH / 2), normalOf(fc), pW, pH);
+    const off = carrier ? tb + pH + cH / 2 : tb + pH / 2;
+    beam('ceilingFrame', between ? sMat : carrier ? 'cdMain' : pMat, on(fc, p, off), on(fc, q, off), normalOf(fc), w, carrier ? cH : pH);
+    if (carrier && grid.frame.hanger) {
+      const hh = Math.max(0.03, depth - tb - pH + 0.04);
+      const ax = unit(sub(on(fc, q, 0), on(fc, p, 0)));
+      for (const d of lp.fix) {
+        const x = { u: p.u + ((q.u - p.u) * d) / lp.line.len, v: p.v + ((q.v - p.v) * d) / lp.line.len };
+        beam('ceilingFrame', 'hanger', on(fc, x, tb + pH), on(fc, x, tb + pH + hh), ax, ES_W, 0.004);
+      }
+    }
   }
 
   // konstrukcja: krokwie (kulawe) i jętki na płaszczyznach spodu konstrukcji, krokwie narożne i koszowe
@@ -112,6 +147,25 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
     const z1 = zAt(f0.plane, l.q);
     beam('existing', 'timber', addv(M(l.p, z0), up, rh / 2), addv(M(l.q, z1), up, rh / 2), up, rw * 1.2, rh * 1.15);
   }
+  // okładziny ścianek kolankowych i ścian szczytowych (także przy dobudówkach): płyty docięte do skosu, profile pionowe
+  for (const lay of walls) {
+    const pl = lay.face.place;
+    if (!pl) continue;
+    const d = wallFrameDepth(lay.sys) / 1000;
+    const sH = lay.sys.frame === 'hat-lining' ? 0.015 : 0.027;
+    const lt = lay.layers.map((l) => boardById(l.boardId).thickness / 1000);
+    const inward = unit(sub(M({ u: pl.inward.u * 100, v: pl.inward.v * 100 }, 0), M({ u: 0, v: 0 }, 0)));
+    /** Punkt ściany (x wzdłuż, z w górę, cm) odsunięty o `off` m do wnętrza */
+    const W = (x: number, z: number, off: number): V3 => addv(M({ u: pl.o.u + pl.dir.u * x, v: pl.o.v + pl.dir.v * x }, z), inward, off);
+    for (const l of lay.layers) {
+      const t = lt[l.layer];
+      const off = d + lt.slice(0, l.layer).reduce((v, x) => v + x, 0);
+      for (const pc of l.pieces) parts.push({ type: 'face', layer: 'wallBoards', mat: `board:${l.boardId}`, pts: pc.outline.map((q) => W(q.x, q.z, off)), normal: inward, thickness: t, owner });
+    }
+    for (const sd of lay.studs) beam('wallFrame', 'cdMain', W(sd.x, 0, d - sH / 2), W(sd.x, sd.len, d - sH / 2), inward, CD_W, sH);
+    for (const [p, q] of lay.tracks) beam('wallFrame', 'ud', W(p.x, p.z, d - sH / 2), W(q.x, q.z, d - sH / 2), inward, UD_W, sH);
+  }
+
   // ścianki kolankowe (mur) pod poziomymi krawędziami przy ścianach
   const wallT = 0.25;
   for (const fc of st.faces) {

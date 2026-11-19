@@ -81,9 +81,9 @@ export function AtticEditor({ attic, edit, result }: Props) {
   const hangers =
     result?.hangers ??
     (roof
-      ? roof.faces.reduce((n, g) => n + g.cd.reduce((k, l) => k + l.fix.length, 0), 0) + roof.lineProfiles.reduce((n, l) => n + l.fix.length, 0)
+      ? roof.faces.reduce((n, g) => n + (g.carriers ? g.carriers.reduce((k, c) => k + c.fix.length, 0) : g.cd.reduce((k, l) => k + l.fix.length, 0)), 0) + roof.lineProfiles.reduce((n, l) => n + l.fix.length, 0)
       : grid.surfaces.reduce((n, g) => n + (g.fixS.length || g.cd.length) * g.hangerU.length, 0));
-  const area = roof ? roof.faces.reduce((s, g) => s + g.face.areaM2, 0) : grid.surfaces.reduce((s, g) => s + g.areaM2, 0);
+  const area = roof ? roof.faces.reduce((s, g) => s + g.boardAreaM2, 0) : grid.surfaces.reduce((s, g) => s + g.areaM2, 0);
   const cdCount = roof ? roof.faces.reduce((n, g) => n + g.cd.length, 0) : grid.surfaces.reduce((n, g) => n + g.cd.length, 0);
   const ends = attic.ends ?? ['gable', 'gable'];
   const setEnd = (i: 0 | 1, v: AtticEnd) =>

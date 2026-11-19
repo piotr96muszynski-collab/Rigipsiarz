@@ -92,7 +92,14 @@ const faceAt = (fc: RoofFace, t: number, s: number): P2 => {
  * krawędzi. Krokwie (kulawe), odcinki rusztu z długościami, mocowania, profile wzdłuż narożników i koszy.
  */
 export function AtticRoofFaceDrawing({ attic, grid, index, title }: { attic: Attic; grid: AtticGrid & { roof: AtticRoofGrid }; index: number; title: string }) {
-  const { face, cd } = grid.roof.faces[index];
+  const g = grid.roof.faces[index];
+  const { face, cd } = g;
+  const carrier = grid.carrier;
+  const between = grid.frame.mount === 'between';
+  const carriers = g.carriers ?? [];
+  const sides = g.sides ?? [];
+  // więźba widoczna: długość opisana tylko przy poprzeczkach skróconych (przy narożniku, koszu, ścianie)
+  const bayW = attic.rafterSpacing - attic.rafterWidth;
   const W = face.t1 - face.t0;
   const run = face.run;
   const f = clamp(Math.max(W, run) / 26, 8, 30);
@@ -108,7 +115,11 @@ export function AtticRoofFaceDrawing({ attic, grid, index, title }: { attic: Att
   const profName = PRODUCTS[grid.profile].name.replace(/^Profil (Rigips )?/, '');
   const edgeName = fr.edge ? PRODUCTS[fr.edge].name.replace(/^Profil (Rigips )?/, '').replace(/ \(.*$/, '') : '';
   const lines = grid.roof.lineProfiles.filter((lp) => lp.face === grid.roof.roof.faces.indexOf(face));
-  const fixes = cd.reduce((s, l) => s + l.fix.length, 0);
+  // ruszt krzyżowy: wieszaki na profilach nośnych, na profilach pod płyty – skrzyżowania z nośnymi
+  const fixes = carrier ? carriers.reduce((s, c) => s + c.fix.length, 0) : cd.reduce((s, l) => s + l.fix.length, 0);
+  const crossings = carrier ? cd.reduce((s, l) => s + l.fix.length, 0) : 0;
+  const lineColor = carrier ? C.secondary : C.main;
+  const carrierName = carrier ? PRODUCTS[carrier.product].name.replace(/^Profil (Rigips )?/, '') : '';
   const lineFixes = lines.reduce((s, l) => s + l.fix.length, 0);
   const hasCorner = face.edges.some((e) => e.kind === 'hip' || e.kind === 'valley');
   return (
@@ -124,19 +135,37 @@ export function AtticRoofFaceDrawing({ attic, grid, index, title }: { attic: Att
         {face.pieces.map((pc, j) => (
           <polygon key={j} points={ptsStr(pc.map(L))} fill="#f7f8fa" stroke="none" />
         ))}
+        {g.boardPieces?.map((pc, j) => <polygon key={`b${j}`} points={ptsStr(pc.map(L))} fill="#fff" stroke={INK} strokeWidth={0.5} strokeOpacity={0.4} {...nss} />)}
         <g clipPath={`url(#rf-${attic.id}-${index})`}>
           {faceRafterSpans(face).map((sp) => (
             <rect key={sp.t} x={X(sp.t) - attic.rafterWidth / 2} y={Y(sp.s1)} width={attic.rafterWidth} height={sp.s1 - sp.s0} fill={RAFTER} stroke={RAFTER_EDGE} strokeWidth={0.6} {...nss} />
           ))}
         </g>
+        {/* ruszt krzyżowy: profile nośne pod krokwiami kulawymi z wieszakami */}
+        {carriers.map((c) => (
+          <g key={`c${c.t}`}>
+            <line x1={X(c.t)} y1={Y(c.s0)} x2={X(c.t)} y2={Y(c.s1)} stroke={C.main} strokeWidth={4} {...nss} />
+            {c.fix.map((s) => (
+              <circle key={s} cx={X(c.t)} cy={Y(s)} r={f * 0.3} fill={C.hanger} />
+            ))}
+          </g>
+        ))}
+        {/* więźba widoczna: elementy wzdłuż boków krokwi */}
+        {sides.map((sd, i) => (
+          <line key={`s${i}`} x1={X(sd.t)} y1={Y(sd.s0)} x2={X(sd.t)} y2={Y(sd.s1)} stroke={C.ud} strokeWidth={2} {...nss} />
+        ))}
         {cd.map((l, i) => (
           <g key={i}>
-            <line x1={X(l.t0)} y1={Y(l.s)} x2={X(l.t1)} y2={Y(l.s)} stroke={C.main} strokeWidth={3} {...nss} />
-            {l.fix.map((t) => (
-              <circle key={t} cx={X(t)} cy={Y(l.s)} r={f * 0.3} fill={C.hanger} />
-            ))}
-            {(l.end0 === 'hip' || l.end0 === 'valley' || l.end1 === 'hip' || l.end1 === 'valley') && (
-              <text x={(X(l.t0) + X(l.t1)) / 2} y={Y(l.s) - f * 0.35} fontSize={f * 0.6} textAnchor="middle" fill={C.main}>
+            <line x1={X(l.t0)} y1={Y(l.s)} x2={X(l.t1)} y2={Y(l.s)} stroke={lineColor} strokeWidth={3} {...nss} />
+            {l.fix.map((t) =>
+              carrier ? (
+                <rect key={t} x={X(t) - f * 0.25} y={Y(l.s) - f * 0.25} width={f * 0.5} height={f * 0.5} fill="none" stroke={INK} strokeWidth={1} {...nss} />
+              ) : (
+                <circle key={t} cx={X(t)} cy={Y(l.s)} r={f * 0.3} fill={C.hanger} />
+              ),
+            )}
+            {(between ? Math.abs(l.t1 - l.t0 - bayW) > 1 : l.end0 === 'hip' || l.end0 === 'valley' || l.end1 === 'hip' || l.end1 === 'valley') && (
+              <text x={(X(l.t0) + X(l.t1)) / 2} y={Y(l.s) - f * 0.35} fontSize={f * 0.6} textAnchor="middle" fill={lineColor}>
                 {cm(l.t1 - l.t0)}
               </text>
             )}
@@ -164,12 +193,21 @@ export function AtticRoofFaceDrawing({ attic, grid, index, title }: { attic: Att
       </Paper>
       <Legend
         items={[
-          { color: RAFTER, label: `krokwie${hasCorner ? ' (kulawe – skrócone do narożnika / kosza)' : ''} co ${cm(attic.rafterSpacing)} cm` },
-          { color: C.main, label: `${profName} w poprzek krokwi – ${cd.length} odc., razem ${cm(cd.reduce((s, l) => s + l.t1 - l.t0, 0))} cm` },
-          { color: C.hanger, label: `${fr.hanger ? fr.hangerLabel : 'mocowanie do krokwi'} – ${fixes + lineFixes} szt.${lineFixes ? ` (w tym ${lineFixes} na krokwi narożnej / koszowej)` : ''}` },
-          ...(lines.some((l) => l.line.kind === 'hip') ? [{ color: ROOF_LINE_COLOR.hip, label: `narożnik dachu: ${profName} wzdłuż krokwi narożnej, końce profili przykręcone` }] : []),
-          ...(lines.some((l) => l.line.kind === 'valley') ? [{ color: ROOF_LINE_COLOR.valley, label: `kosz: ${profName} wzdłuż krokwi koszowej, końce profili przykręcone` }] : []),
-          ...(fr.edge && face.edges.some((e) => e.kind === 'wall') ? [{ color: C.ud, label: `${edgeName} na ścianach` }] : []),
+          { color: RAFTER, label: `krokwie${hasCorner ? ' (kulawe – skrócone do narożnika / kosza)' : ''} co ${cm(attic.rafterSpacing)} cm${between ? ', widoczne pod płytami' : ''}` },
+          ...(carrier ? [{ color: C.main, label: `${carrierName} pod każdą krokwią – ${carriers.length} odc., razem ${cm(carriers.reduce((s, c) => s + c.s1 - c.s0, 0))} cm` }] : []),
+          {
+            color: lineColor,
+            label: between
+              ? `${profName} – poprzeczki w polach między krokwiami, ${cd.length} szt., razem ${cm(cd.reduce((s, l) => s + l.t1 - l.t0, 0))} cm, przykręcone na końcach`
+              : `${profName} w poprzek krokwi – ${cd.length} odc., razem ${cm(cd.reduce((s, l) => s + l.t1 - l.t0, 0))} cm`,
+          },
+          ...(between
+            ? [{ color: C.ud, label: `${edgeName || profName} wzdłuż boków krokwi${hasCorner ? ', także krokwi narożnej / koszowej' : ''} – ${sides.length + lines.length} odc.` }]
+            : [{ color: C.hanger, label: `${fr.hanger ? fr.hangerLabel : 'mocowanie do krokwi'} – ${fixes + lineFixes} szt.${lineFixes ? ` (w tym ${lineFixes} na krokwi narożnej / koszowej)` : ''}` }]),
+          ...(carrier ? [{ color: INK, label: `${carrier.cross ? (carrier.crossLabel ?? 'łącznik krzyżowy') : 'skręcenie profili'} na skrzyżowaniach – ${crossings} szt. (+ końce przy narożniku / koszu)` }] : []),
+          ...(lines.some((l) => l.line.kind === 'hip') && !between ? [{ color: ROOF_LINE_COLOR.hip, label: `narożnik dachu: ${carrier ? carrierName : profName} wzdłuż krokwi narożnej, końce profili ${carrier ? 'połączone' : 'przykręcone'}` }] : []),
+          ...(lines.some((l) => l.line.kind === 'valley') && !between ? [{ color: ROOF_LINE_COLOR.valley, label: `kosz: ${carrier ? carrierName : profName} wzdłuż krokwi koszowej, końce profili ${carrier ? 'połączone' : 'przykręcone'}` }] : []),
+          ...(fr.edge && !between && face.edges.some((e) => e.kind === 'wall') ? [{ color: C.ud, label: `${edgeName} na ścianach` }] : []),
         ]}
       />
     </figure>
