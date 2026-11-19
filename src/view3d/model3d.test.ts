@@ -4,6 +4,9 @@ import { atticRequirement } from '../calc/atticMaterials';
 import { createAttic, createCeiling, createLining, createOpening, createProject, createWall, quickAtticProject, sampleProject, uid } from '../model/factory';
 import type { Project } from '../model/types';
 import { overlapArea, wallSection } from '../geometry/contacts';
+import { atticGrid } from '../calc/attic';
+import { faceContains, zAt } from '../calc/atticRoof';
+import { ceilingSystemById } from '../catalog/rigips';
 import { boardSheets, buildModel3D, subtractRects, type BeamPart, type BoxPart, type FacePart, type PanelPart } from './model3d';
 
 function wall(lengthCm: number, heightCm = 260, angleDeg = 0): Project {
@@ -307,5 +310,59 @@ describe('poddasze z narożnikami i koszami w 3D', () => {
         expect(z).toBeLessThan(a.width / 100 + 0.01);
         expect(y).toBeLessThan(5.1);
       }
+  });
+
+  it('płyty z rozkładu na połaciach i okna dachowe w połaci narożnej', () => {
+    const a = createAttic({ width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 45, collarHeight: undefined, ends: ['hip', 'hip'] });
+    const base = buildModel3D(quickAtticProject(a)).parts;
+    const r0 = atticRequirement(a);
+    const pieces = r0.boards.roof!.faces.flatMap((f) => f.layers.flatMap((l) => l.pieces.flatMap((p) => p.polys)));
+    const boardFaces = (list: typeof base) => list.filter((x) => x.type === 'face' && x.layer === 'ceilingBoards' && x.mat.startsWith('board:'));
+    expect(boardFaces(base)).toHaveLength(pieces.length);
+    const w = { ...a, windows: [{ id: 'w', side: 'left' as const, face: 'hip0', width: 78, height: 118, u: 355, sill: 160 }] };
+    const parts = buildModel3D(quickAtticProject(w)).parts;
+    expect(parts.filter((x) => x.mat === 'glass')).toHaveLength(1);
+    // 4 glify i elementy płyt z wycięciem (kilka wypukłych części)
+    expect(boardFaces(parts).length).toBeGreaterThan(boardFaces(base).length + 4);
+  });
+});
+
+describe('dach kopertowy z dobudówką (T) w 3D', () => {
+  const a = createAttic({ width: 800, length: 1000, kneeLeft: 100, kneeRight: 100, pitch: 40, collarHeight: 400, ends: ['hip', 'gable'], wings: [{ id: 'w', side: 'left', at: 500, width: 480, length: 300, end: 'gable' }] });
+  const m = buildModel3D(quickAtticProject(a));
+  const faces = m.parts.filter((x): x is FacePart => x.type === 'face');
+  it('folia jednym obrysem na płaszczyznę – bez fałszywych załamań z kawałków; płyty z rozkładu', () => {
+    const foil = faces.filter((x) => x.mat === 'vapor');
+    // 6 płaszczyzn: skosy, połać narożna, sufit pod jętkami, 2 skosy dobudówki
+    expect(foil).toHaveLength(6);
+    expect(foil.find((b) => b.pts.length === 7)).toBeDefined();
+    // płyty: elementy rozkładu (pasy arkuszy przycięte do połaci), pole jak zabudowa
+    const r = atticRequirement(a);
+    const polys = r.boards.roof!.faces.flatMap((f) => f.layers.flatMap((l) => l.pieces.flatMap((p) => p.polys)));
+    expect(faces.filter((x) => x.layer === 'ceilingBoards')).toHaveLength(polys.length);
+  });
+  it('profile przy koszach od strony połaci, nie w pomieszczeniu', () => {
+    // profil wzdłuż kosza po stronie skosu głównego leży nad koszem (v > u − 260), nie pod dobudówką
+    const beams = m.parts.filter((x): x is BeamPart => x.type === 'beam' && x.layer === 'ceilingFrame' && x.mat === 'cdMain');
+    const along = beams.filter((b) => {
+      const du = b.b[0] - b.a[0];
+      const dv = b.b[2] - b.a[2];
+      return Math.abs(Math.abs(du) - Math.abs(dv)) < 0.05 && Math.hypot(du, dv) > 2;
+    });
+    // 2 kosze + 2 narożniki, po 2 profile
+    expect(along).toHaveLength(8);
+    const roof = atticGrid(a, ceilingSystemById(a.systemId)).roof!.roof;
+    for (const b of along) {
+      const mid = { u: ((b.a[0] + b.b[0]) / 2) * 100, v: ((b.a[2] + b.b[2]) / 2) * 100 };
+      const z = ((b.a[1] + b.b[1]) / 2) * 100;
+      // profil leży na płaszczyźnie, która w tym miejscu istnieje, tuż za licem płyt (nie pod dobudówką w pomieszczeniu)
+      expect(roof.faces.some((f) => faceContains(f, mid) && z - zAt(f.plane, mid) > 0 && z - zAt(f.plane, mid) < 8)).toBe(true);
+    }
+  });
+  it('ściany szczytowe (mur) pod końcem dobudówki i pod szczytem głównym', () => {
+    const wall = faces.filter((x) => x.layer === 'existing' && x.mat === 'masonry');
+    // koniec dobudówki: v = −3 m, szczyt: u = 10 m – wierzchołki wyżej niż ścianka kolankowa
+    expect(wall.some((w) => w.pts.every((p) => Math.abs(p[2] + 3) < 0.01) && Math.max(...w.pts.map((p) => p[1])) > 2.9)).toBe(true);
+    expect(wall.some((w) => w.pts.every((p) => Math.abs(p[0] - 10) < 0.01) && Math.max(...w.pts.map((p) => p[1])) > 3.9)).toBe(true);
   });
 });

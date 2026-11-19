@@ -5,7 +5,9 @@
 import { boardById, ceilingSystemById, wallFrameDepth } from '../catalog/rigips';
 import type { AtticGrid, AtticRoofGrid } from '../calc/attic';
 import { atticToPlan } from '../calc/atticPlan';
-import { faceRafterSpans, faceToPlan, zAt, type P2, type RoofFace } from '../calc/atticRoof';
+import { faceOutlines, faceRafterSpans, faceToPlan, polyArea, sideTowardFace, zAt, type P2, type RoofFace } from '../calc/atticRoof';
+import { roofBoardLayout } from '../calc/atticRoofBoards';
+import { atticWindowGeometry, roofCdSegments, roofWindowHoles } from '../calc/atticWindows';
 import { layerBoards } from '../calc/ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierOn } from '../calc/vaporBarrier';
 import type { Attic, Point } from '../model/types';
@@ -65,18 +67,29 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
     parts.push({ type: 'beam', layer, mat, a: x, b: y, up, w, h, owner });
   };
 
-  for (const g of grid.roof.faces) {
+  // okna dachowe i rozkład płyt (ten sam co na rysunkach i liście zakupów)
+  const wins = atticWindowGeometry(a, grid).list;
+  const layout = roofBoardLayout(a, sys, grid, roofWindowHoles(wins, grid.roof));
+  const onTS = (fc: RoofFace, t: number, s: number, off: number) => on(fc, faceToPlan(fc, t, s), off);
+
+  for (const [fi, g] of grid.roof.faces.entries()) {
     const fc = g.face;
     const n = normalOf(fc);
-    // płyty od lica w stronę rusztu, potem folia
-    let h = 0;
-    for (const b of [...boards].reverse()) {
-      for (const pc of g.boardPieces ?? fc.pieces) parts.push({ type: 'face', layer: 'ceilingBoards', mat: `board:${b.id}`, pts: pc.map((p) => on(fc, p, h)), normal: n, thickness: b.t, owner });
-      h += b.t;
+    // obrys płaszczyzny w całości (bez styków wypukłych kawałków, które w 3D wyglądały jak załamania)
+    const shapes = outlineShapes(fc);
+    // płyty z rozkładu: warstwa 0 przy ruszcie, ostatnia = lico; elementy przycięte do połaci i otworów
+    for (const l of layout.faces.find((x) => x.face === fi)?.layers ?? []) {
+      const t = boards[l.layer]?.t ?? 0.0125;
+      const h = boards.slice(l.layer + 1).reduce((v, b) => v + b.t, 0);
+      for (const pc of l.pieces)
+        for (const poly of pc.polys) parts.push({ type: 'face', layer: 'ceilingBoards', mat: `board:${l.boardId}`, pts: poly.map((q) => onTS(fc, q.t, q.s, h)), normal: n, thickness: t, owner });
     }
-    if (vapor) for (const pc of g.boardPieces ?? fc.pieces) parts.push({ type: 'face', layer: 'ceilingFrame', mat: 'vapor', pts: pc.map((p) => on(fc, p, tb)), normal: n, thickness: VAPOR_T, owner });
+    // folia: więźba widoczna – tylko w polach między krokwiami
+    if (vapor && g.boardPieces) for (const pc of g.boardPieces) parts.push({ type: 'face', layer: 'ceilingFrame', mat: 'vapor', pts: pc.map((p) => on(fc, p, tb)), normal: n, thickness: VAPOR_T, owner });
+    else if (vapor) for (const sh of shapes) parts.push({ type: 'face', layer: 'ceilingFrame', mat: 'vapor', pts: sh.outer.map((p) => on(fc, p, tb)), holes: sh.holes.map((l) => l.map((p) => on(fc, p, tb))), normal: n, thickness: VAPOR_T, owner });
     for (const l of g.cd) {
-      beam('ceilingFrame', pMat, on(fc, faceToPlan(fc, l.t0, l.s), tb + pH / 2), on(fc, faceToPlan(fc, l.t1, l.s), tb + pH / 2), n, pW, pH);
+      // linie przerwane oknami kończą się na obramowaniu otworu
+      for (const [t0, t1] of roofCdSegments(l, fi, wins)) beam('ceilingFrame', pMat, onTS(fc, t0, l.s, tb + pH / 2), onTS(fc, t1, l.s, tb + pH / 2), n, pW, pH);
       if (grid.frame.hanger && !carrier) {
         const hh = Math.max(0.03, depth - tb + 0.04);
         for (const t of l.fix) {
@@ -104,16 +117,41 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
       for (const e of fc.edges) if (e.kind === 'wall') beam('ceilingFrame', 'ud', on(fc, e.p, tb + pH / 2), on(fc, e.q, tb + pH / 2), n, UD_W, pH);
   }
 
+  // okna dachowe: ościeżnica z szybą w płaszczyźnie krokwi, glify (dolny pionowo, górny poziomo, boczne), obramowanie
+  const tR = boardById(a.boardId).thickness / 1000;
+  const cross3 = (x: V3, y: V3): V3 => [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]];
+  const quad = (pts: V3[], mat: MatKey, layer: Layer3D, t: number) => {
+    const nn = unit(cross3(sub(pts[1], pts[0]), sub(pts[3], pts[0])));
+    parts.push({ type: 'face', layer, mat, pts, normal: nn, thickness: t, owner });
+  };
+  for (const x of wins) {
+    if (x.face === undefined) continue;
+    const fc = grid.roof.faces[x.face].face;
+    const n = normalOf(fc);
+    const d = x.depth / 100;
+    const [f0, f1] = x.sFrame;
+    const wu0 = x.w.u - x.w.width / 2;
+    const wu1 = x.w.u + x.w.width / 2;
+    const P = (t: number, s: number, h: number) => onTS(fc, t, s, h);
+    parts.push({ type: 'face', layer: 'existing', mat: 'timber', pts: [P(wu0, f0, d), P(wu1, f0, d), P(wu1, f1, d), P(wu0, f1, d)], normal: n, thickness: 0.1, owner });
+    parts.push({ type: 'face', layer: 'existing', mat: 'glass', pts: [P(wu0 + 6, f0 + 6, d + 0.04), P(wu1 - 6, f0 + 6, d + 0.04), P(wu1 - 6, f1 - 6, d + 0.04), P(wu0 + 6, f1 - 6, d + 0.04)], normal: n, thickness: 0.01, owner });
+    const mat: MatKey = `board:${a.boardId}`;
+    // glif dolny (pionowo) i górny (poziomo): od krawędzi otworu na licu do ościeżnicy
+    quad([P(x.u0, x.s0, 0), P(x.u1, x.s0, 0), P(x.u1, f0, d), P(x.u0, f0, d)], mat, 'ceilingBoards', tR);
+    quad([P(x.u0, x.s1, 0), P(x.u1, x.s1, 0), P(x.u1, f1, d), P(x.u0, f1, d)], mat, 'ceilingBoards', tR);
+    // glify boczne
+    for (const t of [x.u0, x.u1]) quad([P(t, x.s0, 0), P(t, f0, d), P(t, f1, d), P(t, x.s1, 0)], mat, 'ceilingBoards', tR);
+    // obramowanie otworu z profili rusztu
+    for (const c of x.cross) beam('ceilingFrame', pMat, P(c.u0, c.s, tb + pH / 2), P(c.u1, c.s, tb + pH / 2), n, pW, pH);
+    for (const sd of x.side) beam('ceilingFrame', pMat, P(sd.u, sd.s0, tb + pH / 2), P(sd.u, sd.s1, tb + pH / 2), n, pW, pH);
+  }
+
   // profile wzdłuż krokwi narożnych i koszowych: odsunięte od linii w głąb płaszczyzny
   const faces = grid.roof.roof.faces;
   for (const lp of grid.roof.lineProfiles) {
     const fc = faces[lp.face];
-    const pts = fc.pieces.flat();
-    const c: P2 = { u: pts.reduce((s, p) => s + p.u, 0) / pts.length, v: pts.reduce((s, p) => s + p.v, 0) / pts.length };
-    const dir = { u: lp.line.q.u - lp.line.p.u, v: lp.line.q.v - lp.line.p.v };
-    const L = Math.hypot(dir.u, dir.v) || 1;
-    let side = { u: -dir.v / L, v: dir.u / L };
-    if ((c.u - lp.line.p.u) * side.u + (c.v - lp.line.p.v) * side.v < 0) side = { u: -side.u, v: -side.v };
+    // strona linii po płaszczyźnie `fc` – środek ciężkości wklęsłej połaci (np. przy koszach) bywa po drugiej stronie
+    const side = sideTowardFace(fc, lp.line.p, lp.line.q);
     // ruszt krzyżowy: profil nośny nad profilami pod płyty; więźba widoczna: element przy boku krokwi narożnej
     const w = between ? sW : carrier ? cW : pW;
     const k = (between ? rw / 2 + sW / 2 : w / 2 + 0.01) * 100;
@@ -166,18 +204,39 @@ export function buildAtticRoof(a: Attic, grid: AtticGrid & { roof: AtticRoofGrid
     for (const [p, q] of lay.tracks) beam('wallFrame', 'ud', W(p.x, p.z, d - sH / 2), W(q.x, q.z, d - sH / 2), inward, UD_W, sH);
   }
 
-  // ścianki kolankowe (mur) pod poziomymi krawędziami przy ścianach
+  // mur pod krawędziami przy ścianach: ścianki kolankowe (krawędź pozioma) i ściany szczytowe (pod skosami
+  // i sufitem pod jętkami) – ściany zamykają bryłę, w tym koniec dobudówki
   const wallT = 0.25;
   for (const fc of st.faces) {
-    if (fc.kind !== 'slope') continue;
     for (const e of fc.edges) {
       if (e.kind !== 'wall') continue;
       const zp = zAt(fc.plane, e.p);
       const zq = zAt(fc.plane, e.q);
-      if (zp < 1 || Math.abs(zp - zq) > 1) continue;
-      // na zewnątrz płaszczyzny: przeciwnie do kierunku spadku
-      const out: V3 = unit(sub(M({ u: e.p.u - fc.d.u, v: e.p.v - fc.d.v }, 0), M(e.p, 0)));
-      parts.push({ type: 'face', layer: 'existing', mat: 'masonry', pts: [M(e.p, 0), M(e.q, 0), M(e.q, zq), M(e.p, zp)], normal: out, thickness: wallT, owner });
+      if (zp < 1 && zq < 1) continue;
+      // na zewnątrz płaszczyzny
+      const s = sideTowardFace(fc, e.p, e.q);
+      const out: V3 = unit(sub(M({ u: e.p.u - s.u, v: e.p.v - s.v }, 0), M(e.p, 0)));
+      parts.push({ type: 'face', layer: 'existing', mat: 'masonry', pts: [M(e.p, 0), M(e.q, 0), M(e.q, Math.max(0, zq)), M(e.p, Math.max(0, zp))], normal: out, thickness: wallT, owner });
     }
   }
+}
+
+/** Obrys płaszczyzny jako wielokąty z otworami (otwór przypisany do obrysu, w którym leży) */
+function outlineShapes(fc: RoofFace): { outer: P2[]; holes: P2[][] }[] {
+  const loops = faceOutlines(fc);
+  const shapes = loops.filter((l) => polyArea(l) > 0).map((outer) => ({ outer, holes: [] as P2[][] }));
+  const inside = (poly: P2[], p: P2) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i];
+      const b = poly[j];
+      if (a.v > p.v !== b.v > p.v && p.u < ((b.u - a.u) * (p.v - a.v)) / (b.v - a.v) + a.u) c = !c;
+    }
+    return c;
+  };
+  for (const h of loops.filter((l) => polyArea(l) < 0)) {
+    const mid = { u: (h[0].u + h[1].u) / 2, v: (h[0].v + h[1].v) / 2 };
+    shapes.find((sh) => inside(sh.outer, mid))?.holes.push(h);
+  }
+  return shapes;
 }

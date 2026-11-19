@@ -1,7 +1,7 @@
 import { AtticBoardsDrawing, AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
 import { AtticWindowSection } from '../drawings/AtticWindowDrawing';
 import { windowLabel } from '../calc/atticWindows';
-import { AtticRoofFaceDrawing, AtticRoofPlanDrawing } from '../drawings/AtticRoofDrawing';
+import { AtticRoofBoardsDrawing, AtticRoofFaceDrawing, AtticRoofPlanDrawing } from '../drawings/AtticRoofDrawing';
 import { AtticWallBoardsDrawing, AtticWallFrameDrawing } from '../drawings/AtticWallDrawing';
 import { useMemo, useState } from 'react';
 import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc/layout';
@@ -250,7 +250,33 @@ export function DrawingsPanel({ project, calc }: Props) {
                     <h4>
                       {k + 1}. {g.face.label} – ruszt i punkty mocowania
                     </h4>
-                    <AtticRoofFaceDrawing attic={a} grid={{ ...r.grid, roof: r.grid.roof! }} index={k} title={`Poddasze ${i + 1} – ${g.face.label.toLowerCase()}`} />
+                    <AtticRoofFaceDrawing
+                      attic={a}
+                      grid={{ ...r.grid, roof: r.grid.roof! }}
+                      index={k}
+                      title={`Poddasze ${i + 1} – ${g.face.label.toLowerCase()}`}
+                      windows={r.windows.list}
+                      maxHanger={sys.hangerSpacing || 100}
+                    />
+                    {(() => {
+                      const layers = r.boards.roof?.faces.find((b) => b.face === k)?.layers ?? [];
+                      // lico na wierzchu: najpierw warstwa widoczna, potem kolejne w stronę rusztu
+                      return [...layers].reverse().map((l) => (
+                        <div key={l.layer}>
+                          <h4>
+                            {k + 1}. {g.face.label} – rozkład płyt{layers.length > 1 ? `, warstwa ${l.layer + 1}` : ''}
+                          </h4>
+                          <AtticRoofBoardsDrawing
+                            attic={a}
+                            grid={{ ...r.grid, roof: r.grid.roof! }}
+                            index={k}
+                            layer={l}
+                            layers={layers.length}
+                            title={`Poddasze ${i + 1} – ${g.face.label.toLowerCase()} – płyty${layers.length > 1 ? ` warstwa ${l.layer + 1}` : ''}`}
+                          />
+                        </div>
+                      ));
+                    })()}
                   </div>
                 ))}
               </>
