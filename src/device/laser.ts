@@ -1,15 +1,20 @@
-// Połączenie z dalmierzem Bosch przez Web Bluetooth. Pomiar odległości trafia do aktywnego pola wymiaru
+// Połączenie z dalmierzem Bosch lub Leica DISTO przez Web Bluetooth. Pomiar odległości trafia do aktywnego pola wymiaru
 // przez kanał z src/ui/measure.ts. Stan i dziennik surowych ramek są dostępne dla UI (useSyncExternalStore).
 
 import { pushMeasurement } from '../ui/measure';
 import { BOSCH_CHANNELS, BOSCH_NAME_PREFIXES, DIAG_CANDIDATE_SERVICES, distanceCm, ENABLE_SYNC, isBoschCharacteristic } from './bosch';
+import { isLeicaCharacteristic, isLeicaDistance, LEICA_COMMAND, LEICA_DISTANCE, LEICA_NAME_PREFIXES, LEICA_SERVICE, leicaCharName, leicaDistanceCm } from './leica';
 import { type BtCharacteristic, type BtDevice, getBluetooth, writeChar } from './webBluetooth';
+
+export type LaserBrand = 'bosch' | 'leica';
 
 export type LaserStatus = 'unsupported' | 'idle' | 'connecting' | 'connected' | 'reconnecting';
 
 export interface LaserState {
   status: LaserStatus;
   deviceName?: string;
+  /** rozpoznany protokół (w diagnostyce może go nie być) */
+  brand?: LaserBrand;
   error?: string;
   /** ostatni pomiar; inserted = trafił do pola wymiaru */
   last?: { cm: number; at: number; inserted: boolean };
@@ -22,11 +27,15 @@ export interface LogEntry {
   at: number;
   kind: 'in' | 'out' | 'info' | 'error';
   char?: string;
+  /** pełny UUID charakterystyki (do rozpoznania protokołu w diagnostyce) */
+  uuid?: string;
   bytes?: Uint8Array;
   text?: string;
 }
 
 const LOG_MAX = 300;
+const LEICA_NOTE =
+  'Leica DISTO: obsługa zbudowana z publicznego opisu protokołu, jeszcze niesprawdzona na sprzęcie. Wykonaj pomiar – w dzienniku powinna pojawić się „Leica odległość” z 4 bajtami.';
 let state: LaserState = { status: getBluetooth() ? 'idle' : 'unsupported', diagnostic: false };
 let log: LogEntry[] = [];
 let logId = 0;
@@ -61,14 +70,16 @@ export const laser = {
   },
 };
 
-const short = (uuid: string) => (isBoschCharacteristic(uuid) ? 'Bosch' : uuid.replace(/-0000-1000-8000-00805f9b34fb$/i, '').replace(/^0000/, '0x'));
+const short = (uuid: string) =>
+  isBoschCharacteristic(uuid) ? 'Bosch' : isLeicaCharacteristic(uuid) ? leicaCharName(uuid) : uuid.replace(/-0000-1000-8000-00805f9b34fb$/i, '').replace(/^0000/, '0x');
 
 function onValue(this: BtCharacteristic) {
   const v = this.value;
   if (!v) return;
   const bytes = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
-  addLog({ kind: 'in', char: short(this.uuid), bytes });
-  const cm = distanceCm(bytes);
+  addLog({ kind: 'in', char: short(this.uuid), uuid: this.uuid.toLowerCase(), bytes });
+  // Leica: czysty float z charakterystyki odległości; pozostałe dane próbujemy jako ramkę Bosch (ma nagłówek i CRC)
+  const cm = isLeicaCharacteristic(this.uuid) ? leicaDistanceCm(this.uuid, bytes) : distanceCm(bytes);
   if (cm === null) return;
   const inserted = pushMeasurement(cm);
   if (inserted) navigator.vibrate?.(30);
@@ -87,6 +98,7 @@ async function setup(dev: BtDevice, diagnostic: boolean) {
   const server = await dev.gatt!.connect();
   addLog({ kind: 'info', text: `Połączono z ${dev.name ?? 'urządzeniem'}` });
   commandChar = null;
+  let brand: LaserBrand | undefined;
 
   if (diagnostic) {
     const services = await server.getPrimaryServices().catch((e) => {
@@ -106,12 +118,19 @@ async function setup(dev: BtDevice, diagnostic: boolean) {
         }
         if (p.read) {
           const v = await c.readValue().catch(() => null);
-          if (v) addLog({ kind: 'in', char: `${short(c.uuid)} (odczyt)`, bytes: new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)) });
+          if (v) addLog({ kind: 'in', char: `${short(c.uuid)} (odczyt)`, uuid: c.uuid.toLowerCase(), bytes: new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)) });
         }
-        if (isBoschCharacteristic(c.uuid)) commandChar = c;
+        if (isBoschCharacteristic(c.uuid)) {
+          commandChar = c;
+          brand = 'bosch';
+        } else if (c.uuid.toLowerCase() === LEICA_COMMAND && brand !== 'bosch') {
+          commandChar = c;
+          brand = 'leica';
+        } else if (isLeicaDistance(c.uuid) && !brand) brand = 'leica';
       }
     }
-    if (!commandChar) addLog({ kind: 'error', text: 'Brak znanej usługi Bosch (00005301-… ani 02a6c0d0-…). Wpisz UUID usługi w „Dodatkowe usługi”.' });
+    if (!brand) addLog({ kind: 'error', text: 'Brak znanej usługi Bosch (00005301-… ani 02a6c0d0-…) ani Leica (3ab10100-…). Wpisz UUID usługi w „Dodatkowe usługi”.' });
+    if (brand === 'leica') addLog({ kind: 'info', text: LEICA_NOTE });
   } else {
     // Różne modele mają różne usługi BLE – próbujemy znanych po kolei
     for (const ch of BOSCH_CHANNELS) {
@@ -123,14 +142,27 @@ async function setup(dev: BtDevice, diagnostic: boolean) {
         /* następna usługa */
       }
     }
-    if (!commandChar) throw new Error('Dalmierz nie udostępnia znanej usługi pomiarów Bosch. Otwórz diagnostykę dalmierza i wyślij dziennik.');
-    addLog({ kind: 'info', text: `Usługa pomiarów ${short(commandChar.uuid)} (${commandChar.uuid})` });
-    commandChar.addEventListener('characteristicvaluechanged', onValue);
-    await commandChar.startNotifications();
+    if (commandChar) {
+      brand = 'bosch';
+      addLog({ kind: 'info', text: `Usługa pomiarów ${short(commandChar.uuid)} (${commandChar.uuid})` });
+      commandChar.addEventListener('characteristicvaluechanged', onValue);
+      await commandChar.startNotifications();
+    } else {
+      // Leica DISTO: odległość przychodzi sama po naciśnięciu przycisku, polecenia są opcjonalne
+      const svc = await server.getPrimaryService(LEICA_SERVICE).catch(() => null);
+      const dist = svc && (await svc.getCharacteristic(LEICA_DISTANCE).catch(() => null));
+      if (!svc || !dist) throw new Error('Dalmierz nie udostępnia znanej usługi pomiarów (Bosch ani Leica DISTO). Otwórz diagnostykę dalmierza i wyślij dziennik.');
+      brand = 'leica';
+      addLog({ kind: 'info', text: `Usługa pomiarów Leica DISTO (${LEICA_SERVICE})` });
+      addLog({ kind: 'info', text: LEICA_NOTE });
+      dist.addEventListener('characteristicvaluechanged', onValue);
+      await dist.startNotifications();
+      commandChar = await svc.getCharacteristic(LEICA_COMMAND).catch(() => null);
+    }
   }
 
-  if (commandChar) await send(ENABLE_SYNC);
-  set({ status: 'connected', deviceName: dev.name, error: undefined, diagnostic });
+  if (commandChar && brand === 'bosch') await send(ENABLE_SYNC);
+  set({ status: 'connected', deviceName: dev.name, brand, error: undefined, diagnostic });
 }
 
 function onDisconnected() {
@@ -171,11 +203,18 @@ export async function connectLaser(opts: { diagnostic?: boolean; extraServices?:
   const diagnostic = !!opts.diagnostic;
   set({ status: 'connecting', error: undefined });
   try {
-    const optionalServices = [...(diagnostic ? DIAG_CANDIDATE_SERVICES : [...BOSCH_CHANNELS.map((c) => c.service), 'battery_service', 'device_information']), ...(opts.extraServices ?? [])];
+    const optionalServices = [...(diagnostic ? DIAG_CANDIDATE_SERVICES : [...BOSCH_CHANNELS.map((c) => c.service), LEICA_SERVICE, 'battery_service', 'device_information']), ...(opts.extraServices ?? [])];
     const dev = await bt.requestDevice(
       diagnostic
         ? { acceptAllDevices: true, optionalServices }
-        : { filters: [...BOSCH_NAME_PREFIXES.map((namePrefix) => ({ namePrefix })), ...BOSCH_CHANNELS.map((c) => ({ services: [c.service] }))], optionalServices },
+        : {
+            filters: [
+              ...[...BOSCH_NAME_PREFIXES, ...LEICA_NAME_PREFIXES].map((namePrefix) => ({ namePrefix })),
+              ...BOSCH_CHANNELS.map((c) => ({ services: [c.service] })),
+              { services: [LEICA_SERVICE] },
+            ],
+            optionalServices,
+          },
     );
     if (device && device !== dev) disconnectLaser();
     manualDisconnect = false;
@@ -200,10 +239,10 @@ export function disconnectLaser() {
   device?.gatt?.disconnect();
   device = null;
   commandChar = null;
-  set({ status: getBluetooth() ? 'idle' : 'unsupported', deviceName: undefined });
+  set({ status: getBluetooth() ? 'idle' : 'unsupported', deviceName: undefined, brand: undefined });
 }
 
-/** Wysyła surowe bajty do charakterystyki Bosch (diagnostyka) */
+/** Wysyła surowe bajty do charakterystyki poleceń (Bosch albo Leica; diagnostyka) */
 export async function send(bytes: Uint8Array) {
   if (!commandChar) {
     addLog({ kind: 'error', text: 'Brak charakterystyki do zapisu' });

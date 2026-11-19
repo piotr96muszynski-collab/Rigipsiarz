@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { BurstDetector, parseMeterText } from './keyboardMeter';
 import { isActiveMeasureTarget, setActiveMeasureTarget } from './measure';
 
 interface Props {
@@ -14,7 +15,8 @@ interface Props {
 
 /**
  * Pole wymiaru. Przyjmuje „2,5”, „2.5 m”, „250” albo „250 cm”. W jednostce „m” wartości poniżej 20 traktuje jako metry.
- * Gdy pole ma fokus, może do niego trafić pomiar z dalmierza (zob. measure.ts).
+ * Gdy pole ma fokus, może do niego trafić pomiar z dalmierza Bluetooth (zob. measure.ts) albo wynik „wpisany” przez dalmierz
+ * udający klawiaturę – rozpoznany po tempie znaków i czytany jako metry/mm (zob. keyboardMeter.ts).
  */
 export function DimInput({ label, value, onChange, min = 1, max = 100000, unit = 'cm', hint }: Props) {
   const id = useId();
@@ -22,6 +24,9 @@ export function DimInput({ label, value, onChange, min = 1, max = 100000, unit =
   const [text, setText] = useState(show(value));
   const [error, setError] = useState<string | null>(null);
   const focused = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
+  const burst = useRef(new BurstDetector());
+  const burstTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const listener = useRef((cm: number) => {
     setText(show(cm));
     onChangeRef.current(cm);
@@ -34,6 +39,7 @@ export function DimInput({ label, value, onChange, min = 1, max = 100000, unit =
     const l = listener.current;
     return () => {
       if (isActiveMeasureTarget(l)) setActiveMeasureTarget(null);
+      clearTimeout(burstTimer.current);
     };
   }, []);
 
@@ -51,7 +57,14 @@ export function DimInput({ label, value, onChange, min = 1, max = 100000, unit =
   };
 
   const commit = (s: string) => {
-    const v = parse(s);
+    clearTimeout(burstTimer.current);
+    const fromMeter = burst.current.isBurst(s);
+    burst.current.reset();
+    const v = fromMeter ? parseMeterText(s) : parse(s);
+    if (fromMeter && v !== null) {
+      setText(show(v));
+      navigator.vibrate?.(30);
+    }
     if (v === null) {
       setError('Wpisz liczbę, np. 2,5 m albo 250');
       return;
@@ -70,11 +83,13 @@ export function DimInput({ label, value, onChange, min = 1, max = 100000, unit =
       <div className="input-unit">
         <input
           id={id}
+          ref={input}
           inputMode="decimal"
           value={text}
           onFocus={(e) => {
             focused.current = true;
             setActiveMeasureTarget(listener.current);
+            burst.current.reset();
             e.target.select();
           }}
           onBlur={() => {
@@ -82,14 +97,29 @@ export function DimInput({ label, value, onChange, min = 1, max = 100000, unit =
             commit(text);
           }}
           onChange={(e) => {
-            setText(e.target.value);
-            const v = parse(e.target.value);
+            const t = e.target.value;
+            setText(t);
+            clearTimeout(burstTimer.current);
+            if (burst.current.isBurst(t)) {
+              // wpis z dalmierza-klawiatury: bez Entera/Taba zatwierdzamy po chwili ciszy i zaznaczamy tekst,
+              // żeby kolejny pomiar zastąpił wartość zamiast się dopisać
+              burstTimer.current = setTimeout(() => {
+                if (!focused.current) return;
+                commit(t);
+                requestAnimationFrame(() => input.current?.select());
+              }, 300);
+              return;
+            }
+            const v = parse(t);
             if (v !== null && v >= min && v <= max) {
               setError(null);
               onChange(v);
             }
           }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          onKeyDown={(e) => {
+            if (e.key.length === 1) burst.current.key(e.timeStamp || performance.now());
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
           aria-invalid={!!error}
           aria-describedby={error || hint ? `${id}-msg` : undefined}
         />
