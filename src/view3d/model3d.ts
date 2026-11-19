@@ -8,6 +8,7 @@ import { pieceArea, pieceOutline, pointFixGrid, wallLayout } from '../calc/layou
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Ceiling, Point, Project, Wall } from '../model/types';
+import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 
 /** Warstwy, które można przełączać w widoku */
 export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
@@ -28,6 +29,8 @@ export interface BoxPart {
   rotY: number;
   /** Ścianka/sufit, z którego pochodzi element */
   owner: string;
+  /** Profil stalowy: w 3D rysowany przekrojem C/U zamiast pełnej bryły */
+  profile?: ProfileSpec;
 }
 
 export interface SlabPart {
@@ -219,7 +222,17 @@ function buildWall(
   const bt = sec.bt;
 
   /** Dodaje prostopadłościan w układzie ściany: u wzdłuż, v wysokość, n odsunięcie od osi */
-  const box = (layer: Layer3D, mat: MatKey, u0: number, u1: number, v0: number, v1: number, n: number, thick: number) => {
+  const box = (
+    layer: Layer3D,
+    mat: MatKey,
+    u0: number,
+    u1: number,
+    v0: number,
+    v1: number,
+    n: number,
+    thick: number,
+    profile?: ProfileSpec,
+  ) => {
     const uc = (u0 + u1) / 2;
     parts.push({
       type: 'box',
@@ -229,6 +242,7 @@ function buildWall(
       s: [Math.max(0.001, u1 - u0), Math.max(0.001, v1 - v0), thick],
       rotY,
       owner: w.id,
+      ...(profile ? { profile } : {}),
     });
   };
 
@@ -247,6 +261,7 @@ function buildWall(
     const lo = f0 + STUD_W / 2;
     const hi = f1 - STUD_W / 2;
     const used: number[] = [];
+    const boardsOnSide0 = lay.faces.some((f) => f.side === 0);
     for (const st of lay.studs) {
       let u = Math.min(hi, Math.max(lo, st.x));
       // dwa słupki w tym samym miejscu (np. skrzyżowanie) stawiamy obok siebie
@@ -257,13 +272,18 @@ function buildWall(
         for (const [y0, y1] of st.segments) {
           const v0 = Math.max(y0, TRACK_H);
           const v1 = Math.min(y1, H - TRACK_H);
-          if (v1 - v0 > 0.005) box('wallFrame', mat, u - STUD_W / 2, u + STUD_W / 2, v0, v1, n, thick * 0.96);
+          // CD w przedściance: środnik od strony płyt; CW/UA: środnik w poprzek ściany
+          const web: WebSide = isCD ? (n < 0 || (n === 0 && !boardsOnSide0) ? 'b-' : 'b+') : 'a-';
+          if (v1 - v0 > 0.005) box('wallFrame', mat, u - STUD_W / 2, u + STUD_W / 2, v0, v1, n, thick * 0.96, profileFor(mat, 'up', web));
         }
     }
     // --- UW: strop, posadzka (przerwana w drzwiach), nadproża i podokienniki ---
     for (const t of lay.tracks) {
       const y0 = t.kind === 'floor' ? 0 : t.kind === 'ceiling' ? H - TRACK_H : t.kind === 'header' ? t.y : t.y - TRACK_H;
-      for (const n of rowsN) box('wallFrame', isCD ? 'ud' : 'uw', t.x0, t.x1, y0, y0 + TRACK_H, n, thick);
+      // środnik od strony stropu/posadzki; nad otworem od dołu, pod podokiennikiem od góry
+      const web: WebSide = t.kind === 'floor' || t.kind === 'header' ? 'a-' : 'a+';
+      const tm: FrameMat = isCD ? 'ud' : 'uw';
+      for (const n of rowsN) box('wallFrame', tm, t.x0, t.x1, y0, y0 + TRACK_H, n, thick, profileFor(tm, 'along', web));
     }
   }
 
@@ -339,7 +359,17 @@ function buildExistingWall(
   const nz = ux;
   const rotY = -Math.atan2(dz, dx);
   const T = (w.thickness ?? 25) / 100;
-  const box = (layer: Layer3D, mat: MatKey, u0: number, u1: number, v0: number, v1: number, n: number, thick: number) => {
+  const box = (
+    layer: Layer3D,
+    mat: MatKey,
+    u0: number,
+    u1: number,
+    v0: number,
+    v1: number,
+    n: number,
+    thick: number,
+    profile?: ProfileSpec,
+  ) => {
     const uc = (u0 + u1) / 2;
     parts.push({
       type: 'box',
@@ -349,6 +379,7 @@ function buildExistingWall(
       s: [Math.max(0.001, u1 - u0), Math.max(0.001, v1 - v0), thick],
       rotY,
       owner: w.id,
+      ...(profile ? { profile } : {}),
     });
   };
   const openings = wallOpenings(w, L, H);
@@ -374,10 +405,13 @@ function buildExistingWall(
         const u = Math.min(l1 - CD_W / 2, Math.max(l0 + CD_W / 2, x));
         const op = openings.find((o) => x > o.x0 && x < o.x1);
         const n = face + l.side * (depth - CD_H / 2);
-        if (!op) box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, TRACK_H, H - TRACK_H, n, CD_H);
+        // środnik CD od strony płyt, półki w stronę muru
+        const prof = profileFor('cdMain', 'up', l.side > 0 ? 'b+' : 'b-');
+        const cd = (v0: number, v1: number) => box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, v0, v1, n, CD_H, prof);
+        if (!op) cd(TRACK_H, H - TRACK_H);
         else {
-          if (op.sill > TRACK_H) box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, TRACK_H, op.sill, n, CD_H);
-          if (op.top < H - TRACK_H) box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, op.top, H - TRACK_H, n, CD_H);
+          if (op.sill > TRACK_H) cd(TRACK_H, op.sill);
+          if (op.top < H - TRACK_H) cd(op.top, H - TRACK_H);
         }
       }
     }
@@ -442,6 +476,8 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
       s: [Math.max(0.001, m1 - m0), h, w],
       rotY: axis === 'x' ? 0 : -Math.PI / 2,
       owner: c.id,
+      // CD: środnik od spodu (do niego mocujemy płyty), półki do góry
+      ...(mat === 'hanger' ? {} : { profile: profileFor(mat, 'along', 'a-') }),
     });
   };
 
@@ -478,6 +514,13 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
 
   // UD przyścienny po obwodzie
   const edges = polygonPerimeterEdges(pts);
+  // UD: środnik przy ścianie (na zewnątrz obrysu), półki do wnętrza
+  let signed = 0;
+  pts.forEach((p0, i) => {
+    const p1 = pts[(i + 1) % pts.length];
+    signed += p0.x * p1.y - p1.x * p0.y;
+  });
+  const udWeb: WebSide = signed > 0 ? 'b-' : 'b+';
   pts.forEach((p0, i) => {
     const p1 = pts[(i + 1) % pts.length];
     const len = edges[i];
@@ -490,6 +533,7 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
       s: [len, CD_H, UD_W],
       rotY: -Math.atan2(p1.y - p0.y, p1.x - p0.x),
       owner: c.id,
+      profile: profileFor('ud', 'along', udWeb),
     });
   });
 }

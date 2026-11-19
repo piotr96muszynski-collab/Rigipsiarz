@@ -12,6 +12,7 @@ import { FinishingPanel } from './FinishingPanel';
 import { PlanTab } from './PlanTab';
 import { ProjectList, UndoToast } from './ProjectList';
 import { LaserButton } from './LaserButton';
+import { DrawerLink, MENU_ICON, NAV_ICONS, NavDrawer } from './NavDrawer';
 import { LaserDiagnostics } from './LaserDiagnostics';
 import { QuickForm } from './QuickForm';
 import { ShoppingList } from './ShoppingList';
@@ -296,24 +297,27 @@ function ProjectView({
 
   const s = calc.stats;
   const wide = useMediaQuery('(min-width: 1024px)');
-  const tabs: { id: Tab; label: string }[] = wide
-    ? [
-        { id: 'plan', label: 'Plan' },
-        { id: 'elements', label: 'Ściany, sufity i materiały' },
-        { id: 'joints', label: 'Łączenia i wykończenie' },
-        { id: '3d', label: 'Widok 3D' },
-        { id: 'drawings', label: 'Rysunki' },
-        { id: 'settings', label: 'Ustawienia' },
-      ]
-    : [
-        { id: 'plan', label: 'Plan' },
-        { id: 'list', label: 'Zakupy' },
-        { id: 'elements', label: 'Elementy' },
-        { id: 'joints', label: 'Łączenia' },
-        { id: '3d', label: '3D' },
-        { id: 'drawings', label: 'Rysunki' },
-        { id: 'settings', label: 'Ustawienia' },
-      ];
+  const sections: { id: Tab; label: string }[] =
+    wide
+      ? [
+          { id: 'plan', label: 'Plan' },
+          { id: 'elements', label: 'Ściany, sufity i materiały' },
+          { id: 'joints', label: 'Łączenia i wykończenie' },
+          { id: '3d', label: 'Widok 3D' },
+          { id: 'drawings', label: 'Rysunki' },
+          { id: 'settings', label: 'Ustawienia' },
+        ]
+      : [
+          { id: 'plan', label: 'Plan' },
+          { id: 'list', label: 'Lista zakupów' },
+          { id: 'elements', label: 'Ściany i sufity' },
+          { id: 'joints', label: 'Łączenia i wykończenie' },
+          { id: '3d', label: 'Widok 3D' },
+          { id: 'drawings', label: 'Rysunki' },
+          { id: 'settings', label: 'Ustawienia' },
+        ];
+  const tabs = sections.map((t) => ({ ...t, icon: NAV_ICONS[t.id] }));
+  const [menuOpen, setMenuOpen] = useState(false);
   const activeTab: Tab = wide && tab === 'list' ? 'elements' : tab;
   const homeTab: Tab = wide && startTab === 'list' ? 'elements' : startTab;
 
@@ -333,17 +337,25 @@ function ProjectView({
   return (
     <div className={`project ${activeTab === 'plan' ? 'on-plan' : ''} ${immersive ? 'immersive' : ''}`}>
       <header className="topbar">
-        <button className="icon-btn" onClick={onClose} aria-label="Wróć do projektów">
+        <button
+          className="icon-btn menu-btn"
+          onClick={() => setMenuOpen(true)}
+          aria-label="Menu sekcji projektu"
+          aria-expanded={menuOpen}
+        >
           <svg viewBox="0 0 24 24" aria-hidden>
-            <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={MENU_ICON} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
           </svg>
         </button>
-        <input
-          className="title-input"
-          value={project.name}
-          onChange={(e) => update((d) => void (d.name = e.target.value))}
-          aria-label="Nazwa projektu"
-        />
+        <div className="title-wrap">
+          <span className="section-name">{tabs.find((t) => t.id === activeTab)?.label}</span>
+          <input
+            className="title-input"
+            value={project.name}
+            onChange={(e) => update((d) => void (d.name = e.target.value))}
+            aria-label="Nazwa projektu"
+          />
+        </div>
         <div className="topbar-actions">
           <LaserButton />
           <button className="icon-btn" onClick={undo} disabled={!canUndo} aria-label="Cofnij">
@@ -387,19 +399,27 @@ function ProjectView({
       </div>
       )}
 
-      <nav className="tabs" role="tablist">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={activeTab === t.id}
-            className={activeTab === t.id ? 'on' : ''}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <NavDrawer
+        open={menuOpen}
+        setOpen={setMenuOpen}
+        title={project.name}
+        items={tabs}
+        active={activeTab}
+        onSelect={setTab}
+        footer={
+          <>
+            <DrawerLink
+              icon={NAV_ICONS.catalog}
+              label="Katalog systemów"
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenCatalog();
+              }}
+            />
+            <DrawerLink icon={NAV_ICONS.projects} label="Wszystkie projekty" onClick={onClose} />
+          </>
+        }
+      />
 
       <div className="tab-body">
         {activeTab === 'plan' && (
