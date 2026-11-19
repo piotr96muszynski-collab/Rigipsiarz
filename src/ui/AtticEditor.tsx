@@ -25,7 +25,7 @@ const COLLAR_OPTIONS: PickOption<0 | 1>[] = [
   { value: 0, label: 'skosy do kalenicy' },
 ];
 const mmOptions = (list: number[]): PickOption<number>[] => list.map((v) => ({ value: v, label: v ? `${v} mm` : 'bez wełny', short: v ? `${v} mm` : 'bez wełny' }));
-const MAKER_GROUP: Record<string, string> = { rigips: 'Rigips', norgips: 'Norgips', knauf: 'Knauf' };
+const MAKER_GROUP: Record<string, string> = { rigips: 'Rigips', norgips: 'Norgips', knauf: 'Knauf', siniat: 'Siniat' };
 const systemOptions = (): PickOption<string>[] =>
   allCeilingSystems()
     .filter(isAtticSystem)

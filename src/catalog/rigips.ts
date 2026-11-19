@@ -13,6 +13,7 @@ import { RIGIPS_CEILINGS, RIGIPS_WALLS } from './rigips.gen';
 import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
 import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
 import { KNAUF_BOARDS, KNAUF_CEILING_SYSTEMS, KNAUF_WALL_SYSTEMS } from './knauf';
+import { SINIAT_BOARDS, SINIAT_CEILING_SYSTEMS, SINIAT_WALL_SYSTEMS } from './siniat';
 
 export type Unit = 'szt.' | 'mb' | 'm²' | 'kg' | 'opak.' | 'rolka' | 'worek';
 
@@ -354,6 +355,7 @@ export const BOARDS: Board[] = [
   },
   ...NORGIPS_BOARDS,
   ...KNAUF_BOARDS,
+  ...SINIAT_BOARDS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -540,9 +542,9 @@ export const WALL_FRAME_LABEL: Record<WallFrame, string> = {
 export type StudSpacing = 60 | 40 | 30;
 
 /** Producent systemu (brak pola = Rigips; systemy ATLAS mają kategorię „atlas”) */
-export type Maker = 'rigips' | 'norgips' | 'knauf' | 'atlas';
+export type Maker = 'rigips' | 'norgips' | 'knauf' | 'siniat' | 'atlas';
 
-export const MAKER_LABEL: Record<Maker, string> = { rigips: 'Rigips', norgips: 'Norgips', knauf: 'Knauf', atlas: 'ATLAS' };
+export const MAKER_LABEL: Record<Maker, string> = { rigips: 'Rigips', norgips: 'Norgips', knauf: 'Knauf', siniat: 'Siniat', atlas: 'ATLAS' };
 
 /**
  * Odmiana systemu z karty producenta: ta sama konstrukcja z inną płytą (klasa EI, akustyka)
@@ -698,6 +700,7 @@ const HAND_WALLS: WallSystem[] = [
   ...ATLAS_WALL_SYSTEMS,
   ...NORGIPS_WALL_SYSTEMS,
   ...KNAUF_WALL_SYSTEMS,
+  ...SINIAT_WALL_SYSTEMS,
 ];
 
 /** Systemy podstawowe – widoczne od razu; reszta katalogu jest pod „Pozostałe systemy” i w wyszukiwarce */
@@ -730,7 +733,7 @@ export const WALL_SYSTEM_ALIASES: Record<string, string> = {
 const CATEGORY_ORDER: WallCategory[] = ['działowa', 'podwójna', 'instalacyjna', 'okładzina', 'szacht', 'atlas'];
 /** Płyty standardowe PRO (A, Hydro, Fire, Fire+) – systemy z nimi stoją w katalogu przed specjalnymi */
 const isStandardBoard = (id: string) => /^R(B|BI|F|FP|FI)\d/.test(id);
-const MAKER_ORDER: Maker[] = ['rigips', 'norgips', 'knauf', 'atlas'];
+const MAKER_ORDER: Maker[] = ['rigips', 'norgips', 'knauf', 'siniat', 'atlas'];
 /** Klucz kolejności: kategoria, producent, podstawowe, płyty standardowe, rodzaj rusztu, profil, liczba warstw */
 const wallOrder = (s: WallSystem): number[] => [
   CATEGORY_ORDER.indexOf(s.category),
@@ -964,6 +967,7 @@ const CEILING_LIST: CeilingSystem[] = [
   ...ATLAS_CEILING_SYSTEMS,
   ...NORGIPS_CEILING_SYSTEMS,
   ...KNAUF_CEILING_SYSTEMS,
+  ...SINIAT_CEILING_SYSTEMS,
 ];
 
 /** Sufity podstawowe – widoczne od razu; reszta pod „Pozostałe systemy” */

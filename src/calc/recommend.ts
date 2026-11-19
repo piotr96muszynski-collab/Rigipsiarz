@@ -223,7 +223,7 @@ function boardCost(boardId: string): number {
  * mniej profili (rzadszy rozstaw, pojedyncze słupki, węższy profil) → system podstawowy → cieńsza.
  * Ceny katalogowej nie używamy do kolejności: kalkulator producenta liczy ją dla przykładowej płyty.
  */
-const MAKERS: Maker[] = ['rigips', 'norgips', 'knauf', 'atlas'];
+const MAKERS: Maker[] = ['rigips', 'norgips', 'knauf', 'siniat', 'atlas'];
 function costKey(p: WallPick): number[] {
   const s = p.system;
   const frameCost = s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'cd-lining' ? 2 : s.frame === 'single' ? 3 : 4;
