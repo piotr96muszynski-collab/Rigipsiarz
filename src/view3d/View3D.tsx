@@ -24,6 +24,7 @@ const FRAME_COLORS: Record<string, number> = {
   cdSec: 0xb3bec9,
   ud: 0x5f6b77,
   hanger: 0xd08a2e,
+  connector: 0xc9a227,
   masonry: 0xc9b9a6,
   disc: 0xe07a2a,
   anchor: 0x6b7480,
@@ -66,6 +67,7 @@ const FRAME_LOOK: Record<string, { metalness: number; roughness: number }> = {
   ud: { metalness: 0.65, roughness: 0.42 },
   ua: { metalness: 0.45, roughness: 0.45 },
   hanger: { metalness: 0.5, roughness: 0.45 },
+  connector: { metalness: 0.55, roughness: 0.4 },
   masonry: { metalness: 0, roughness: 0.95 },
 };
 
