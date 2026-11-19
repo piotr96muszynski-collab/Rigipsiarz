@@ -44,3 +44,36 @@ export function awayFromFinger(
   }
   return p;
 }
+
+/** Opis długości ściany na planie (środek tekstu w px ekranu, kąt obrotu w stopniach) */
+export interface DimLabel {
+  id: string;
+  x: number;
+  y: number;
+  ang: number;
+  /** długość w cm */
+  L: number;
+}
+
+/**
+ * Który opis długości trafił palec. Obszar trafienia jest większy od samego tekstu (palec jest gruby),
+ * liczony w układzie obróconego opisu. Przy kilku trafieniach wygrywa najbliższy.
+ */
+export function hitDimLabel(tap: Point, labels: DimLabel[], halfW = 38, halfH = 18): string | null {
+  let best: string | null = null;
+  let bestD = Infinity;
+  for (const l of labels) {
+    const r = (-l.ang * Math.PI) / 180;
+    const dx = tap.x - l.x;
+    const dy = tap.y - l.y;
+    const u = dx * Math.cos(r) - dy * Math.sin(r);
+    const v = dx * Math.sin(r) + dy * Math.cos(r);
+    if (Math.abs(u) > halfW || Math.abs(v) > halfH) continue;
+    const d = Math.hypot(u, v);
+    if (d < bestD) {
+      bestD = d;
+      best = l.id;
+    }
+  }
+  return best;
+}

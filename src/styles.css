@@ -3074,3 +3074,47 @@ button.catalog-part {
 .variants-scroll table {
   white-space: nowrap;
 }
+
+/* okno zmiany wymiaru po dotknięciu opisu na planie */
+.length-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px 16px;
+}
+.length-laser {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  font-size: 0.95rem;
+}
+.length-laser > span:nth-child(2) {
+  flex: 1;
+}
+.length-laser .laser-dot {
+  position: static;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: none;
+}
+.length-laser.connected .laser-dot {
+  background: var(--ok);
+}
+.length-laser.connecting .laser-dot,
+.length-laser.reconnecting .laser-dot {
+  background: #d99a1e;
+  animation: laser-blink 1s infinite;
+}
+.length-actions {
+  display: flex;
+  gap: 10px;
+}
+.length-actions .btn {
+  flex: 1;
+  min-height: 48px;
+}
