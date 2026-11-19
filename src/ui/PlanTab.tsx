@@ -3,12 +3,14 @@ import { useBack } from './back';
 import { ceilingSystemById, wallSystemById } from '../catalog/rigips';
 import { liningKey, summarize, type ProjectCalc } from '../calc/materials';
 import { dist, isNewWall, sameOutline, wallEnds } from '../geometry/geometry';
-import { deleteWall } from '../model/ops';
+import { deleteWall, setWallLength } from '../model/ops';
 import type { Project } from '../model/types';
 import { CeilingEditor, ExistingWallEditor, WallEditor } from './ElementsPanel';
 import { PlanCanvas, type Selection, type Tool } from './PlanCanvas';
 import { MultiWallEditor, multiSummary, systemShort, WallDefaultsEditor } from './WallBatch';
 import { EXIT_FULLSCREEN_ICON, FULLSCREEN_ICON } from './fullscreen';
+import { LengthSheet } from './LengthSheet';
+import { fmtMeters } from './useLaser';
 import { fmtNum } from './wallStyle';
 
 interface Props {
@@ -118,6 +120,8 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
     });
   const [multi, setMulti] = useState(false);
   const [defaultsOpen, setDefaultsOpen] = useState(false);
+  /** ściana, której długość zmienia się w oknie po dotknięciu opisu wymiaru */
+  const [lengthWallId, setLengthWallId] = useState<string | null>(null);
   const msgTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [sheetH, setSheetH] = useState(0);
@@ -148,6 +152,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
   // zaznaczenie mogło zniknąć (cofnij, usunięcie)
   const multiIds = selection?.type === 'walls' ? selection.ids.filter((id) => project.walls.some((w) => w.id === id)) : [];
   const wall = selection?.type === 'wall' ? project.walls.find((w) => w.id === selection.id) : undefined;
+  const lengthWall = lengthWallId ? project.walls.find((w) => w.id === lengthWallId) : undefined;
   const ceiling = selection?.type === 'ceiling' ? project.ceilings.find((c) => c.id === selection.id) : undefined;
   const opening = wall && selection?.type === 'wall' ? wall.openings.find((o) => o.id === selection.openingId) : undefined;
   const hasSel = !!(wall || ceiling || multiIds.length);
@@ -265,7 +270,25 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           layer={layer}
           multi={multi}
           onMessage={onMessage}
+          onEditLength={setLengthWallId}
         />
+
+        {lengthWall && (
+          <LengthSheet
+            key={lengthWall.id}
+            title={`${isNewWall(lengthWall) ? 'Ściana' : 'Mur'} ${project.walls.filter((w) => isNewWall(w) === isNewWall(lengthWall)).indexOf(lengthWall) + 1} – długość`}
+            value={dist(...wallEnds(project, lengthWall))}
+            onSave={(cm, fromLaser) => {
+              update((d) => {
+                const w = d.walls.find((x) => x.id === lengthWall.id);
+                if (w) setWallLength(d, w, cm);
+              });
+              setLengthWallId(null);
+              onMessage(`Długość ${fmtMeters(cm)}${fromLaser ? ' z dalmierza' : ''} – możesz cofnąć`);
+            }}
+            onClose={() => setLengthWallId(null)}
+          />
+        )}
 
         <div className="plan-toolbar" role="toolbar" aria-label="Narzędzia planu">
           {TOOLS.map((t) => (
