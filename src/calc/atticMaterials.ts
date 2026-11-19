@@ -9,6 +9,7 @@ import { resolveFinishing, type FinishingSettings } from '../catalog/finishing';
 import type { Attic } from '../model/types';
 import { atticGrid, type AtticGrid } from './attic';
 import { layerBoards } from './ceilingLevels';
+import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
 import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, pickBoardLength, type Requirement } from './materials';
 
 export interface AtticResult {
@@ -100,6 +101,10 @@ export function atticRequirement(
     add(req.area, `WELNA${a.woolBetween}`, areaM2 * clear);
   }
   if (a.woolUnder > 0) add(req.area, `WELNA${a.woolUnder}`, areaM2);
+
+  // paroizolacja pod płytami na całej zabudowie – wspólne wyliczenie folii i taśm
+  const vapor = ceilingVaporSpec(sys);
+  if (vaporBarrierOn(a.vaporBarrier, vapor)) vaporBarrierLines(req, areaM2, vapor);
 
   return { req, grid, areaM2, perimeterM, hangers, warnings, assumptions };
 }

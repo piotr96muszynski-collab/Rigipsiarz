@@ -29,10 +29,11 @@ const FRAME_COLORS: Record<string, number> = {
   disc: 0xe07a2a,
   anchor: 0x6b7480,
   vapor: 0xb0399b,
+  timber: 0xc89a5b,
 };
 
 const LAYERS: { id: Layer3D; label: string }[] = [
-  { id: 'existing', label: 'Istniejące ściany' },
+  { id: 'existing', label: 'Istniejące ściany i więźba' },
   { id: 'wallBoards', label: 'Płyty ścian' },
   { id: 'wallFrame', label: 'Ruszt i łączniki ścian' },
   { id: 'ceilingBoards', label: 'Płyty sufitu' },
@@ -70,6 +71,7 @@ const FRAME_LOOK: Record<string, { metalness: number; roughness: number }> = {
   hanger: { metalness: 0.5, roughness: 0.45 },
   connector: { metalness: 0.55, roughness: 0.4 },
   masonry: { metalness: 0, roughness: 0.95 },
+  timber: { metalness: 0, roughness: 0.85 },
 };
 
 function materialFor(key: MatKey, quality: Quality3D): THREE.Material {
@@ -122,7 +124,8 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
     if (part.type === 'box') {
       g = new THREE.BoxGeometry(part.s[0], part.s[1], part.s[2]);
       tmp.position.set(...part.c);
-      tmp.rotation.set(0, part.rotY, 0);
+      // najpierw pochylenie wokół osi długości (skosy poddasza), potem obrót w planie
+      tmp.rotation.set(part.rotX ?? 0, part.rotY, 0, 'YXZ');
       tmp.updateMatrix();
       g.applyMatrix4(tmp.matrix);
     } else if (part.type === 'cyl') {
@@ -184,6 +187,8 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
+  const along = new THREE.Vector3(1, 0, 0);
+  const qx = new THREE.Quaternion();
   const pos = new THREE.Vector3();
   const scale = new THREE.Vector3();
   for (const { layer, mat, spec, A, B, parts } of profiles.values()) {
@@ -191,6 +196,7 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
     parts.forEach((part, i) => {
       pos.set(...part.c);
       q.setFromAxisAngle(up, part.rotY);
+      if (part.rotX) q.multiply(qx.setFromAxisAngle(along, part.rotX));
       // skalujemy tylko długość – przekrój zostaje bez zmian
       if (spec.axis === 'up') scale.set(1, part.s[1], 1);
       else scale.set(part.s[0], 1, 1);
@@ -439,9 +445,10 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
     s.dirty = true;
   }, [vis]);
 
-  const hasCeilings = project.ceilings.length > 0;
+  const hasAttics = (project.attics?.length ?? 0) > 0;
+  const hasCeilings = project.ceilings.length > 0 || hasAttics;
   const hasWalls = project.walls.length > 0;
-  const hasExisting = project.walls.some((w) => w.kind === 'existing');
+  const hasExisting = project.walls.some((w) => w.kind === 'existing') || hasAttics;
 
   if (!supported) {
     return (
@@ -502,7 +509,7 @@ export default function View3D({ project, calc, fullscreen }: { project: Project
         </button>
       )}
       <div className="view3d-canvas" ref={hostRef}>
-        {!hasWalls && !hasCeilings && <p className="view3d-hint">Dodaj ścianę lub sufit, żeby zobaczyć model.</p>}
+        {!hasWalls && !hasCeilings && <p className="view3d-hint">Dodaj ścianę, sufit lub poddasze, żeby zobaczyć model.</p>}
       </div>
       {collisions.length > 0 && (
         <div className="card view3d-collisions" role="status">

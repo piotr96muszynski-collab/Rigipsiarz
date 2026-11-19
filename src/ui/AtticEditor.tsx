@@ -8,6 +8,8 @@ import { DimInput } from './DimInput';
 import { Picker, type PickOption } from './Picker';
 import { BOARD_OPTIONS } from './ElementsPanel';
 import { Warnings } from './SystemSelect';
+import { VaporField } from './WoolField';
+import { ceilingVaporSpec, vaporBarrierOn } from '../calc/vaporBarrier';
 import { fmtNum } from './wallStyle';
 
 const ROOF_OPTIONS: PickOption<Attic['roof']>[] = [
@@ -177,6 +179,8 @@ export function AtticEditor({ attic, edit, result }: Props) {
           <small className="hint">druga warstwa w poprzek krokwi, obniża zabudowę</small>
         </div>
       </div>
+
+      <VaporField spec={ceilingVaporSpec(sys)} enabled={vaporBarrierOn(attic.vaporBarrier, ceilingVaporSpec(sys))} areaM2={area} onToggle={(on) => edit((a) => void (a.vaporBarrier = on))} />
 
       <Warnings items={result?.warnings ?? grid.warnings} />
       <details className="attic-assumptions">

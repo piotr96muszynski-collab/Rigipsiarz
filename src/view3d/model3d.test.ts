@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calculateProject, ceilingGrid } from '../calc/materials';
-import { createCeiling, createOpening, createProject, createWall, sampleProject, uid } from '../model/factory';
+import { atticRequirement } from '../calc/atticMaterials';
+import { createAttic, createCeiling, createOpening, createProject, createWall, sampleProject, uid } from '../model/factory';
 import type { Project } from '../model/types';
 import { overlapArea, wallSection } from '../geometry/contacts';
 import { boardSheets, buildModel3D, subtractRects, type BoxPart, type PanelPart } from './model3d';
@@ -192,4 +193,42 @@ describe('narożniki w 3D z modelu styków', () => {
         });
       expect(parts.some((x) => x.layer === 'wallBoards' && inside(plan(x), outer))).toBe(true);
     });
+});
+
+describe('poddasze w 3D', () => {
+  const project = () => {
+    const p = createProject();
+    p.attics = [createAttic({ id: 'att', length: 500, width: 800, pitch: 45, kneeLeft: 100, kneeRight: 100, collarHeight: 260, woolUnder: 0 })];
+    return p;
+  };
+
+  it('profile CD, wieszaki i płyty z tej samej siatki co zestawienie', () => {
+    const p = project();
+    const r = atticRequirement(p.attics![0]);
+    const m = buildModel3D(p);
+    const boxes = m.parts.filter((x) => x.type === 'box');
+    const lines = r.grid.surfaces.reduce((n, g) => n + g.cd.length, 0);
+    expect(boxes.filter((x) => x.mat === 'cdMain')).toHaveLength(lines);
+    expect(boxes.filter((x) => x.mat === 'hanger')).toHaveLength(r.hangers);
+    expect(boxes.filter((x) => x.mat.startsWith('board:'))).toHaveLength(r.grid.surfaces.length);
+    // krokwie po obu stronach przy każdej osi + jętki
+    expect(boxes.filter((x) => x.mat === 'timber')).toHaveLength(r.grid.rafters.length * 3);
+    expect(boxes.filter((x) => x.mat === 'vapor')).toHaveLength(r.grid.surfaces.length);
+  });
+
+  it('skosy są pochylone o kąt dachu, sufit poziomy na wysokości jętek', () => {
+    const m = buildModel3D(project());
+    const boards = m.parts.filter((x) => x.type === 'box' && x.mat.startsWith('board:')) as BoxPart[];
+    const tilt = boards.map((b) => Math.round((Math.abs(b.rotX ?? 0) * 180) / Math.PI)).sort((a, b) => a - b);
+    expect(tilt).toEqual([0, 45, 45]);
+    const flat = boards.find((b) => !b.rotX)!;
+    // lico płyt 45 mm pod jętką (karta 4.70.06), środek płyty 12,5 mm wyżej o połowę grubości
+    expect(flat.c[1]).toBeCloseTo(2.6 - 0.045 + 0.00625, 4);
+    // profile CD leżą nad płytą (bliżej krokwi), nie pod nią
+    const cd = m.parts.filter((x) => x.type === 'box' && x.mat === 'cdMain' && !x.rotX) as BoxPart[];
+    expect(cd[0].c[1]).toBeGreaterThan(flat.c[1]);
+    // model sięga do kalenicy: 1,00 + 4,00·tg45° = 5,00 m + krokiew
+    expect(m.bounds.max[1]).toBeGreaterThan(5);
+    expect(m.bounds.min[2]).toBeLessThanOrEqual(0);
+  });
 });
