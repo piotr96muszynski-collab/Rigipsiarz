@@ -216,6 +216,22 @@ describe('poddasze w 3D', () => {
     expect(boxes.filter((x) => x.mat === 'vapor')).toHaveLength(r.grid.surfaces.length);
   });
 
+  it('okno dachowe: ościeżnica z szybą, 4 glify, obramowanie i przerwane linie CD', () => {
+    const p = project();
+    const base = buildModel3D(p).parts;
+    p.attics![0].windows = [{ id: 'w', side: 'left', width: 78, height: 118, u: 145, sill: 160 }];
+    const r = atticRequirement(p.attics![0]);
+    const x = r.windows.list[0];
+    const parts = buildModel3D(p).parts;
+    const boxes = parts.filter((q): q is BoxPart => q.type === 'box');
+    expect(boxes.filter((q) => q.mat === 'glass')).toHaveLength(1);
+    const panels = parts.filter((q): q is PanelPart => q.type === 'panel' && q.owner === 'att');
+    expect(panels).toHaveLength(2);
+    // każda przerwana linia to dwa odcinki zamiast jednego, plus 4 profile obramowania
+    const cd = (list: typeof parts) => list.filter((q) => q.type === 'box' && q.mat === 'cdMain').length;
+    expect(cd(parts)).toBe(cd(base) + x.interrupted.length + x.cross.length + x.side.length);
+  });
+
   it('ruszt krzyżowy: nośne pod krokwiami, montażowe w poprzek, wieszaki na nośnych', () => {
     const p = project();
     p.attics![0].systemId = 'SN-P-ESDK-1';

@@ -2,6 +2,7 @@
 // dzięki czemu da się ją testować w Node. Wszystko w metrach.
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
+import { atticWindowGeometry, cdLineSegments } from '../calc/atticWindows';
 import { HAT_MM, HAT_W, boardById, ceilingSystemById, isHatCeiling, isHungCeiling, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
 import { ceilingLevels } from '../calc/ceilingLevels';
@@ -20,7 +21,7 @@ import { rowSegments } from '../calc/boardLength';
 export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
 
 /** Materiały elementów rusztu; płyty mają klucz `board:<id>` */
-export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'connector' | 'masonry' | 'disc' | 'anchor' | 'vapor' | 'timber';
+export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'connector' | 'masonry' | 'disc' | 'anchor' | 'vapor' | 'timber' | 'glass';
 export type MatKey = FrameMat | `board:${string}`;
 
 export interface BoxPart {
@@ -670,6 +671,7 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   const boards = layerBoards(sys, a.boardId).map((id) => ({ id, t: boardById(id).thickness / 1000 }));
   const tb = boards.reduce((t, b) => t + b.t, 0);
   const vapor = vaporBarrierOn(a.vaporBarrier, ceilingVaporSpec(sys));
+  const wins = atticWindowGeometry(a, grid).list;
 
   /** Układ płaszczyzny: p0 → p1 w stronę rosnącego z, normalna na zewnątrz (ku krokwiom) */
   const frame = (p: { x: number; z: number }, q: { x: number; z: number }) => {
@@ -714,7 +716,9 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
     for (const s of g.cd) {
       const k = (f.flipped ? g.surface.run - s : s) / 100;
       const [y, z] = f.at(k, tb + pH / 2);
-      for (const sp of spans)
+      // linie przerwane oknami dachowymi kończą się na obramowaniu otworu
+      const segs = between ? spans : cdLineSegments(a.length, s, g.surface.id, wins).map(([u0, u1]) => ({ x: (u0 + u1) / 200, w: (u1 - u0) / 100 }));
+      for (const sp of segs)
         parts.push({ type: 'box', layer: 'ceilingFrame', mat: pMat, c: [sp.x, y, z], s: [sp.w, pH, pW], rotY: 0, rotX: f.rotX, owner: a.id, ...cdShape });
       // wieszak przy boku krokwi: od profilu do krokwi
       if (fr.hanger && !carrier) {
@@ -744,6 +748,44 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
     }
   }
 
+  // okna dachowe: ościeżnica z szybą, glify (górny poziomo, dolny pionowo, boczne w płaszczyźnie przekroju), obramowanie otworu
+  const tR = boardById(a.boardId).thickness / 1000;
+  for (const x of wins) {
+    const f = frame(x.g.surface.a, x.g.surface.b);
+    const kOf = (s: number) => (f.flipped ? x.g.surface.run - s : s) / 100;
+    const sOf = (p: { x: number; z: number }) => {
+      const d = { x: (x.g.surface.b.x - x.g.surface.a.x) / x.g.surface.run, z: (x.g.surface.b.z - x.g.surface.a.z) / x.g.surface.run };
+      return (p.x - x.g.surface.a.x) * d.x + (p.z - x.g.surface.a.z) * d.z;
+    };
+    const W = x.w.width / 100;
+    const uc = x.w.u / 100;
+    const sMid = (sOf(x.frameBottom) + sOf(x.frameTop)) / 2;
+    const hF = x.depth / 100;
+    tilted('existing', 'timber', f, uc, kOf(sMid), hF + 0.05, [W, 0.1, x.w.height / 100]);
+    tilted('existing', 'glass', f, uc, kOf(sMid), hF + 0.09, [W - 0.12, 0.01, x.w.height / 100 - 0.12]);
+    const mat: MatKey = `board:${a.boardId}`;
+    const sx = Math.sign(x.g.surface.b.x - x.g.surface.a.x) || 1;
+    const ft = x.frameTop;
+    const fb = x.frameBottom;
+    // glif górny: poziomo nad krawędzią widoczną
+    parts.push({ type: 'box', layer: 'ceilingBoards', mat, c: [uc, ft.z / 100 + tR / 2, z0 + (ft.x + x.faceTop.x) / 200], s: [W, tR, x.upper / 100], rotY: 0, owner: a.id });
+    // glif dolny: pionowo, płyta po stronie dalszej od okna
+    parts.push({ type: 'box', layer: 'ceilingBoards', mat, c: [uc, (fb.z + x.faceBottom.z) / 200, z0 + fb.x / 100 - (sx * tR) / 2], s: [W, x.lower / 100, tR], rotY: 0, owner: a.id });
+    // glify boczne: czworobok w płaszczyźnie przekroju (oś lokalna x → z sceny)
+    const loop = [fb, ft, x.faceTop, x.faceBottom].map((p) => ({ x: z0 + p.x / 100, y: p.z / 100 }));
+    for (const [u, nOff] of [
+      [x.u0 / 100, tR / 2],
+      [x.u1 / 100, -tR / 2],
+    ] as const)
+      parts.push({ type: 'panel', layer: 'ceilingBoards', mat, origin: [u, 0, 0], rotY: -Math.PI / 2, n: nOff, thickness: tR, loops: [loop], area: x.sideM2, owner: a.id });
+    // obramowanie otworu z profili rusztu
+    for (const c of x.cross) {
+      const [y, z] = f.at(kOf(c.s), tb + pH / 2);
+      parts.push({ type: 'box', layer: 'ceilingFrame', mat: pMat, c: [(c.u0 + c.u1) / 200, y, z], s: [(c.u1 - c.u0) / 100, pH, pW], rotY: 0, rotX: f.rotX, owner: a.id, ...cdShape });
+    }
+    for (const sd of x.side) tilted('ceilingFrame', pMat, f, sd.u / 100, kOf((sd.s0 + sd.s1) / 2), tb + pH / 2, [pW, pH, (sd.s1 - sd.s0) / 100]);
+  }
+
   // konstrukcja dachu: krokwie od ścianki kolankowej do kalenicy, jętki nad sufitem
   const st = grid.structure;
   const ridge = { x: st.ridgeX, z: st.ridgeHeight };
@@ -766,7 +808,19 @@ export function buildAttic(a: Attic, parts: Part3D[], origin: Point = { x: 0, y:
   // położenie na planie: obrót kalenicy o 90° (x' = szerokość − z, z' = x) i przesunięcie do narożnika
   const W = a.width / 100;
   for (let i = first; i < parts.length; i++) {
-    const b = parts[i] as BoxPart;
+    const pt = parts[i];
+    if (pt.type === 'panel') {
+      // glify boczne okien: ten sam obrót i przesunięcie co bryły
+      if (a.planRot === 90) {
+        const [ox, oy, oz] = pt.origin;
+        pt.origin = [W - oz, oy, ox];
+        pt.rotY -= Math.PI / 2;
+      }
+      pt.origin[0] += origin.x / 100;
+      pt.origin[2] += origin.y / 100;
+      continue;
+    }
+    const b = pt as BoxPart;
     if (a.planRot === 90) {
       b.c = [W - b.c[2], b.c[1], b.c[0]];
       b.rotY -= Math.PI / 2;

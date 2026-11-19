@@ -388,7 +388,7 @@ export function atticGrid(a: Attic, sys: CeilingSystem = ceilingSystemById(a.sys
     ...(frame.mount === 'direct' ? [`${Label} przykręca się do każdej krokwi, bez regulacji – spód krokwi musi być w jednej płaszczyźnie (podkładki przy nierównościach).`] : []),
     ...(batten ? [`Przekrój łat ${batten.size} mm dobrany do rozstawu krokwi (karta: mocowanie co max ${batten.maxFix} cm).`] : []),
     ...(section.hasCollar ? [`Sufit poziomy: jętka przy każdej parze krokwi, ${between ? 'ruszt między jętkami' : 'ruszt mocowany do jętek'}.`] : []),
-    'Płyty i wełna liczone po licu zabudowy, bez okien dachowych i ścian szczytowych.',
+    'Płyty i wełna liczone po licu zabudowy, bez ścian szczytowych; otwory okien dachowych odjęte, glify doliczone osobno.',
   ];
   if (hangerSize && frame.hangerSizesNote) assumptions.push(frame.hangerSizesNote);
   return { section, structure, rafters, surfaces, depthMm, boardsMm, cdSpacing, frame, carrier, hangerNeedMm, hangerSize, profile, profileMm, bays, warnings, assumptions };
