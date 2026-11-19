@@ -2739,158 +2739,160 @@ kbd {
   fill: var(--ok);
 }
 
-/* ---------- boczne menu sekcji projektu ---------- */
-.title-wrap {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+/* ---------- nawigacja projektu: trzy etapy pracy ---------- */
+.icon-btn.on {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
-.title-wrap .title-input {
-  flex: none;
-  padding: 2px 8px 4px;
-}
-.section-name {
-  padding: 0 9px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* pas przy lewej krawędzi (dolna połowa ekranu), z którego wyciąga się menu */
-.drawer-edge {
-  position: fixed;
-  left: 0;
-  top: 50%;
-  bottom: 0;
-  z-index: 44;
-  touch-action: pan-y;
-}
-.drawer {
-  --p: 0;
-  position: fixed;
-  inset: 0;
-  z-index: 45;
-  pointer-events: none;
-}
-.drawer.open {
-  --p: 1;
-}
-.drawer.open,
-.drawer.dragging {
-  pointer-events: auto;
-}
-.drawer-scrim {
-  position: absolute;
-  inset: 0;
-  background: rgb(0 0 0 / 40%);
-  opacity: var(--p);
-  transition: opacity 0.22s ease;
-  touch-action: pan-y;
-}
-.drawer-panel {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: min(300px, 84vw);
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  box-shadow: 0 10px 40px rgb(0 0 0 / 22%);
-  padding: env(safe-area-inset-top) 10px env(safe-area-inset-bottom) calc(10px + env(safe-area-inset-left));
-  transform: translateX(calc((var(--p) - 1) * 100% - (1 - var(--p)) * 24px));
-  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-}
-.drawer:not(.open):not(.dragging) .drawer-panel {
-  visibility: hidden;
-  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s 0.24s;
-}
-.drawer.dragging .drawer-scrim,
-.drawer.dragging .drawer-panel {
-  transition: none;
-}
-.drawer-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 0 8px 8px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 8px;
-}
-.drawer-title {
-  flex: 1;
-  min-width: 0;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.drawer-list {
-  list-style: none;
+.view-title {
   margin: 0;
-  padding: 0;
+  font-size: 1.05rem;
+}
+/* przełącznik dwóch widoków etapu */
+.view-switch {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.view-switch button {
+  flex: 1;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.view-switch button.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgb(16 24 40 / 14%);
+}
+/* pasek etapów – telefon: przyklejony do dołu ekranu */
+.stage-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  gap: 4px;
+  padding: 6px max(8px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.stage-btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 54px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-.drawer-item {
-  width: 100%;
-  min-height: 48px;
-  display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 0 12px;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 6px;
   border: none;
   border-radius: 12px;
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   font: inherit;
-  font-weight: 600;
-  text-align: left;
   cursor: pointer;
 }
-.drawer-item svg {
+.stage-btn svg {
   width: 22px;
   height: 22px;
-  flex: none;
-  color: var(--muted);
 }
-.drawer-item:hover {
+.stage-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.stage-sub {
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+.stage-btn.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.stage-btn:hover:not(.on) {
   background: var(--surface-2);
 }
-.drawer-item.on {
-  background: var(--accent-soft);
-  color: var(--accent);
+/* miejsce na dolny pasek */
+@media (max-width: 1023px) {
+  .project {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  .project.on-plan {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+  .app:has(.project.on-plan) {
+    padding-bottom: 0;
+  }
+  .project.immersive {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .app:has(.stage-bar) .toast {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+  }
 }
-.drawer-item.on svg {
-  color: var(--accent);
+.project.immersive > .stage-bar,
+.project.immersive > .view-switch {
+  display: none;
 }
-.drawer-foot {
-  margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* komputer: etapy w górnym pasku, obok nazwy projektu */
+.stage-bar.in-topbar {
+  position: static;
+  flex: none;
+  padding: 0;
+  border: none;
+  background: transparent;
 }
-@media (prefers-reduced-motion: reduce) {
-  .drawer-scrim,
-  .drawer-panel {
-    transition: none !important;
+.stage-bar.in-topbar .stage-btn {
+  flex: none;
+  flex-direction: row;
+  gap: 8px;
+  min-height: 42px;
+  padding: 6px 16px;
+}
+.stage-bar.in-topbar .stage-label {
+  font-size: 0.95rem;
+}
+.stage-bar.in-topbar .stage-sub {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .view-switch {
+    align-self: flex-start;
+  }
+  .view-switch button {
+    flex: none;
+    min-width: 150px;
+    padding: 6px 18px;
+  }
+  /* sama lista zakupów (etap Materiały) – bez listy ścian obok */
+  .split.solo-list {
+    grid-template-columns: minmax(0, 820px);
+  }
+  .split.solo-list > .panel-hidden {
+    display: none;
+  }
+  .split.solo-list > .side {
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
 }
 @media print {
-  .drawer,
-  .drawer-edge,
-  .menu-btn {
+  .stage-bar,
+  .view-switch,
+  .back-btn {
     display: none !important;
   }
 }
