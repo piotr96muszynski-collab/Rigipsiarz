@@ -107,7 +107,10 @@ for (const s of data.systems) {
     }
     const cwM = qty(v, /^CW \d/, 'm');
     const uwM = qty(v, /^UW \d/, 'm');
-    if (!glued && !cd && (!cwM || uwM < 60)) {
+    // obudowa szybu bez CW: słupki z par UW skręconych w skrzynkę + para UD 30 na płytę rdzeniową
+    // (3.50.10: UW 100 i UD 30 po 3,6 mb/m², jak Siniat Nida Szacht UU) – silnik: studKind 'UU'
+    const uu = kind === 'shaft' && !cwM && uwM >= 300 && qty(v, /^UD 30/, 'm') >= 300;
+    if (!glued && !cd && !uu && (!cwM || uwM < 60)) {
       skip(s, 'nietypowy ruszt (brak CW albo UW w zestawieniu)');
       break;
     }
@@ -120,28 +123,30 @@ for (const s of data.systems) {
     const doubled = !twoRows && !cd && !glued && (/^2x/i.test(K) || /podwójnych profilach/i.test(sysName));
     const frame = glued ? 'glued' : cd ? 'cd-lining' : twoRows ? 'double' : 'single';
     const cdM = qty(v, /^CD ?60/, 'm');
-    const spacing = glued ? 60 : cd ? spacingOf(cdM) : spacingOf(cwM / (twoRows || doubled ? 2 : 1));
+    const spacing = glued ? 60 : cd ? spacingOf(cdM) : uu ? spacingOf((uwM - 70) / 2) : spacingOf(cwM / (twoRows || doubled ? 2 : 1));
     const aku = /Aku/i.test(K);
 
     // grupa „główna” = płyta specjalna (jeśli jest) albo ostatnia wymieniona; pozostałe to warstwy wewnętrzne
     const cls = (g) => boardClass(g.ids[0]);
     let mainIdx = groups.findIndex((g) => cls(g) !== 'STD');
     if (mainIdx < 0) mainIdx = groups.length - 1;
+    // UU: płyta rdzeniowa (cieńsza, w ruszcie) to warstwy wewnętrzne, grubsza – poszycie zewnętrzne
+    if (uu && groups.length === 2) mainIdx = groups[0].th >= groups[1].th ? 0 : 1;
     const main = groups[mainIdx];
     const inner = groups.filter((_, i) => i !== mainIdx);
-    if (inner.length > 1 || (inner[0] && cls(inner[0]) !== 'STD')) {
+    if (inner.length > 1 || (inner[0] && cls(inner[0]) !== 'STD' && !uu)) {
       skip(s, `odmiana „${label.slice(0, 50)}” – układ płyt, którego aplikacja nie liczy`);
       continue;
     }
     const tag = (g) => (cls(g) === 'STD' ? '' : cls(g));
     const spec = inner[0] ? `${inner[0].n}${tag(inner[0])}+${main.n}${tag(main)}` : `${main.n}${tag(main)}`;
     const prefix = { wall: 'W', lining: 'O', shaft: 'SZ' }[kind];
-    let id = `${prefix}-${twoRows ? '2' : ''}${glued ? 'KLEJ' : cd ? 'CD' : `CW${profile}`}${aku ? 'AKU' : ''}-${spec}`;
+    let id = `${prefix}-${twoRows ? '2' : ''}${glued ? 'KLEJ' : cd ? 'CD' : uu ? `UU${profile}` : `CW${profile}`}${aku ? 'AKU' : ''}-${spec}`;
     if (id === 'O-KLEJ-1') id = 'O-KLEJ';
 
     let fam = families.get(id);
     if (!fam) {
-      fam = { id, kind, frame, profile, aku, cls: cls(main), innerCls: inner[0] ? cls(inner[0]) : undefined, mainN: main.n, innerN: inner[0]?.n ?? 0, innerTh: inner[0]?.th, recs: [], variants: [], order: families.size };
+      fam = { id, kind, frame, profile, aku, uu, cls: cls(main), innerCls: inner[0] ? cls(inner[0]) : undefined, mainN: main.n, innerN: inner[0]?.n ?? 0, innerTh: inner[0]?.th, recs: [], variants: [], order: families.size };
       families.set(id, fam);
     }
     const wall = kind !== 'lining';
@@ -195,6 +200,9 @@ function reference(fam, v) {
     line(/^CD ?60/, 'm', 'CD60', 'Profil CD 60');
     line(/^UD 30/, 'm', 'UD30', 'Profil UD 30');
     line(/^Uchwyt (ES|elastyczny)/, 'PC', 'WIESZAK_ES', 'Uchwyt ES / elastyczny');
+  } else if (fam.uu) {
+    line(/^UW \d/, 'm', `UW${p}`, `Profil UW ${p}`);
+    line(/^UD 30/, 'm', 'UD30', 'Profil UD 30');
   } else if (fam.frame !== 'glued') {
     line(/^CW \d/, 'm', `CW${p}${fam.aku && p !== 50 ? 'AKU' : ''}`, `Profil CW ${p}${fam.aku ? ' Aku' : ''}`);
     line(/^UW \d/, 'm', `UW${p}`, `Profil UW ${p}`);
@@ -263,7 +271,7 @@ for (const fam of families.values()) {
   const boardText = fam.innerN
     ? `${fam.innerN}×${fmtTh(fam.innerTh)} ${CLASS_NAME[fam.innerCls]} + ${fam.mainN}×${thText} ${CLASS_NAME[fam.cls]}`
     : `${fam.mainN}×${thText}${fam.cls === 'STD' ? '' : ` ${CLASS_NAME[fam.cls]}`}`;
-  const cwText = `CW ${fam.profile}${fam.aku ? ' Aku' : ''}`;
+  const cwText = fam.uu ? `2×UW ${fam.profile} (słupki skrzynkowe, płyta rdzeniowa)` : `CW ${fam.profile}${fam.aku ? ' Aku' : ''}`;
   const name =
     fam.frame === 'glued'
       ? 'Suchy tynk – płyta na klej gipsowy'
@@ -291,6 +299,9 @@ for (const fam of families.values()) {
     hBase ? `do ${m(hBase)} m przy rozstawie ${studSpacing} cm` : undefined,
     hMax > (hBase ?? 0) ? `do ${m(hMax)} m z gęstszymi lub podwójnymi słupkami` : undefined,
     codes.length > 1 ? `${codes.length} systemów Rigips (${codes[0]}…)` : undefined,
+    fam.uu
+      ? `słupki z dwóch UW ${fam.profile} skręconych w skrzynkę, wzdłuż słupka para UD 30 trzyma płytę rdzeniową (${fam.innerN}×${fmtTh(fam.innerTh)}, osadzona w ruszcie), poszycie zewnętrzne ${fam.mainN}×${thText}`
+      : undefined,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -306,7 +317,8 @@ for (const fam of families.values()) {
     sides,
     defaultBoard,
     ...(fam.innerN ? { innerBoard: first.innerBoards[0], innerLayers: fam.innerN } : {}),
-    ...(fam.aku ? { akuStuds: true } : {}),
+    ...(fam.aku && !fam.uu ? { akuStuds: true } : {}),
+    ...(fam.uu ? { studKind: 'UU' } : {}),
     studSpacing,
     ...(Object.keys(maxHeight).length ? { maxHeight } : {}),
     insulationDefault: (first.wool ?? 0) > 0,

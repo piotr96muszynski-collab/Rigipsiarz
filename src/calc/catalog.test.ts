@@ -44,6 +44,13 @@ const KNOWN_DIFF = new Set([
   'R-HAT-S-2:KOTWA',
   'SN-S-PK48-1-120:KOTWA',
   'SN-S-PK48-2-120:KOTWA',
+  // 3.50.10: kalkulator podaje 3,6 mb UW 100 na m² (sama para UW na słupek co 60 cm), bez UW przy posadzce
+  // i stropie; aplikacja liczy je jak karta Siniat UU (4,3 mb = słupki 3,6 + U góra i dół 0,7)
+  'SZ-UU100-2+2:UW100',
+  'SZ-UU100-2AKU+2:UW100',
+  // 3.50.10: kalkulator podaje 0,7 mb taśmy spoinowej na m² (połowę typowej), aplikacja zbroi każdą spoinę lica (1,4 mb)
+  'SZ-UU100-2+2:TASMA_SPOIN',
+  'SZ-UU100-2AKU+2:TASMA_SPOIN',
 ]);
 /** Wkręty do płyt specjalnych (Habito, HartFix, Rigidur, Ridurit, Aquaroc) */
 const SPECIAL_SCREW = /^(HABITO|HARTFIX|RIGIDUR|RIDURIT|AQ)\d/;

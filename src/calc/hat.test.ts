@@ -3,6 +3,7 @@ import { BOARDS, CEILING_SYSTEMS, HAT_MM, PRODUCTS, WALL_SYSTEMS, isHatCeiling, 
 import { HAT_FLANGE, hatFixPositions, wallLayout } from './layout';
 import { ceilingConsumption, ceilingRequirement, wallConsumption, wallRequirement } from './materials';
 import { ceilingFrameMm } from './ceilingLevels';
+import { wallSystemShort } from '../catalog/systemLabel';
 import { createCeiling, createOpening, createProject, createWall } from '../model/factory';
 import { analyzeJunctions } from '../geometry/geometry';
 
@@ -20,13 +21,14 @@ describe('profile kapeluszowe – katalog', () => {
       expect(boards.has(s.defaultBoard)).toBe(true);
       if (s.innerBoard) expect(boards.has(s.innerBoard)).toBe(true);
       for (const v of s.variants ?? []) {
-        expect(boards.has(v.board)).toBe(true);
-        if (v.innerBoard) expect(boards.has(v.innerBoard)).toBe(true);
+        if (v.board) expect(boards.has(v.board)).toBe(true);
+        for (const b of v.innerBoards ?? []) expect(boards.has(b)).toBe(true);
       }
       expect(s.source?.url).toMatch(/^https:\/\//);
     }
     for (const s of hatWalls) expect(PRODUCTS[s.anchor ?? 'KOLEK']).toBeTruthy();
   });
+  it('krótki opis ściany nazywa ruszt', () => expect(wallSystemShort(wallSystemById('R-HAT-W-1'))).toBe('Kapelusz 15/48, 1×12,5'));
   it('ruszt ma 15 mm (także sufit wprost na stropie)', () => {
     for (const s of hatCeilings) expect(ceilingFrameMm(s)).toBe(HAT_MM);
   });

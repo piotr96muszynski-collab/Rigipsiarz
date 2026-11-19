@@ -9,6 +9,7 @@ import {
   ceilingSystemById,
   wallMaxHeight,
   wallSystemById,
+  wallTieCount,
   type Board,
   type CeilingSystem,
   type Product,
@@ -237,7 +238,17 @@ export function wallRequirement(
   const isHat = sys.frame === 'hat-lining';
   const isCD = sys.frame === 'cd-lining' || isHat;
   const rows = sys.frame === 'glued' ? 0 : sys.frame === 'double' || sys.frame === 'separate' ? 2 : 1;
-  const stud = isHat ? 'KAPELUSZ' : isCD ? 'CD60' : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`] ? `CW${sys.profile}AKU` : `CW${sys.profile}`;
+  const stud = isHat
+    ? 'KAPELUSZ'
+    : isCD
+      ? 'CD60'
+      : sys.studKind === 'UA'
+        ? `UA${sys.profile}`
+        : sys.studKind === 'UU'
+          ? `UW${sys.profile}`
+          : sys.akuStuds && PRODUCTS[`CW${sys.profile}AKU`]
+            ? `CW${sys.profile}AKU`
+            : `CW${sys.profile}`;
   // słupki podwójne: dwa CW zespolone wkrętami (kalkulator Rigips: 8 pchełek/m² przy 1,8 m pary słupków na m²)
   const doubled = !!w.doubleStuds && !isCD && rows > 0;
   const track = isCD ? 'UD30' : `UW${sys.profile}`;
@@ -264,12 +275,49 @@ export function wallRequirement(
     }
   };
 
-  /** Słupek w polu ściany: pojedynczy albo para zespolona pchełkami */
-  const addFieldStud = (len: number) => {
+  /**
+   * Słupek z profilu UA: kątownik UA na każdym końcu, przykręcony do UA dwiema śrubami M8
+   * (karta Siniat UAR50: 0,85 kątownika i 2 śruby na m² przy 3,88 m i rozstawie 60 cm)
+   */
+  const addUA = (len: number) => {
     addStud(stud, len);
-    if (doubled && len > 0.01) {
+    add(req.counts, 'KATUA', 2);
+    add(req.counts, 'SRUBA_M8', 4);
+  };
+
+  /** Słupek w polu ściany: pojedynczy albo para zespolona pchełkami (UA – śrubami M8) */
+  const addFieldStud = (len: number) => {
+    if (len <= 0.01) return;
+    if (sys.studKind === 'UA') {
+      addUA(len);
+      // para UA skręcona środnikami śrubami M8 co 25 cm, kątowniki tylko pod jednym profilem pary
+      // (karta Siniat UARUAR50: rysunek + 8 śrub i 1,0 kątownika na m² przy 5 m)
+      if (doubled) {
+        addStud(stud, len);
+        add(req.counts, 'SRUBA_M8', Math.ceil(len / 0.25 - 1e-9) + 1);
+      }
+    } else if (sys.studKind === 'UU') {
+      // dwa U skręcone w skrzynkę wkrętami samowiercącymi + para UD 30 trzymająca płytę rdzeniową
+      // (karta Siniat UU75: U 4,3 mb, UD27 3,6 mb, wkręty FLAT HEAD 9 szt./m²; kalkulator Rigips 3.50.10:
+      // UW 100 i UD 30 po 3,6 mb, pchełki 20 szt./m² – przyjęto 10 wkrętów na mb słupka ≈ 17 szt./m²)
       addStud(stud, len);
-      add(req.counts, 'LN9', Math.ceil(len * 4.4));
+      addStud(stud, len);
+      addPiece(req, 'UD30', len);
+      addPiece(req, 'UD30', len);
+      add(req.counts, 'LN9', Math.ceil(len * 10));
+    } else {
+      addStud(stud, len);
+      if (doubled) {
+        addStud(stud, len);
+        add(req.counts, 'LN9', Math.ceil(len * 4.4));
+      }
+    }
+    // kotwienie słupka do ściany (kątowniki co 250 cm, przewiązki PWA)
+    if (sys.wallTie) {
+      const n = wallTieCount(sys.wallTie, len);
+      add(req.counts, sys.wallTie.kind === 'angle' ? 'KATUA' : 'PWA', n);
+      // kątownik kotwiony do muru kilkoma kołkami (karta C100/L: 5,4 elementu kotwiącego na m² przy 0,8 kątownika)
+      add(req.counts, 'KOLEK', n * (sys.wallTie.kind === 'angle' ? 6 : 2));
     }
   };
 
@@ -302,8 +350,12 @@ export function wallRequirement(
     // --- Ościeża, nadproża, podokienniki ---
     for (const o of openings) {
       if (row === 0) jambPositions.push(o.x0, o.x1);
-      const useUA = o.reinforced && !isCD;
-      for (let k = 0; k < 2; k++) addStud(useUA ? `UA${sys.profile}` : stud, H);
+      // w ruszcie z UA ościeże i tak jest z UA (z kątownikami jak słupki w polu)
+      if (sys.studKind === 'UA') {
+        for (let k = 0; k < 2; k++) addUA(H);
+        }
+      const useUA = o.reinforced && !isCD && sys.studKind !== 'UA';
+      if (sys.studKind !== 'UA') for (let k = 0; k < 2; k++) addStud(useUA ? `UA${sys.profile}` : stud, H);
       if (useUA) {
         add(req.counts, 'KATUA', 4);
         add(req.counts, 'KOLEK', 8);
