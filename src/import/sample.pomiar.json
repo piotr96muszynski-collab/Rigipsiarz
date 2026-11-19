@@ -1,0 +1,236 @@
+{
+ "format": "pomiar",
+ "version": 1,
+ "units": "mm",
+ "source": {
+  "app": "PomierzTu",
+  "release": 11
+ },
+ "exported": "2026-11-19T00:00:00.000Z",
+ "project": {
+  "name": "Mieszkanie testowe",
+  "address": "ul. Próbna 1",
+  "client": ""
+ },
+ "rooms": [
+  {
+   "id": "A",
+   "name": "Salon",
+   "height": 2650,
+   "heightMeasured": true,
+   "area": 12,
+   "outline": [
+    {
+     "x": 0,
+     "y": 0
+    },
+    {
+     "x": 4000,
+     "y": 0
+    },
+    {
+     "x": 4000,
+     "y": 3000
+    },
+    {
+     "x": 0,
+     "y": 3000
+    }
+   ],
+   "walls": [
+    {
+     "id": "a1",
+     "a": {
+      "x": 0,
+      "y": 0
+     },
+     "b": {
+      "x": 4000,
+      "y": 0
+     },
+     "length": 4000,
+     "measured": true,
+     "thickness": 380,
+     "kind": "external",
+     "material": "cegla",
+     "shared": null,
+     "openings": [
+      {
+       "id": "o1",
+       "type": "window",
+       "offset": 1000,
+       "width": 1500,
+       "height": 1500,
+       "sill": 850
+      }
+     ]
+    },
+    {
+     "id": "a2",
+     "a": {
+      "x": 4000,
+      "y": 0
+     },
+     "b": {
+      "x": 4000,
+      "y": 3000
+     },
+     "length": 3000,
+     "measured": true,
+     "thickness": 120,
+     "kind": "partition",
+     "material": "bk",
+     "shared": null,
+     "openings": [
+      {
+       "id": "o2",
+       "type": "door",
+       "offset": 500,
+       "width": 900,
+       "height": 2050,
+       "sill": 0
+      }
+     ]
+    },
+    {
+     "id": "a3",
+     "a": {
+      "x": 4000,
+      "y": 3000
+     },
+     "b": {
+      "x": 0,
+      "y": 3000
+     },
+     "length": 4000,
+     "measured": true,
+     "thickness": 120,
+     "kind": null,
+     "material": null,
+     "shared": null,
+     "openings": []
+    },
+    {
+     "id": "a4",
+     "a": {
+      "x": 0,
+      "y": 3000
+     },
+     "b": {
+      "x": 0,
+      "y": 0
+     },
+     "length": 3000,
+     "measured": false,
+     "thickness": 120,
+     "kind": null,
+     "material": null,
+     "shared": null,
+     "openings": []
+    }
+   ]
+  },
+  {
+   "id": "B",
+   "name": "Łazienka",
+   "height": 2500,
+   "heightMeasured": false,
+   "area": 6,
+   "outline": [
+    {
+     "x": 4120,
+     "y": 3000
+    },
+    {
+     "x": 4120,
+     "y": 0
+    },
+    {
+     "x": 6120,
+     "y": 0
+    },
+    {
+     "x": 6120,
+     "y": 3000
+    }
+   ],
+   "walls": [
+    {
+     "id": "b1",
+     "a": {
+      "x": 4120,
+      "y": 3000
+     },
+     "b": {
+      "x": 4120,
+      "y": 0
+     },
+     "length": 3000,
+     "measured": true,
+     "thickness": 120,
+     "kind": null,
+     "material": null,
+     "shared": {
+      "room": "A",
+      "wall": "a2"
+     },
+     "openings": []
+    },
+    {
+     "id": "b2",
+     "a": {
+      "x": 4120,
+      "y": 0
+     },
+     "b": {
+      "x": 6120,
+      "y": 0
+     },
+     "length": 2000,
+     "measured": true,
+     "thickness": 120,
+     "kind": null,
+     "material": null,
+     "shared": null,
+     "openings": []
+    },
+    {
+     "id": "b3",
+     "a": {
+      "x": 6120,
+      "y": 0
+     },
+     "b": {
+      "x": 6120,
+      "y": 3000
+     },
+     "length": 3000,
+     "measured": true,
+     "thickness": 120,
+     "kind": null,
+     "material": null,
+     "shared": null,
+     "openings": []
+    },
+    {
+     "id": "b4",
+     "a": {
+      "x": 6120,
+      "y": 3000
+     },
+     "b": {
+      "x": 4120,
+      "y": 3000
+     },
+     "length": 2000,
+     "measured": true,
+     "thickness": 120,
+     "kind": null,
+     "material": null,
+     "shared": null,
+     "openings": []
+    }
+   ]
+  }
+ ]
+}
