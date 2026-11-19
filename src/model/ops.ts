@@ -1,5 +1,5 @@
 import { findOverlaps, uncoveredParts } from '../geometry/contacts';
-import { dist, existingRooms, interiorSide, isNewWall, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
+import { dist, existingRooms, isNewWall, masonrySide, nodeMap, projectOnSegment, wallEnds } from '../geometry/geometry';
 import { wallSystemById } from '../catalog/rigips';
 import { createExistingWall, createWall, uid } from './factory';
 import type { Id, Point, Project, Wall } from './types';
@@ -214,7 +214,7 @@ export function clipToMasonry(p: Project, from: Point, to: Point): { point: Poin
     const nx = -uy;
     const ny = ux;
     const t = w.thickness ?? 25;
-    const inner = interiorSide(p, w, rooms);
+    const inner = masonrySide(p, w, rooms);
     const vMin = inner === 1 ? -t : inner === -1 ? 0 : -t / 2;
     const vMax = vMin + t;
     const ext = t / 2; // narożniki muru są przedłużone

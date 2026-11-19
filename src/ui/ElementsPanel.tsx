@@ -511,6 +511,12 @@ export function ExistingWallEditor({
 
   return (
     <div className="editor" ref={root}>
+      {wall.backing && (
+        <p className="small">
+          Mur dodany automatycznie, bo okładzina (ATLAS M-System, CD 60 na uchwytach ES, płyta na kleju) zawsze leży na
+          istniejącej ścianie. Ustaw jego grubość, a okładzinę zmieniaj poniżej.
+        </p>
+      )}
       <p className="muted small">
         Istniejąca ściana nie jest liczona w materiałach. Linia na planie to lico od strony pomieszczenia – zmierz ją
         dalmierzem od narożnika do narożnika.

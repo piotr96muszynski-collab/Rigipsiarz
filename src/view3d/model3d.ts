@@ -3,10 +3,10 @@
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
 import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
-import { ceilingGrid, liningKey, pickBoardLength, type ProjectCalc } from '../calc/materials';
-import { pieceArea, pieceOutline, wallLayout } from '../calc/layout';
+import { ceilingFixerGrid, ceilingGrid, liningKey, pickBoardLength, type ProjectCalc } from '../calc/materials';
+import { pieceArea, pieceOutline, pointFixGrid, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
-import { analyzeJunctions, existingRooms, interiorSide, isNewWall, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
+import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Ceiling, Point, Project, Wall } from '../model/types';
 import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 
@@ -14,7 +14,7 @@ import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
 
 /** Materiały elementów rusztu; płyty mają klucz `board:<id>` */
-export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'masonry';
+export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'masonry' | 'disc' | 'anchor';
 export type MatKey = FrameMat | `board:${string}`;
 
 export interface BoxPart {
@@ -63,7 +63,21 @@ export interface PanelPart {
   owner: string;
 }
 
-export type Part3D = BoxPart | SlabPart | PanelPart;
+/** Walec wzdłuż dowolnej osi – talerzyk i trzpień łącznika ATLAS M-System 3G */
+export interface CylPart {
+  type: 'cyl';
+  layer: Layer3D;
+  mat: MatKey;
+  /** Środek walca */
+  c: [number, number, number];
+  /** Kierunek osi walca (wektor jednostkowy) */
+  axis: [number, number, number];
+  r: number;
+  len: number;
+  owner: string;
+}
+
+export type Part3D = BoxPart | SlabPart | PanelPart | CylPart;
 
 export interface Model3D {
   parts: Part3D[];
@@ -153,6 +167,30 @@ const TRACK_H = 0.04; // wysokość ścianki UW widoczna w 3D
 const CD_H = 0.027;
 const CD_W = 0.06;
 const UD_W = 0.028;
+/** Talerzyk KT 3G 120 PP: średnica 120 mm */
+export const DISC_R = 0.06;
+const DISC_T = 0.006;
+/** Trzpień łącznika 3GL z tuleją */
+const ANCHOR_R = 0.008;
+
+/**
+ * Łącznik ATLAS M-System 3G: talerzyk tuż pod płytą i trzpień do podłoża. `base` – punkt na
+ * licu podłoża (muru albo stropu), `dir` – kierunek od podłoża do płyty, `standoff` – odstęp płyty, m.
+ */
+export function fixerParts(
+  layer: Layer3D,
+  base: [number, number, number],
+  dir: [number, number, number],
+  standoff: number,
+  owner: string,
+): CylPart[] {
+  const at = (k: number): [number, number, number] => [base[0] + dir[0] * k, base[1] + dir[1] * k, base[2] + dir[2] * k];
+  const stem = Math.max(0.005, standoff - DISC_T);
+  return [
+    { type: 'cyl', layer, mat: 'anchor', c: at(stem / 2), axis: dir, r: ANCHOR_R, len: stem, owner },
+    { type: 'cyl', layer, mat: 'disc', c: at(standoff - DISC_T / 2), axis: dir, r: DISC_R, len: DISC_T, owner },
+  ];
+}
 
 function buildWall(
   p: Project,
@@ -246,6 +284,15 @@ function buildWall(
       const web: WebSide = t.kind === 'floor' || t.kind === 'header' ? 'a-' : 'a+';
       const tm: FrameMat = isCD ? 'ud' : 'uw';
       for (const n of rowsN) box('wallFrame', tm, t.x0, t.x1, y0, y0 + TRACK_H, n, thick, profileFor(tm, 'along', web));
+    }
+  }
+
+  // --- ATLAS M-System 3G: łączniki talerzykowe za płytą (strona 0), podłoże po stronie przeciwnej ---
+  if (lay?.fixers) {
+    const depth = sec.core * 2;
+    for (const q of lay.fixers.points) {
+      const base: [number, number, number] = [ax + ux * q.x - nx * sec.core, q.y, az + uz * q.x - nz * sec.core];
+      parts.push(...fixerParts('wallFrame', base, [nx, 0, nz], depth, w.id));
     }
   }
 
@@ -368,6 +415,16 @@ function buildExistingWall(
         }
       }
     }
+    // ATLAS M-System 3G: łączniki w siatce z rysunków, talerzyk pod płytą, trzpień w murze
+    if (sys.frame === 'point-fix') {
+      const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
+      const grid = pointFixGrid(l0, l1, H, l.studSpacing / 100, (sys.pointSpacing ?? 50) / 100, openings);
+      const dn: [number, number, number] = [nx * l.side, 0, nz * l.side];
+      for (const q of grid.points) {
+        const base: [number, number, number] = [ax + ux * q.x + nx * face, q.y, az + uz * q.x + nz * face];
+        parts.push(...fixerParts('wallFrame', base, dn, depth, w.id));
+      }
+    }
     const sheetLen = pickBoardLength(l.boardId, w.height) / 100;
     const widthM = board.width / 100;
     // w narożniku obrysu okładzina dochodzi do lica sąsiedniej okładziny (model styków)
@@ -445,8 +502,17 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
     }
   }
 
-  // UD przyścienny po obwodzie (system ATLAS M-System 3G nie ma profili)
-  if (sys.kind === 'point-fix') return;
+  // ATLAS M-System 3G: zamiast profili łączniki – talerzyk nad płytą, trzpień do stropu
+  if (sys.kind === 'point-fix') {
+    const standoff = sys.fixer ? (sys.fixer.standoff[0] + sys.fixer.standoff[1]) / 2000 : 0.03;
+    for (const q of ceilingFixerGrid(c, sys).points) {
+      // podłoże = strop nad płytą; walec rysujemy od płyty w górę, więc baza to strop, kierunek w dół
+      parts.push(...fixerParts('ceilingFrame', [q.x / 100, yFrame + standoff, q.y / 100], [0, -1, 0], standoff, c.id));
+    }
+    return;
+  }
+
+  // UD przyścienny po obwodzie
   const edges = polygonPerimeterEdges(pts);
   // UD: środnik przy ścianie (na zewnątrz obrysu), półki do wnętrza
   let signed = 0;
@@ -481,7 +547,7 @@ export function buildModel3D(p: Project, calc?: ProjectCalc): Model3D {
   for (const w of p.walls) {
     if (!nodes.has(w.a) || !nodes.has(w.b)) continue;
     if (isNewWall(w)) buildWall(p, w, nodes, contacts, junctions, parts);
-    else buildExistingWall(p, w, interiorSide(p, w, rooms), calc, nodes, contacts, parts);
+    else buildExistingWall(p, w, masonrySide(p, w, rooms), calc, nodes, contacts, parts);
   }
   for (const c of p.ceilings) buildCeiling(c, parts);
 
@@ -496,6 +562,7 @@ export function buildModel3D(p: Project, calc?: ProjectCalc): Model3D {
   };
   for (const pt of parts) {
     if (pt.type === 'box') grow(pt.c[0], pt.c[1] + pt.s[1] / 2, pt.c[2]);
+    else if (pt.type === 'cyl') grow(pt.c[0], pt.c[1], pt.c[2]);
     else if (pt.type === 'panel') {
       const c = Math.cos(pt.rotY);
       const sn = Math.sin(pt.rotY);

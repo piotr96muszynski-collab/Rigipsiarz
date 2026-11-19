@@ -4,9 +4,9 @@
 // Jednostki: ściany w metrach (jak w wyliczeniach), sufity w centymetrach (jak ceilingGrid).
 
 import { boardById, ceilingSystemById, wallSystemById, type WallFrame } from '../catalog/rigips';
-import { buildContacts, cornerStudPositions, partRange, type ContactModel } from '../geometry/contacts';
+import { buildContacts, cornerStudPositions, partRange, type ContactModel, type WallEndContacts } from '../geometry/contacts';
 import { bbox, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
-import type { Ceiling, Opening, Project, Wall } from '../model/types';
+import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 
 // ---------------------------------------------------------------------------
 // Ściany
@@ -184,6 +184,55 @@ export interface WallLayout {
   /** wymiar arkusza, m */
   sheet: { width: number; length: number };
   faces: BoardFace[];
+  /** ATLAS M-System 3G: siatka łączników talerzykowych (zamiast rusztu) */
+  fixers?: FixerGrid;
+}
+
+/** Siatka łączników talerzykowych na ścianie, m (x od węzła a, y od posadzki) */
+export interface FixerGrid {
+  /** osie kolumn łączników */
+  xs: number[];
+  /** wysokości rzędów łączników */
+  ys: number[];
+  /** łączniki do osadzenia (bez tych, które wypadają w otworach) */
+  points: { x: number; y: number }[];
+  /** rozstaw w poziomie i w pionie, m */
+  sx: number;
+  sy: number;
+}
+
+/** Odległość skrajnego łącznika od krawędzi okładziny, m (talerzyk musi się zmieścić pod płytą) */
+export const FIXER_EDGE = 0.05;
+
+/** Osie co `step` od `lo`, ostatnia na `hi`; skrajne odsunięte od krawędzi o `edge` */
+function fixerAxis(lo: number, hi: number, step: number, edge: number): number[] {
+  const out: number[] = [];
+  const n = Math.ceil((hi - lo) / step - 1e-9);
+  for (let i = 0; i < n; i++) out.push(lo + i * step);
+  out.push(hi);
+  return out.map((v) => round3(Math.min(hi - edge, Math.max(lo + edge, v))));
+}
+
+/**
+ * Siatka łączników ATLAS M-System 3G na okładzinie od `x0` do `x1` i wysokości `H`: kolumny co
+ * `sx`, rzędy co `sy`, skrajne przy krawędziach (tyle samo kolumn i rzędów co w wyliczeniu
+ * łączników). Łączniki w świetle otworów pomijamy.
+ */
+export function pointFixGrid(
+  x0: number,
+  x1: number,
+  H: number,
+  sx: number,
+  sy: number,
+  openings: { x0: number; x1: number; sill: number; top: number }[] = [],
+): FixerGrid {
+  const xs = fixerAxis(x0, x1, sx, FIXER_EDGE);
+  const ys = fixerAxis(0, H, sy, FIXER_EDGE);
+  const tol = 0.02;
+  const inHole = (x: number, y: number) =>
+    openings.some((o) => x > o.x0 + tol && x < o.x1 - tol && y > o.sill + tol && y < o.top - tol);
+  const points = xs.flatMap((x) => ys.filter((y) => !inHole(x, y)).map((y) => ({ x, y })));
+  return { xs, ys, points, sx, sy };
 }
 
 /**
@@ -381,10 +430,64 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     tracks,
     sheet: { width: boardW, length: sheetLen },
     faces,
+    fixers: frame === 'point-fix' ? pointFixGrid(f0, f1, H, s, (sys.pointSpacing ?? 50) / 100, openings) : undefined,
   };
 }
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
+/**
+ * Okładzina istniejącej ściany jako jednostronna ściana z systemu okładziny (te same wyliczenia
+ * i rysunki co nowa ściana): długość i wysokość muru, otwory muru bez ościeżnic UA.
+ */
+export function liningAsWall(w: Wall, l: Lining): Wall {
+  const sys = wallSystemById(l.systemId);
+  return {
+    ...w,
+    kind: 'new',
+    systemId: sys.id,
+    boardId: l.boardId,
+    studSpacing: l.studSpacing,
+    insulation: l.insulation,
+    endA: 'existing-wall',
+    endB: 'existing-wall',
+    linings: undefined,
+    openings: w.openings.map((o) => ({ ...o, reinforced: false })),
+  };
+}
+
+/** Wyłącznie połączenia z murem – okładzina nie ma narożników z rusztu */
+const LINING_JUNCTIONS: WallJunctions = { endA: 'existing-wall', endB: 'existing-wall', extraStuds: 0, externalEdges: 0 };
+
+/**
+ * Układ rusztu / łączników i płyt okładziny istniejącej ściany, na zakresie z modelu styków
+ * (w narożniku obrysu okładzina dochodzi do lica sąsiedniej okładziny).
+ */
+export function liningLayout(p: Project, w: Wall, l: Lining, m: ContactModel = buildContacts(p)): WallLayout {
+  const sw = liningAsWall(w, l);
+  const L = wallLength(p, w) / 100;
+  const [u0, u1] = m.linings.get(`${w.id}:${l.side}`) ?? [0, L];
+  const layers = wallSystemById(l.systemId).layers;
+  const end = (e: 'a' | 'b', s: number): WallEndContacts => ({
+    wallId: w.id,
+    end: e,
+    nodeId: e === 'a' ? w.a : w.b,
+    joint: 'masonry',
+    role: 'end',
+    frame: { s, contact: 'lining' },
+    boards: [Array.from({ length: layers }, () => ({ s, contact: 'lining' as const }))],
+  });
+  const own: ContactModel = {
+    sections: new Map(),
+    nodes: new Map(),
+    linings: new Map(),
+    ends: new Map([
+      [`${w.id}:a`, end('a', u0)],
+      [`${w.id}:b`, end('b', L - u1)],
+    ]),
+  };
+  return wallLayout(p, sw, LINING_JUNCTIONS, own);
+}
 
 // ---------------------------------------------------------------------------
 // Płyty przy otworach: wycięcie w kształt litery L

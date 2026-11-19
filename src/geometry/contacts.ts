@@ -16,7 +16,7 @@
 
 import { boardById, wallFrameDepth, wallSystemById, type WallFrame } from '../catalog/rigips';
 import type { Id, Lining, Point, Project, Wall } from '../model/types';
-import { cornerThrough, existingRooms, interiorSide, isNewWall, nodeMap, projectOnSegment, throughPair } from './geometry';
+import { cornerThrough, existingRooms, isNewWall, masonrySide, nodeMap, projectOnSegment, throughPair } from './geometry';
 
 /** Szerokość półki słupka CW, m */
 export const STUD_W = 0.05;
@@ -465,7 +465,7 @@ export function footprints(p: Project, m: ContactModel = buildContacts(p)): Foot
       }
     } else {
       const T = (w.thickness ?? 25) / 100;
-      const inner = interiorSide(p, w, rooms);
+      const inner = masonrySide(p, w, rooms);
       const center = inner ? -inner * (T / 2) : 0;
       out.push({ wallId: w.id, label: 'mur', kind: 'masonry', poly: rectPoly(ax, 0, ax.L, center - T / 2, center + T / 2) });
       for (const l of w.linings ?? []) {
