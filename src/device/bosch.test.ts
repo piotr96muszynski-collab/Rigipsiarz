@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOSCH_CHANNELS, buildFrame, crc8, distanceCm, ENABLE_SYNC, floatCandidates, fromHex, isBoschCharacteristic, parseFrame, toHex } from './bosch';
+import { BOSCH_CHANNELS, DIAG_CANDIDATE_SERVICES, buildFrame, crc8, distanceCm, ENABLE_SYNC, floatCandidates, fromHex, isBoschCharacteristic, parseFrame, toHex } from './bosch';
 
 /** Ramka wyniku taka, jak opisują ją otwarte projekty: C0 55 10 <tryb> … float32 LE od bajtu 7 */
 function resultFrame(meters: number, mode = 0x06): Uint8Array {
@@ -74,5 +74,11 @@ describe('usługi BLE różnych modeli', () => {
   });
   it('najpierw próbuje usługi nowszych modeli', () => {
     expect(BOSCH_CHANNELS[0].service).toBe('00005301-0000-0041-5253-534f46540000');
+  });
+});
+
+describe('diagnostyka', () => {
+  it('lista kandydatów zawiera obie usługi Bosch', () => {
+    for (const c of BOSCH_CHANNELS) expect(DIAG_CANDIDATE_SERVICES).toContain(c.service);
   });
 });

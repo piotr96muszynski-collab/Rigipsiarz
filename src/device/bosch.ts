@@ -21,6 +21,23 @@ export const BOSCH_CHANNELS = [
   { service: BOSCH_SERVICE, characteristic: BOSCH_CHARACTERISTIC },
 ] as const;
 
+/**
+ * Diagnostyka: przeglądarka pokazuje tylko usługi wymienione przed połączeniem, więc podajemy
+ * szeroką listę kandydatów (Bosch, standardowe, popularne moduły BLE-UART), żeby zobaczyć, co dalmierz ma.
+ */
+export const DIAG_CANDIDATE_SERVICES = [
+  ...BOSCH_CHANNELS.map((c) => c.service),
+  '00005300-0000-0041-5253-534f46540000',
+  '00005302-0000-0041-5253-534f46540000',
+  'device_information',
+  'battery_service',
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART
+  '0000ffe0-0000-1000-8000-00805f9b34fb',
+  '0000fff0-0000-1000-8000-00805f9b34fb',
+  '0000fee0-0000-1000-8000-00805f9b34fb',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Microchip ISSC
+];
+
 export const isBoschCharacteristic = (uuid: string) => BOSCH_CHANNELS.some((c) => c.characteristic === uuid.toLowerCase());
 
 /** Prefiksy nazw, pod którymi dalmierze Bosch się ogłaszają */
