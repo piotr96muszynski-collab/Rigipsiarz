@@ -53,6 +53,34 @@ export interface WallNeeds {
   liningOnly?: boolean;
   /** Tylko systemy tego producenta */
   maker?: Maker;
+  /** Szerokość profilu CW/UW, mm (brak = dowolna); systemy bez rusztu z CW (klej, CD 60, łączniki) wtedy odpadają */
+  profile?: number;
+  /** Płytowanie: liczba warstw płyt z jednej strony (brak = dowolne) */
+  layers?: 1 | 2;
+}
+
+/** Cechy do zaznaczenia w doborze ściany (wielokrotny wybór) */
+export type WallFeature = 'fire' | 'acoustic' | 'humid' | 'wet' | 'hang';
+export const WALL_FEATURES: { id: WallFeature; label: string; hint: string }[] = [
+  { id: 'fire', label: 'Odporność ogniowa', hint: 'klasa EI 30 lub wyższa w karcie systemu' },
+  { id: 'acoustic', label: 'Podwyższona akustyka', hint: 'RA1 co najmniej 45 dB w karcie systemu' },
+  { id: 'humid', label: 'Łazienka, kuchnia', hint: 'płyta impregnowana' },
+  { id: 'wet', label: 'Strefa mokra', hint: 'płyta do stref mokrych (prysznic, pralnia)' },
+  { id: 'hang', label: 'Szafki bez kołków', hint: 'płyta o podwyższonej twardości' },
+];
+
+/** Zamienia zaznaczone cechy na wymagania doboru */
+export function featureNeeds(features: Iterable<WallFeature>): Pick<WallNeeds, 'room' | 'fire' | 'acoustic' | 'hang'> {
+  const f = new Set(features);
+  return { room: f.has('wet') ? 'wet' : f.has('humid') ? 'humid' : 'dry', fire: f.has('fire') ? 30 : 0, acoustic: f.has('acoustic') ? 'better' : 'any', hang: f.has('hang') };
+}
+
+/** Czy system ma ruszt z profili CW (szerokość profilu ma znaczenie) */
+export const hasStudProfile = (s: WallSystem): boolean => s.frame !== 'glued' && s.frame !== 'cd-lining' && s.frame !== 'point-fix';
+
+/** Szerokości profili CW dostępne w systemach o danym przeznaczeniu, rosnąco */
+export function profileWidths(purpose: WallPurpose, systems: WallSystem[] = allWallSystems()): number[] {
+  return [...new Set(systems.filter((s) => wallPurposeOf(s) === purpose && hasStudProfile(s)).map((s) => s.profile as number))].sort((a, b) => a - b);
 }
 
 /** Producent systemu (systemy bez pola `maker` to Rigips, kategoria „atlas” to ATLAS) */
@@ -132,6 +160,8 @@ export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWall
     if (wallPurposeOf(sys) !== needs.purpose) continue;
     if (needs.liningOnly && !isLiningSystem(sys)) continue;
     if (needs.maker && makerOf(sys) !== needs.maker) continue;
+    if (needs.profile && !(hasStudProfile(sys) && sys.profile === needs.profile)) continue;
+    if (needs.layers && sys.layers !== needs.layers) continue;
     let best: WallPick | undefined;
     for (const c of candidates(sys)) {
       if (c.maxHeight && needs.heightCm > c.maxHeight + 0.5) continue;

@@ -21,8 +21,11 @@ import {
   makerOf,
   recommendCeilings,
   recommendWalls,
+  featureNeeds,
+  profileWidths,
+  WALL_FEATURES,
+  type WallFeature,
   wallPurposeOf,
-  type AcousticNeed,
   type CeilingMount,
   type CeilingPick,
   type FireNeed,
@@ -106,11 +109,6 @@ const ROOM_OPTIONS: PickOption<Room>[] = [
   { value: 'dry', label: 'Suche' },
   { value: 'humid', label: 'Łazienka, kuchnia', short: 'Łazienka' },
   { value: 'wet', label: 'Strefa mokra (prysznic)', short: 'Mokre' },
-];
-const ACOUSTIC_OPTIONS: PickOption<AcousticNeed>[] = [
-  { value: 'any', label: 'Zwykła' },
-  { value: 'better', label: 'Lepsza (RA1 ≥ 45 dB)', short: 'Lepsza' },
-  { value: 'flat', label: 'Między mieszkaniami (RA1 ≥ 53 dB)', short: 'Mieszkania' },
 ];
 const PURPOSE_OPTIONS: PickOption<WallPurpose>[] = [
   { value: 'partition', label: 'Działowa' },
@@ -390,6 +388,36 @@ const pickDetail = (p: WallPick) =>
     .filter(Boolean)
     .join(' · ');
 
+const LAYER_OPTIONS: PickOption<0 | 1 | 2>[] = [
+  { value: 0, label: 'Dowolne' },
+  { value: 1, label: 'Pojedyncze' },
+  { value: 2, label: 'Podwójne' },
+];
+
+/** Pole wielokrotnego wyboru cech ściany */
+function Features({ value, options, onChange }: { value: Set<WallFeature>; options: typeof WALL_FEATURES; onChange: (v: Set<WallFeature>) => void }) {
+  const toggle = (id: WallFeature) => {
+    const next = new Set(value);
+    if (next.has(id)) next.delete(id);
+    else {
+      next.add(id);
+      // łazienka i strefa mokra to jedno pytanie o płytę – zostaje ostatnio zaznaczone
+      if (id === 'wet') next.delete('humid');
+      if (id === 'humid') next.delete('wet');
+    }
+    onChange(next);
+  };
+  return (
+    <div className="sys-chips" role="group" aria-label="Cechy ściany">
+      {options.map((o) => (
+        <button key={o.id} type="button" className={`sys-chip ${value.has(o.id) ? 'on' : ''}`} aria-pressed={value.has(o.id)} title={o.hint} onClick={() => toggle(o.id)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function WallWizard({
   value,
   heightCm,
@@ -406,19 +434,23 @@ function WallWizard({
   const current = wallSystemById(value);
   const [purpose, setPurpose] = useState<WallPurpose>(liningOnly ? 'lining' : wallPurposeOf(current));
   const [height, setHeight] = useState(heightCm ?? 260);
-  const [room, setRoom] = useState<Room>('dry');
-  const [fire, setFire] = useState<FireNeed>(0);
-  const [acoustic, setAcoustic] = useState<AcousticNeed>('any');
-  const [hang, setHang] = useState(false);
+  const [profile, setProfile] = useState(0);
+  const [layers, setLayers] = useState<0 | 1 | 2>(0);
+  const [features, setFeatures] = useState<Set<WallFeature>>(new Set());
   const [maker, setMaker] = useState<MakerFilter>('all');
   const makers = useMemo(() => makerOptions(rows), [rows]);
+  const widths = useMemo(() => (liningOnly ? [] : profileWidths(purpose)), [purpose, liningOnly]);
+  const profileOptions: PickOption<number>[] = [{ value: 0, label: 'Dowolna' }, ...widths.map((w) => ({ value: w, label: `${w} mm`, short: String(w) }))];
+  const width = widths.includes(profile) ? profile : 0;
+  // akustykę karty podają tylko dla ścian działowych
+  const featureOptions = WALL_FEATURES.filter((f) => f.id !== 'acoustic' || purpose === 'partition');
+  const active = [...features].filter((f) => featureOptions.some((o) => o.id === f));
   const picks = recommendWalls({
     purpose,
     heightCm: height,
-    room,
-    fire,
-    acoustic: purpose === 'partition' ? acoustic : 'any',
-    hang,
+    ...featureNeeds(active),
+    profile: width || undefined,
+    layers: layers || undefined,
     liningOnly,
     maker: maker === 'all' ? undefined : maker,
   });
@@ -432,22 +464,18 @@ function WallWizard({
         )}
         <div className="sys-ask-row">
           <DimInput label="Wysokość" unit="m" value={height} min={30} max={1600} onChange={setHeight} />
-          <label className="check sys-check">
-            <input type="checkbox" checked={hang} onChange={(e) => setHang(e.target.checked)} />
-            <span>Szafki bez kołków</span>
-          </label>
         </div>
-        <Ask label="Pomieszczenie">
-          <Picker label="Pomieszczenie" value={room} options={ROOM_OPTIONS} onChange={setRoom} mode="segments" />
-        </Ask>
-        <Ask label="Odporność ogniowa">
-          <Picker label="Odporność ogniowa" value={fire} options={FIRE_OPTIONS} onChange={setFire} mode="segments" />
-        </Ask>
-        {purpose === 'partition' && (
-          <Ask label="Akustyka">
-            <Picker label="Akustyka" value={acoustic} options={ACOUSTIC_OPTIONS} onChange={setAcoustic} mode="segments" />
+        {widths.length > 0 && (
+          <Ask label="Szerokość profilu">
+            <Picker label="Szerokość profilu" value={width} options={profileOptions} onChange={setProfile} mode="segments" />
           </Ask>
         )}
+        <Ask label="Płytowanie">
+          <Picker label="Płytowanie" value={layers} options={LAYER_OPTIONS} onChange={setLayers} mode="segments" />
+        </Ask>
+        <Ask label="Cechy (możesz zaznaczyć kilka)">
+          <Features value={new Set(active)} options={featureOptions} onChange={setFeatures} />
+        </Ask>
         {makers.length > 2 && (
           <Ask label="Producent">
             <Picker label="Producent" value={maker} options={makers} onChange={setMaker} mode="segments" />
@@ -459,8 +487,8 @@ function WallWizard({
         rows={picks.map((p) => ({ key: p.system.id, id: p.system.id, name: p.system.name, detail: pickDetail(p), approx: p.approx, onPick: () => onPick(p) }))}
       />
       <p className="sys-note">
-        Klasy EI, akustyka i wysokości pochodzą z kart producentów. Systemy „szacunek” nie mają karty – nie pojawiają się przy wymaganiu
-        ogniowym ani akustycznym.
+        Klasy EI, akustyka i wysokości pochodzą z kart producentów. Systemy „szacunek” nie mają karty – nie pojawiają się przy zaznaczonej
+        odporności ogniowej ani akustyce.
       </p>
     </>
   );
