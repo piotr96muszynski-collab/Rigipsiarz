@@ -27,6 +27,7 @@ import { useHistory } from './useHistory';
 import { withLiningBacking } from '../model/backing';
 import { fmtNum } from './wallStyle';
 import { DimInput } from './DimInput';
+import { PomiarImportTile } from './PomiarImport';
 import { maxCeilingHeight } from '../calc/ceilingLevels';
 import { ceilingSystemById } from '../catalog/rigips';
 
@@ -246,6 +247,7 @@ function Home({
             <strong>Katalog systemów</strong>
             <span>Ściany i sufity Rigips, Norgips i ATLAS M-System 3G, zużycie na m², systemy własne</span>
           </button>
+          <PomiarImportTile onOpen={onOpen} />
         </div>
       )}
 
