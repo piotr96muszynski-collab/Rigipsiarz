@@ -1,4 +1,5 @@
 import { AtticBoardsDrawing, AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
+import { AtticWallBoardsDrawing, AtticWallFrameDrawing } from '../drawings/AtticWallDrawing';
 import { useMemo, useState } from 'react';
 import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc/layout';
 import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
@@ -259,6 +260,22 @@ export function DrawingsPanel({ project, calc }: Props) {
                     </div>
                   ));
                 })()}
+              </div>
+            ))}
+            {r.walls.map((w) => (
+              <div key={w.face.id}>
+                <h4>
+                  {w.face.label} – okładzina, ruszt i punkty mocowania
+                </h4>
+                <AtticWallFrameDrawing lay={w} title={`Poddasze ${i + 1} – ${w.face.label.toLowerCase()} – ruszt`} />
+                {[...w.layers].reverse().map((l) => (
+                  <div key={l.layer}>
+                    <h4>
+                      {w.face.label} – rozkład płyt{w.layers.length > 1 ? `, warstwa ${l.layer + 1}` : ''}
+                    </h4>
+                    <AtticWallBoardsDrawing lay={w} layer={l.layer} title={`Poddasze ${i + 1} – ${w.face.label.toLowerCase()} – płyty`} />
+                  </div>
+                ))}
               </div>
             ))}
             <p className="small">

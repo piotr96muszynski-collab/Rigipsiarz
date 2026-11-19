@@ -6,7 +6,8 @@ import { ATTIC_WOOL_BETWEEN, ATTIC_WOOL_UNDER, type AtticResult } from '../calc/
 import type { Attic } from '../model/types';
 import { DimInput } from './DimInput';
 import { Picker, type PickOption } from './Picker';
-import { BOARD_OPTIONS } from './ElementsPanel';
+import { BOARD_OPTIONS, LiningEditor } from './ElementsPanel';
+import { createLining } from '../model/factory';
 import { Warnings } from './SystemSelect';
 import { VaporField } from './WoolField';
 import { ceilingVaporSpec, vaporBarrierOn } from '../calc/vaporBarrier';
@@ -214,6 +215,42 @@ export function AtticEditor({ attic, edit, result }: Props) {
       </div>
 
       <VaporField spec={ceilingVaporSpec(sys)} enabled={vaporBarrierOn(attic.vaporBarrier, ceilingVaporSpec(sys))} areaM2={area} onToggle={(on) => edit((a) => void (a.vaporBarrier = on))} />
+
+      <h4>Okładziny ścian</h4>
+      {(
+        [
+          ['kneeLining', attic.roof === 'mono' ? 'Ścianka kolankowa i ściana wysoka' : 'Ścianki kolankowe', ['knee-left', 'knee-right']],
+          ['gableLining', 'Ściany szczytowe (obie)', ['gable']],
+        ] as const
+      ).map(([key, label, ids]) => {
+        const faces = result?.walls.filter((w) => (ids as readonly string[]).includes(w.face.id)) ?? [];
+        return (
+          <LiningEditor
+            key={key}
+            label={label}
+            lining={attic[key]}
+            result={
+              attic[key] && result
+                ? { info: { netAreaM2: faces.reduce((t, w) => t + w.areaM2 * w.face.count, 0), warnings: faces.flatMap((w) => w.warnings) } }
+                : undefined
+            }
+            onToggle={(on) =>
+              edit((a) => {
+                if (on) a[key] = createLining(1, 'O-CD-1');
+                else delete a[key];
+              })
+            }
+            onEdit={(fn) =>
+              edit((a) => {
+                const l = a[key];
+                if (l) fn(l);
+              })
+            }
+            idBase={`${attic.id}-${key}`}
+            areaLabel="okładziny, płyty docięte do skosu"
+          />
+        );
+      })}
 
       <Warnings items={result?.warnings ?? grid.warnings} />
       <details className="attic-assumptions">
