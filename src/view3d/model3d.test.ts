@@ -216,6 +216,18 @@ describe('poddasze w 3D', () => {
     expect(boxes.filter((x) => x.mat === 'vapor')).toHaveLength(r.grid.surfaces.length);
   });
 
+  it('ruszt krzyżowy: nośne pod krokwiami, montażowe w poprzek, wieszaki na nośnych', () => {
+    const p = project();
+    p.attics![0].systemId = 'SN-P-ESDK-1';
+    p.attics![0].boardId = 'SN-EXP12.5';
+    const r = atticRequirement(p.attics![0]);
+    const boxes = buildModel3D(p).parts.filter((x) => x.type === 'box');
+    const lines = r.grid.surfaces.reduce((n, g) => n + g.cd.length, 0);
+    expect(boxes.filter((x) => x.mat === 'cdSec')).toHaveLength(lines);
+    expect(boxes.filter((x) => x.mat === 'cdMain')).toHaveLength(r.grid.rafters.length * r.grid.surfaces.length);
+    expect(boxes.filter((x) => x.mat === 'hanger')).toHaveLength(r.hangers);
+  });
+
   it('skosy są pochylone o kąt dachu, sufit poziomy na wysokości jętek', () => {
     const m = buildModel3D(project());
     const boards = m.parts.filter((x) => x.type === 'box' && x.mat.startsWith('board:')) as BoxPart[];

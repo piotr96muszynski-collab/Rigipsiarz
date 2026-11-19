@@ -72,7 +72,7 @@ export function AtticEditor({ attic, edit, result }: Props) {
   const grid = result?.grid ?? atticGrid(attic, sys);
   const ridge = ridgeHeightFor(attic);
   const mono = attic.roof === 'mono';
-  const hangers = result?.hangers ?? grid.surfaces.reduce((n, g) => n + g.cd.length * g.hangerU.length, 0);
+  const hangers = result?.hangers ?? grid.surfaces.reduce((n, g) => n + (g.fixS.length || g.cd.length) * g.hangerU.length, 0);
   const area = grid.surfaces.reduce((s, g) => s + g.areaM2, 0);
 
   return (
@@ -80,7 +80,7 @@ export function AtticEditor({ attic, edit, result }: Props) {
       <AtticSectionPreview attic={attic} grid={grid} />
       <p className="muted small attic-summary" role="status">
         {fmtNum(area, 1)} m² zabudowy · {grid.rafters.length} krokwi · {grid.surfaces.reduce((n, g) => n + g.cd.length, 0)} linii rusztu (
-        {grid.frame.profileLabel}) co {grid.cdSpacing} cm{hangers ? ` · ${hangers} ${grid.frame.hanger ? 'wieszaków' : 'mocowań do krokwi'}` : ''} ·{' '}
+        {grid.frame.profileLabel}) co {grid.cdSpacing} cm{grid.carrier ? ` na ${grid.carrier.label} pod każdą krokwią` : ''}{hangers ? ` · ${hangers} ${grid.frame.hanger ? 'wieszaków' : 'mocowań do krokwi'}` : ''} ·{' '}
         {grid.depthMm < 0 ? `płyty ${-grid.depthMm} mm nad spodem krokwi` : `zabudowa ${grid.depthMm} mm pod krokwią`}
       </p>
 
