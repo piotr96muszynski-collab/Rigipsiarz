@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calculateProject, ceilingGrid } from '../calc/materials';
 import { atticRequirement } from '../calc/atticMaterials';
-import { createAttic, createCeiling, createOpening, createProject, createWall, sampleProject, uid } from '../model/factory';
+import { createAttic, createCeiling, createOpening, createProject, createWall, quickAtticProject, sampleProject, uid } from '../model/factory';
 import type { Project } from '../model/types';
 import { overlapArea, wallSection } from '../geometry/contacts';
 import { boardSheets, buildModel3D, subtractRects, type BoxPart, type PanelPart } from './model3d';
@@ -246,5 +246,20 @@ describe('poddasze w 3D', () => {
     // model sięga do kalenicy: 1,00 + 4,00·tg45° = 5,00 m + krokiew
     expect(m.bounds.max[1]).toBeGreaterThan(5);
     expect(m.bounds.min[2]).toBeLessThanOrEqual(0);
+  });
+});
+
+describe('poddasze z narożnikami i koszami w 3D', () => {
+  it('płyty jako wielokąty na połaciach, krokwie narożne i koszowe jako belki', () => {
+    const a = createAttic({ ends: ['hip', 'gable'], wings: [{ id: 'w', side: 'left', at: 500, width: 400, length: 300, end: 'hip' }] });
+    const m = buildModel3D(quickAtticProject(a));
+    const faces = m.parts.filter((x) => x.type === 'face' && x.layer === 'ceilingBoards');
+    const beams = m.parts.filter((x) => x.type === 'beam');
+    expect(faces.length).toBeGreaterThan(5);
+    expect(beams.some((b) => b.type === 'beam' && b.layer === 'existing')).toBe(true);
+    for (const v of [...m.bounds.min, ...m.bounds.max]) expect(Number.isFinite(v)).toBe(true);
+    // obrót kalenicy o 90° przenosi całość
+    const r = buildModel3D(quickAtticProject({ ...a, planRot: 90 }));
+    expect(r.parts.length).toBe(m.parts.length);
   });
 });

@@ -312,7 +312,7 @@ export function PlanCanvas(props: Props) {
     return null;
   };
   const hitCeiling = (w: Point) => [...project.ceilings].reverse().find((c) => pointInPolygon(w, c.points));
-  const hitAttic = (w: Point) => [...atticShapes].reverse().find((x) => pointInPolygon(w, x.lines.outline));
+  const hitAttic = (w: Point) => [...atticShapes].reverse().find((x) => pointInPolygon(w, x.lines.outline) || x.lines.wings.some((q) => pointInPolygon(w, q)));
   /** Element pod kursorem dla menu kontekstowego; ściana z zaznaczenia kilku → całe zaznaczenie */
   const targetAt = (s: Point, w: Point): Selection => {
     const ho = hitOpening(w);
@@ -837,6 +837,9 @@ export function PlanCanvas(props: Props) {
             return (
               <g key={a.id} className={`attic ${sel ? 'selected' : ''}`}>
                 <polygon points={lines.outline.map((q) => `${q.x},${q.y}`).join(' ')} className="attic-area" strokeWidth={(sel ? 2.5 : 1.5) / view.z} />
+                {lines.wings.map((wq, k) => (
+                  <polygon key={`w${k}`} points={wq.map((q) => `${q.x},${q.y}`).join(' ')} className="attic-area" strokeWidth={(sel ? 2.5 : 1.5) / view.z} />
+                ))}
                 {a.rafterSpacing * view.z > 6 &&
                   lines.rafters.map((l, k) => <line key={`r${k}`} {...seg(l)} className="attic-rafter" strokeWidth={Math.max(1 / view.z, a.rafterWidth)} />)}
                 {lines.knees.map((l, k) => (
@@ -846,6 +849,15 @@ export function PlanCanvas(props: Props) {
                   <line key={`f${k}`} {...seg(l)} className="attic-fold" strokeWidth={1.5 / view.z} />
                 ))}
                 {lines.ridge && <line {...seg(lines.ridge)} className="attic-ridge" strokeWidth={2 / view.z} />}
+                {lines.ridges.map((l, k) => (
+                  <line key={`rr${k}`} {...seg(l)} className="attic-ridge" strokeWidth={2 / view.z} />
+                ))}
+                {lines.hips.map((l, k) => (
+                  <line key={`h${k}`} {...seg(l)} className="attic-hip" strokeWidth={2.5 / view.z} />
+                ))}
+                {lines.valleys.map((l, k) => (
+                  <line key={`v${k}`} {...seg(l)} className="attic-valley" strokeWidth={2.5 / view.z} />
+                ))}
                 <text x={(lines.outline[0].x + lines.outline[2].x) / 2} y={(lines.outline[0].y + lines.outline[2].y) / 2} fontSize={13 / view.z} textAnchor="middle" dominantBaseline="middle" className="attic-label">
                   Poddasze {i + 1}
                 </text>

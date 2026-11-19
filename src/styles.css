@@ -3320,6 +3320,21 @@ button.catalog-part {
   margin: 6px 0 0;
   font-size: 0.95rem;
 }
+.attic-wing {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px 12px;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.attic-wing legend {
+  font-weight: 600;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .attic-assumptions {
   font-size: 0.9rem;
   color: var(--muted);
@@ -3500,6 +3515,12 @@ button.catalog-part {
 .plan .attic-ridge {
   stroke: #8a6230;
   stroke-dasharray: 14 5 3 5;
+}
+.plan .attic-hip {
+  stroke: #d9822b;
+}
+.plan .attic-valley {
+  stroke: #7b4fb5;
 }
 .plan .attic-label {
   fill: var(--text);

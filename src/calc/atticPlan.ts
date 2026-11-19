@@ -5,6 +5,7 @@
 import { ceilingSystemById } from '../catalog/rigips';
 import type { Attic, Point, Project } from '../model/types';
 import { atticGrid } from './attic';
+import { faceRafterSpans, zAt, type P2, type RoofFace } from './atticRoof';
 
 /** Wymiary obrysu na planie (wzdłuż X i Y), cm */
 export const atticFootprint = (a: Pick<Attic, 'length' | 'width' | 'planRot'>): { w: number; h: number } =>
@@ -75,6 +76,13 @@ export interface AtticPlanLines {
   rafters: [Point, Point][];
   /** Krawędzie ze ścianką kolankową (mur) */
   knees: [Point, Point][];
+  /** Obrysy dobudówek (dach L / T) poza prostokątem głównym */
+  wings: Point[][];
+  /** Narożniki dachu i kosze */
+  hips: [Point, Point][];
+  valleys: [Point, Point][];
+  /** Dodatkowe kalenice (dobudówki) */
+  ridges: [Point, Point][];
 }
 
 /** Linie poddasza do narysowania na rzucie – z tej samej siatki co rysunki i 3D */
@@ -91,11 +99,43 @@ export function atticPlanLines(a: Attic, o: Point): AtticPlanLines {
   const knees: [Point, Point][] = [];
   if (a.kneeLeft > 0) knees.push(across(0));
   if (a.roof === 'mono' || a.kneeRight > 0) knees.push(across(a.width));
+  if (g.roof) {
+    // dach z narożnikami / koszami: linie z płaszczyzn konstrukcji
+    const r = g.roof.structure;
+    const P = (p: P2) => atticToPlan(a, o, p.u, p.v);
+    const of = (kind: string) => r.lines.filter((l) => l.kind === kind).map((l) => [P(l.p), P(l.q)] as [Point, Point]);
+    const at = (fc: RoofFace, t: number, s: number) => {
+      const dd = fc.d0 + s * fc.cos;
+      return P({ u: fc.e.u * t + fc.d.u * dd, v: fc.e.v * t + fc.d.v * dd });
+    };
+    const ridges = of('ridge');
+    return {
+      outline: atticOutline(a, o),
+      ridge: ridges[0],
+      folds: g.roof.roof.lines.filter((l) => l.kind === 'fold').map((l) => [P(l.p), P(l.q)] as [Point, Point]),
+      rafters: r.faces.flatMap((fc) => faceRafterSpans(fc).map((sp) => [at(fc, sp.t, sp.s0), at(fc, sp.t, sp.s1)] as [Point, Point])),
+      knees: r.faces.flatMap((fc) =>
+        fc.edges.filter((e) => e.kind === 'wall' && zAt(fc.plane, e.p) > 1 && Math.abs(zAt(fc.plane, e.p) - zAt(fc.plane, e.q)) < 1).map((e) => [P(e.p), P(e.q)] as [Point, Point]),
+      ),
+      wings: r.rects.slice(1).map(([u0, u1, v0, v1]) => {
+        // część dobudówki poza prostokątem głównym
+        const vs = v0 < 0 ? [v0, 0] : [a.width, v1];
+        return [P({ u: u0, v: vs[0] }), P({ u: u1, v: vs[0] }), P({ u: u1, v: vs[1] }), P({ u: u0, v: vs[1] })];
+      }),
+      hips: of('hip'),
+      valleys: of('valley'),
+      ridges: ridges.slice(1),
+    };
+  }
   return {
     outline: atticOutline(a, o),
     ridge: a.roof === 'gable' ? across(g.structure.ridgeX) : undefined,
     folds,
     rafters: g.rafters.map((u) => [atticToPlan(a, o, u, 0), atticToPlan(a, o, u, a.width)]),
     knees,
+    wings: [],
+    hips: [],
+    valleys: [],
+    ridges: [],
   };
 }
