@@ -16,7 +16,7 @@
 
 import { boardById, wallFrameDepth, wallSystemById, type WallFrame } from '../catalog/rigips';
 import type { Id, Lining, Point, Project, Wall } from '../model/types';
-import { cornerThrough, existingRooms, isNewWall, masonrySide, nodeMap, projectOnSegment, throughPair } from './geometry';
+import { cornerThrough, existingRooms, wallPrecedes, isNewWall, masonrySide, nodeMap, projectOnSegment, throughPair } from './geometry';
 
 /** Szerokość półki słupka CW, m */
 export const STUD_W = 0.05;
@@ -273,7 +273,7 @@ export function buildContacts(p: Project): ContactModel {
         put(blank(w2, nid, 'inline', 'end', 'inline', w1.id));
         continue;
       }
-      const A = cornerThrough(w1, w2);
+      const A = cornerThrough(p, w1, w2);
       const B = A === w1 ? w2 : w1;
       model.nodes.set(nid, { kind: 'L', through: [A.id], abut: [B.id], angleDeg: ang });
       const eA = blank(A, nid, 'L', 'through', 'lap', B.id);
@@ -338,8 +338,8 @@ export function buildContacts(p: Project): ContactModel {
           if (dot({ x: ax.n.x * l.side, y: ax.n.y * l.side }, dirO) <= 0.1) continue;
           for (const lo of o.linings ?? []) {
             if (dot({ x: ao.n.x * lo.side, y: ao.n.y * lo.side }, dirW) <= 0.1) continue;
-            // dochodzi okładzina ściany o większym id
-            if (w.id < o.id) continue;
+            // dochodzi okładzina ściany narysowanej później
+            if (wallPrecedes(p, w, o)) continue;
             const den = Math.abs(dot(dirW, ao.n)) || 1;
             const s = liningThickness(lo) / den;
             if (end === 'a') u0 = Math.max(u0, s);

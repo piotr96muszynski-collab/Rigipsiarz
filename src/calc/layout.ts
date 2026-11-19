@@ -5,7 +5,7 @@
 
 import { boardById, ceilingSystemById, wallSystemById, type WallFrame } from '../catalog/rigips';
 import { buildContacts, cornerStudPositions, partRange, type ContactModel, type WallEndContacts } from '../geometry/contacts';
-import { bbox, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
+import { bbox, firstWall, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { pickBoardLengthCm, rowSegments } from './boardLength';
 
@@ -102,10 +102,10 @@ export function junctionStudPositions(p: Project, w: Wall, j: WallJunctions, m: 
   ] as const) {
     const others = fresh.filter((o) => o.id !== w.id && (o.a === nid || o.b === nid));
     if (kind === 'tee-through' || kind === 'cross') {
-      // słupki dostaje ściana ciągła (para współliniowa, mniejsze id) – jak w analizie połączeń
+      // słupki dostaje ściana ciągła (para współliniowa, wcześniej narysowana) – jak w analizie połączeń
       const node = nodes.get(nid)!;
       const far = (o: Wall) => nodes.get(o.a === nid ? o.b : o.a)!;
-      const owner = throughPair(node, [w, ...others], far).sort((m, n) => (m.id < n.id ? -1 : 1))[0];
+      const owner = firstWall(p, throughPair(node, [w, ...others], far));
       if (owner.id === w.id) xs.push(...(kind === 'cross' ? [x, x] : [x]));
     }
   }
