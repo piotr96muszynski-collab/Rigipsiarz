@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
-import { wallLayout } from '../calc/layout';
-import { ceilingInsulation, wallInsulation } from '../calc/materials';
+import { liningLayout, wallLayout, type WallLayout } from '../calc/layout';
+import { ceilingFixerGrid, ceilingInsulation, liningKey, wallInsulation } from '../calc/materials';
 import type { MaterialLine, ProjectCalc, Requirement } from '../calc/materials';
-import { PRODUCTS, boardById, ceilingSystemById, wallSystemById } from '../catalog/rigips';
+import { PRODUCTS, boardById, ceilingSystemById, wallSystemById, type WallSystem } from '../catalog/rigips';
 import { CeilingBoardsDrawing, CeilingGridDrawing } from '../drawings/CeilingDrawing';
 import { JunctionDetail, OpeningDetail, type DetailKind } from '../drawings/Details';
 import { CeilingSection, WallSection } from '../drawings/Sections';
-import { WallBoardsDrawing, WallFrameDrawing, faceName } from '../drawings/WallDrawing';
+import { WallBoardsDrawing, WallFixersDrawing, WallFrameDrawing, faceName } from '../drawings/WallDrawing';
+import { CeilingFixersDrawing } from '../drawings/CeilingDrawing';
 import { analyzeJunctions, type WallJunctions } from '../geometry/geometry';
-import type { Project } from '../model/types';
+import { buildContacts } from '../geometry/contacts';
+import { isNewWall } from '../geometry/geometry';
+import type { Lining, Project, Wall } from '../model/types';
 import { fmtNum } from './wallStyle';
 
 interface Props {
@@ -85,6 +88,11 @@ export function DrawingsPanel({ project, calc }: Props) {
   const junctions = useMemo(() => analyzeJunctions(project), [project]);
   const walls = project.walls.filter((w) => calc.walls.has(w.id));
   const ceilings = project.ceilings.filter((c) => calc.ceilings.has(c.id));
+  // okładziny istniejących ścian (mur + płyty na kleju, CD 60 albo łącznikach ATLAS)
+  const contacts = useMemo(() => buildContacts(project), [project]);
+  const linings = project.walls
+    .filter((w) => !isNewWall(w))
+    .flatMap((w) => (w.linings ?? []).filter((l) => calc.linings.has(liningKey(w.id, l.side))).map((l) => ({ w, l })));
 
   // unikalne systemy i detale w projekcie
   const wallSystems = useMemo(() => {
@@ -123,7 +131,7 @@ export function DrawingsPanel({ project, calc }: Props) {
     return [...m.values()];
   }, [walls]);
 
-  if (!walls.length && !ceilings.length)
+  if (!walls.length && !ceilings.length && !linings.length)
     return (
       <div className="empty">
         <h3>Brak rysunków</h3>
@@ -158,6 +166,20 @@ export function DrawingsPanel({ project, calc }: Props) {
         return <WallSheet key={w.id} index={i} project={project} wallId={w.id} j={j} req={calc.walls.get(w.id)!.req} />;
       })}
 
+      {linings.map(({ w, l }) => {
+        const i = project.walls.filter((x) => !isNewWall(x)).indexOf(w) + 1;
+        return (
+          <LiningSheet
+            key={`${w.id}:${l.side}`}
+            index={i}
+            wall={w}
+            lining={l}
+            layout={liningLayout(project, w, l, contacts)}
+            req={calc.linings.get(liningKey(w.id, l.side))!.req}
+          />
+        );
+      })}
+
       {ceilings.map((c) => {
         const i = project.ceilings.indexOf(c) + 1;
         const sys = ceilingSystemById(c.systemId);
@@ -171,9 +193,14 @@ export function DrawingsPanel({ project, calc }: Props) {
               </span>
             </header>
             {sys.kind === 'point-fix' ? (
-              <p className="small">
-                Płyta przykręcana do łączników ATLAS M-System 3G w siatce {sys.mainSpacing}×{sys.secondarySpacing} cm – bez profili.
-              </p>
+              <>
+                <h4>Rozstaw łączników – rzut</h4>
+                <CeilingFixersDrawing c={c} title={`Sufit ${i} – łączniki`} />
+                <p className="small">
+                  Płyta przykręcana do łączników ATLAS M-System 3G w siatce {sys.mainSpacing}×{sys.secondarySpacing} cm – bez
+                  profili, razem {ceilingFixerGrid(c, sys).points.length} łączników.
+                </p>
+              </>
             ) : (
               <>
                 <h4>Ruszt – rzut</h4>
@@ -253,8 +280,6 @@ function WallSheet({ index, project, wallId, j, req }: { index: number; project:
   const w = project.walls.find((x) => x.id === wallId)!;
   const l = useMemo(() => wallLayout(project, w, j), [project, w, j]);
   const sys = wallSystemById(w.systemId);
-  const [face, setFace] = useState(0);
-  const studs = [...new Set(l.studs.map((s) => Math.round(s.x * 100)))];
   return (
     <section className="card sheet">
       <header className="sheet-head">
@@ -263,16 +288,38 @@ function WallSheet({ index, project, wallId, j, req }: { index: number; project:
           {fmtNum(l.L)} × {fmtNum(l.H)} m · {sys.name} · płyta {boardById(w.boardId).short}
         </span>
       </header>
-      {l.frame === 'glued' || l.frame === 'point-fix' ? (
-        <p className="small">
-          {l.frame === 'glued'
-            ? 'Płyty klejone do ściany na placki z kleju gipsowego – bez rusztu.'
-            : `Płyty przykręcane do łączników ATLAS M-System 3G w siatce ${w.studSpacing}×${sys.pointSpacing ?? 50} cm – bez profili.`}
-        </p>
+      <SheetBody l={l} sys={sys} name={`Ściana ${index}`} req={req} />
+    </section>
+  );
+}
+
+/** Nazwa łącznika ATLAS do legendy, np. „łącznik ATLAS M-System 3G L100” */
+const fixerName = (sys: WallSystem) => `łącznik ATLAS M-System 3G ${(sys.fixer?.product ?? 'ATLAS_3G_L100').replace('ATLAS_3G_', '')}`;
+
+/** Konstrukcja (ruszt albo łączniki) i rozkład płyt – wspólne dla ściany i okładziny muru */
+function SheetBody({ l, sys, name, req }: { l: WallLayout; sys: WallSystem; name: string; req: Requirement }) {
+  const [face, setFace] = useState(0);
+  const studs = [...new Set(l.studs.map((s) => Math.round(s.x * 100)))];
+  return (
+    <>
+      {l.frame === 'glued' ? (
+        <p className="small">Płyty klejone do ściany na placki z kleju gipsowego – bez rusztu.</p>
+      ) : l.frame === 'point-fix' ? (
+        <>
+          <h4>Rozstaw łączników talerzykowych</h4>
+          <WallFixersDrawing l={l} title={`${name} – łączniki ATLAS`} fixerName={fixerName(sys)} />
+          {l.fixers && (
+            <p className="small stud-list">
+              <strong>Osie kolumn od lewej krawędzi (cm):</strong> {l.fixers.xs.map((x) => Math.round(x * 100)).join(' · ')}
+              <br />
+              <strong>Rzędy od posadzki (cm):</strong> {l.fixers.ys.map((y) => Math.round(y * 100)).join(' · ')}
+            </p>
+          )}
+        </>
       ) : (
         <>
           <h4>Konstrukcja</h4>
-          <WallFrameDrawing l={l} title={`Ściana ${index} – konstrukcja`} />
+          <WallFrameDrawing l={l} title={`${name} – konstrukcja`} />
           <p className="small stud-list">
             <strong>Osie {l.frame === 'cd-lining' ? 'profili CD' : 'słupków'} od lewej krawędzi (cm):</strong> {studs.join(' · ')}
           </p>
@@ -291,10 +338,31 @@ function WallSheet({ index, project, wallId, j, req }: { index: number; project:
       {l.faces.map((f, i) => (
         <div key={i} className={i === face ? '' : 'print-only'}>
           {l.faces.length > 1 && <h5 className="print-only">{faceName(f, sys.sides, sys.layers)}</h5>}
-          <WallBoardsDrawing l={l} face={f} title={`Ściana ${index} – ${faceName(f, sys.sides, sys.layers)}`} />
+          <WallBoardsDrawing l={l} face={f} title={`${name} – ${faceName(f, sys.sides, sys.layers)}`} />
         </div>
       ))}
-      <CutTable req={req} title="Lista cięć profili" />
+      {l.frame !== 'glued' && l.frame !== 'point-fix' && <CutTable req={req} title="Lista cięć profili" />}
+    </>
+  );
+}
+
+/** Arkusz okładziny istniejącej ściany (muru) */
+function LiningSheet({ index, wall, lining, layout, req }: { index: number; wall: Wall; lining: Lining; layout: WallLayout; req: Requirement }) {
+  const sys = wallSystemById(lining.systemId);
+  const side = (wall.linings ?? []).length > 1 ? (lining.side === 1 ? ', strona 1' : ', strona 2') : '';
+  return (
+    <section className="card sheet">
+      <header className="sheet-head">
+        <h3>
+          Okładzina muru {index}
+          {side}
+        </h3>
+        <span className="muted small">
+          {fmtNum(layout.L)} × {fmtNum(layout.H)} m · {sys.name} · płyta {boardById(lining.boardId).short}
+          {wall.backing ? ' · mur dodany automatycznie' : ''}
+        </span>
+      </header>
+      <SheetBody l={layout} sys={sys} name={`Okładzina muru ${index}${side}`} req={req} />
     </section>
   );
 }

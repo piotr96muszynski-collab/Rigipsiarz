@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { bbox, dist, existingRooms, interiorSide, isNewWall, nodeMap, pointInPolygon, sameOutline, wallEnds } from '../geometry/geometry';
+import { bbox, dist, existingRooms, isNewWall, masonrySide, nodeMap, pointInPolygon, sameOutline, wallEnds } from '../geometry/geometry';
 import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
 import { createCeiling, createOpening } from '../model/factory';
@@ -67,7 +67,7 @@ export function PlanCanvas(props: Props) {
   // strona pomieszczenia dla ścian obrysu
   const interiors = useMemo(() => {
     const rooms = existingRooms(project);
-    return new Map(project.walls.filter((w) => !isNewWall(w)).map((w) => [w.id, interiorSide(project, w, rooms)]));
+    return new Map(project.walls.filter((w) => !isNewWall(w)).map((w) => [w.id, masonrySide(project, w, rooms)]));
   }, [project]);
   // węzły, w których spotykają się co najmniej dwie istniejące ściany
   const cornerNodes = useMemo(() => {

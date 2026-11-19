@@ -10,8 +10,14 @@ interface State {
 const LIMIT = 80;
 
 /** Stan projektu z cofaniem/ponawianiem. `transient` nie tworzy wpisu w historii (np. przeciąganie). */
-export function useHistory(initial: Project) {
-  const [state, setState] = useState<State>({ past: [], present: initial, future: [] });
+/**
+ * `normalize` porządkuje projekt po każdej zakończonej zmianie (np. stawia mur za okładziną);
+ * przy zmianach „transient” czeka do `commit`, żeby nie przebudowywać projektu w trakcie przeciągania.
+ */
+export function useHistory(initial: Project, normalize: (p: Project) => Project = (p) => p) {
+  const norm = useRef(normalize);
+  norm.current = normalize;
+  const [state, setState] = useState<State>(() => ({ past: [], present: normalize(initial), future: [] }));
   const checkpoint = useRef<Project | null>(null);
 
   const update = useCallback((fn: (draft: Project) => void, opts: { transient?: boolean } = {}) => {
@@ -25,7 +31,7 @@ export function useHistory(initial: Project) {
       }
       const base = checkpoint.current ?? s.present;
       checkpoint.current = null;
-      return { past: [...s.past, base].slice(-LIMIT), present: draft, future: [] };
+      return { past: [...s.past, base].slice(-LIMIT), present: norm.current(draft), future: [] };
     });
   }, []);
 
@@ -35,7 +41,7 @@ export function useHistory(initial: Project) {
       if (!checkpoint.current) return s;
       const base = checkpoint.current;
       checkpoint.current = null;
-      return { past: [...s.past, base].slice(-LIMIT), present: s.present, future: [] };
+      return { past: [...s.past, base].slice(-LIMIT), present: norm.current(s.present), future: [] };
     });
   }, []);
 
@@ -47,7 +53,7 @@ export function useHistory(initial: Project) {
   const redo = useCallback(() => {
     setState((s) => (s.future.length ? { past: [...s.past, s.present], present: s.future[0], future: s.future.slice(1) } : s));
   }, []);
-  const reset = useCallback((p: Project) => setState({ past: [], present: p, future: [] }), []);
+  const reset = useCallback((p: Project) => setState({ past: [], present: norm.current(p), future: [] }), []);
 
   return {
     project: state.present,

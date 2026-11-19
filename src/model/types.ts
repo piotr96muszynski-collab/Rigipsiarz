@@ -59,6 +59,11 @@ export interface Wall {
   thickness?: number;
   /** Okładziny istniejącej ściany */
   linings?: Lining[];
+  /**
+   * Mur postawiony automatycznie za okładziną (ATLAS M-System, CD 60 na ES, klej), gdy ścianę
+   * narysowano w systemie okładziny. Okładzina takiego muru obraca się do wnętrza obrysu.
+   */
+  backing?: boolean;
   a: Id;
   b: Id;
   height: number;

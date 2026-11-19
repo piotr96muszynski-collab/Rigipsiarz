@@ -1,5 +1,5 @@
-import { OPENING_JOINT_MIN, pieceOutline, type BoardFace, type BoardPiece, type CutRect, type StudKind, type WallLayout } from '../calc/layout';
-import { C, ChainH, Dim, INK, Legend, Paper, clamp, cm, dedupe, nss } from './svg';
+import { FIXER_EDGE, OPENING_JOINT_MIN, pieceOutline, type BoardFace, type BoardPiece, type CutRect, type StudKind, type WallLayout } from '../calc/layout';
+import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, dedupe, nss } from './svg';
 
 const STUD_COLOR: Record<StudKind, string> = {
   stud: C.stud,
@@ -254,6 +254,68 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
         {l.openings.length > 0 &&
           ` Przy otworach płyta zachodzi na ościeże i jest wycinana w kształt litery L (U przy wąskim otworze), a styk wypada nad lub pod otworem, co najmniej ${cm(OPENING_JOINT_MIN * 100)} cm od ościeża – dzięki temu narożniki otworu nie pękają.`}
         {endNote(face, l.L)}
+      </figcaption>
+    </figure>
+  );
+}
+
+/** Kolor talerzyka łącznika ATLAS M-System 3G na rysunku */
+const DISC = '#e07a2a';
+
+/**
+ * Widok okładziny ATLAS M-System 3G: rozstaw łączników talerzykowych z łańcuchami wymiarowymi
+ * (poziomo – osie kolumn od lewej krawędzi, pionowo – rzędy od posadzki) i styki płyt.
+ */
+export function WallFixersDrawing({ l, title, fixerName }: { l: WallLayout; title: string; fixerName: string }) {
+  const g = l.fixers;
+  if (!g) return null;
+  const { Lc, Hc, f, vb } = frame(l);
+  // miejsce na pionowy łańcuch rzędów po prawej stronie
+  const box: [number, number, number, number] = [vb[0], vb[1], vb[2] + f * 3, vb[3]];
+  const r = 6; // talerzyk ø 12 cm
+  const joints = dedupe(l.faces.flatMap((fc) => fc.joints.map((x) => x * 100)), 0.5);
+  const rows = g.ys.map((y) => Hc - y * 100).sort((a, b) => a - b);
+  return (
+    <figure className="drawing">
+      <Paper viewBox={box} title={title}>
+        <rect x={-f} y={-f * 0.8} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
+        <rect x={-f} y={Hc} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
+        <rect x={0} y={0} width={Lc} height={Hc} fill={C.concrete} opacity={0.35} stroke={INK} strokeWidth={1.1} {...nss} />
+        {/* styki pionowe płyt – zawsze na kolumnie łączników */}
+        {joints.map((x) => (
+          <line key={x} x1={x} y1={0} x2={x} y2={Hc} stroke={INK} strokeWidth={0.9} strokeDasharray="10 5" {...nss} />
+        ))}
+        {/* osie kolumn i rzędów */}
+        {g.xs.map((x) => (
+          <line key={`x${x}`} x1={x * 100} y1={0} x2={x * 100} y2={Hc} stroke={DISC} strokeWidth={0.5} strokeDasharray="2 5" {...nss} />
+        ))}
+        {g.ys.map((y) => (
+          <line key={`y${y}`} x1={0} y1={Hc - y * 100} x2={Lc} y2={Hc - y * 100} stroke={DISC} strokeWidth={0.5} strokeDasharray="2 5" {...nss} />
+        ))}
+        <Openings l={l} f={f} />
+        {g.points.map((q, i) => (
+          <g key={i}>
+            <circle cx={q.x * 100} cy={Hc - q.y * 100} r={r} fill={DISC} fillOpacity={0.85} stroke={INK} strokeWidth={0.6} {...nss} />
+            <circle cx={q.x * 100} cy={Hc - q.y * 100} r={1.2} fill={INK} />
+          </g>
+        ))}
+        <ChainH xs={[0, ...g.xs.map((x) => x * 100), Lc]} y={Hc} off={f * 2} f={f * 0.85} />
+        <Dim x1={0} y1={Hc} x2={Lc} y2={Hc} off={f * 4.2} f={f} label={`${cm(Lc)} cm`} />
+        <ChainV ys={[0, ...rows, Hc]} x={Lc} off={f * 2} f={f * 0.85} />
+        <Dim x1={0} y1={0} x2={0} y2={Hc} off={-f * 2.2} f={f} label={`${cm(Hc)} cm`} />
+      </Paper>
+      <Legend
+        items={[
+          { color: DISC, label: `${fixerName} – talerzyk ø 12 cm (${g.points.length} szt. na rysunku)` },
+          { color: DISC, dashed: true, label: `siatka łączników ${cm(g.sx * 100)} × ${cm(g.sy * 100)} cm (poziomo × pionowo)` },
+          { color: INK, dashed: true, label: 'styk pionowy płyt – zawsze na kolumnie łączników' },
+          ...(l.openings.length ? [{ dashed: true, label: 'otwór w świetle – łączniki w otworze pominięte' }] : []),
+        ]}
+      />
+      <figcaption className="muted small">
+        Wymiary w cm. Dolny łańcuch: osie kolumn łączników od lewej krawędzi okładziny, prawy: rzędy od posadzki. Skrajne
+        łączniki {cm(FIXER_EDGE * 100)} cm od krawędzi, żeby talerzyk zmieścił się pod płytą. Najpierw wytycz i osadź
+        łączniki, ustaw talerzyki w jednej płaszczyźnie (łata, laser), potem przykręcaj płyty.
       </figcaption>
     </figure>
   );

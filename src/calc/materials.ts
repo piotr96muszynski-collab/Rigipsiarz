@@ -27,12 +27,12 @@ import {
   type WallJunctions,
 } from '../geometry/geometry';
 import { WOOL_THICKNESSES, resolveWool, woolThicknessOf, type WoolChoice } from '../catalog/insulation';
-import type { Ceiling, Lining, Project, Wall } from '../model/types';
+import type { Ceiling, Lining, Point, Project, Wall } from '../model/types';
 import { createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
-import { OFFCUT_MIN, pieceArea, wallLayout } from './layout';
+import { OFFCUT_MIN, liningAsWall, pieceArea, wallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -415,12 +415,12 @@ function pointFixWall(
   };
 }
 
-function pointFixCeiling(c: Ceiling, sys: CeilingSystem, A: number, P: number): CeilingResult {
-  const req = emptyReq();
-  const warnings: string[] = [];
-  const fixer = sys.fixer ?? FIXERS.L100;
-  // siatka łączników od krawędzi do krawędzi (rzędy także przy obwodzie); punkty
-  // przy krawędzi przesunięte o 1 cm do środka, żeby jednoznacznie leżały w obrysie
+/**
+ * Siatka łączników ATLAS M-System 3G na suficie, cm (współrzędne planu): od krawędzi do
+ * krawędzi, rzędy także przy obwodzie; punkty przy krawędzi przesunięte o 1 cm do środka,
+ * żeby jednoznacznie leżały w obrysie. `xs`/`ys` – osie rzędów, `points` – łączniki w obrysie.
+ */
+export function ceilingFixerGrid(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c.systemId)) {
   const bb = bbox(c.points);
   const axis = (lo: number, hi: number, step: number) => {
     const out: number[] = [];
@@ -430,8 +430,17 @@ function pointFixCeiling(c: Ceiling, sys: CeilingSystem, A: number, P: number): 
   };
   const xs = axis(bb.minX, bb.maxX, c.direction === 0 ? sys.mainSpacing : sys.secondarySpacing);
   const ys = axis(bb.minY, bb.maxY, c.direction === 0 ? sys.secondarySpacing : sys.mainSpacing);
-  let n = 0;
-  for (const x of xs) for (const y of ys) if (pointInPolygon({ x, y }, c.points)) n++;
+  const points: Point[] = [];
+  for (const x of xs) for (const y of ys) if (pointInPolygon({ x, y }, c.points)) points.push({ x, y });
+  return { xs, ys, points };
+}
+
+function pointFixCeiling(c: Ceiling, sys: CeilingSystem, A: number, P: number): CeilingResult {
+  const req = emptyReq();
+  const warnings: string[] = [];
+  const fixer = sys.fixer ?? FIXERS.L100;
+  const bb = bbox(c.points);
+  const n = ceilingFixerGrid(c, sys).points.length;
   add(req.counts, fixer.product, n);
   if (fixer.extension) add(req.counts, fixer.extension, n);
 
@@ -785,18 +794,7 @@ const LINING_JUNCTIONS: WallJunctions = { endA: 'existing-wall', endB: 'existing
  */
 export function liningRequirement(p: Project, w: Wall, l: Lining): LiningResult {
   const sys = wallSystemById(l.systemId);
-  const synthetic: Wall = {
-    ...w,
-    kind: 'new',
-    systemId: sys.id,
-    boardId: l.boardId,
-    studSpacing: l.studSpacing,
-    insulation: l.insulation,
-    endA: 'existing-wall',
-    endB: 'existing-wall',
-    // w murze nie ma ościeżnic z profili UA
-    openings: w.openings.map((o) => ({ ...o, reinforced: false })),
-  };
+  const synthetic = liningAsWall(w, l);
   const { req, info } = wallRequirement(p, synthetic, LINING_JUNCTIONS, sys);
   if (!isLiningSystem(sys))
     info.warnings.push('Wybrany system nie jest okładziną – sprawdź, czy o to chodziło.');

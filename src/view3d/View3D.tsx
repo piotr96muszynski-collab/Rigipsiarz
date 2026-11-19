@@ -25,14 +25,16 @@ const FRAME_COLORS: Record<string, number> = {
   ud: 0x5f6b77,
   hanger: 0xd08a2e,
   masonry: 0xc9b9a6,
+  disc: 0xe07a2a,
+  anchor: 0x6b7480,
 };
 
 const LAYERS: { id: Layer3D; label: string }[] = [
   { id: 'existing', label: 'Istniejące ściany' },
   { id: 'wallBoards', label: 'Płyty ścian' },
-  { id: 'wallFrame', label: 'Ruszt CW/UW' },
+  { id: 'wallFrame', label: 'Ruszt i łączniki ścian' },
   { id: 'ceilingBoards', label: 'Płyty sufitu' },
-  { id: 'ceilingFrame', label: 'Ruszt CD/UD' },
+  { id: 'ceilingFrame', label: 'Ruszt i łączniki sufitu' },
 ];
 
 type Visibility = Record<Layer3D, boolean>;
@@ -118,6 +120,15 @@ function buildGroups(model: Model3D, quality: Quality3D): Map<Layer3D, THREE.Gro
       tmp.rotation.set(0, part.rotY, 0);
       tmp.updateMatrix();
       g.applyMatrix4(tmp.matrix);
+    } else if (part.type === 'cyl') {
+      // walec three.js stoi wzdłuż osi Y – obracamy go do osi łącznika
+      g = new THREE.CylinderGeometry(part.r, part.r, part.len, 20);
+      tmp.position.set(...part.c);
+      tmp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...part.axis).normalize());
+      tmp.scale.set(1, 1, 1);
+      tmp.updateMatrix();
+      g.applyMatrix4(tmp.matrix);
+      tmp.quaternion.identity();
     } else if (part.type === 'panel') {
       // obrys w płaszczyźnie ściany (x wzdłuż, y w górę), grubość wzdłuż normalnej
       const [outer, ...inner] = part.loops;
