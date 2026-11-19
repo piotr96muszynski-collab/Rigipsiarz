@@ -102,7 +102,7 @@ export function QuickForm({ onCreate, onCancel }: Props) {
         <>
           <div className="field">
             <label htmlFor="q-wall">System ściany</label>
-            <WallSystemSelect id="q-wall" value={q.wallSystemId} onChange={(id) => set({ wallSystemId: id })} />
+            <WallSystemSelect id="q-wall" value={q.wallSystemId} heightCm={q.height} onChange={(id) => set({ wallSystemId: id })} />
           </div>
           <div className="grid-3">
             <Stepper label="Drzwi" value={q.doors} onChange={(v) => set({ doors: v })} />
@@ -121,7 +121,12 @@ export function QuickForm({ onCreate, onCancel }: Props) {
       {showCeiling && (
         <div className="field">
           <label htmlFor="q-ceil">System sufitu</label>
-          <CeilingSystemSelect id="q-ceil" value={q.ceilingSystemId} onChange={(id) => set({ ceilingSystemId: id })} />
+          <CeilingSystemSelect
+            id="q-ceil"
+            value={q.ceilingSystemId}
+            spanCm={Math.min(q.length, q.width)}
+            onChange={(id) => set({ ceilingSystemId: id })}
+          />
         </div>
       )}
 

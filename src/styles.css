@@ -2952,6 +2952,57 @@ kbd {
 .sys-more {
   margin: 4px 10px;
 }
+.sys-current {
+  margin: 6px 2px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.sys-current strong {
+  color: var(--text);
+  font-weight: 600;
+}
+/* nagłówek wyników doboru: przyklejony u dołu, gdy wyniki są jeszcze pod pytaniami */
+.sys-results-bar {
+  position: sticky;
+  top: -6px;
+  bottom: -10px;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--tap);
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0 0 6px var(--surface);
+}
+.sys-results-bar small {
+  flex: 1;
+  font-weight: 500;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.sys-results-bar svg {
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .sys-note,
 .sys-empty {
   margin: 8px 12px;
@@ -3135,14 +3186,16 @@ button.catalog-part {
   gap: 8px;
 }
 .sys-chip {
-  min-height: var(--tap);
-  padding: 6px 14px;
-  font-size: 0.9375rem;
+  min-height: 40px;
+  padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
   color: inherit;
   font: inherit;
+  /* po `font`, które ustawia też rozmiar – ten sam co w przyciskach segmentów */
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
 }
 .sys-chip.on {
