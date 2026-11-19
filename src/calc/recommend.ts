@@ -66,7 +66,7 @@ export const WALL_FEATURES: { id: WallFeature; label: string; hint: string }[] =
   { id: 'acoustic', label: 'Podwyższona akustyka', hint: 'RA1 co najmniej 45 dB w karcie systemu' },
   { id: 'humid', label: 'Łazienka, kuchnia', hint: 'płyta impregnowana' },
   { id: 'wet', label: 'Strefa mokra', hint: 'płyta do stref mokrych (prysznic, pralnia)' },
-  { id: 'hang', label: 'Szafki bez kołków', hint: 'płyta o podwyższonej twardości' },
+  { id: 'hang', label: 'Twarda płyta', hint: 'płyta o podwyższonej twardości, szafki można wieszać bez kołków' },
 ];
 
 /** Zamienia zaznaczone cechy na wymagania doboru */
