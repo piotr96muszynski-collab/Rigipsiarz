@@ -201,22 +201,46 @@ export interface FixerGrid {
   sy: number;
 }
 
-/** Odległość skrajnego łącznika od krawędzi okładziny, m (talerzyk musi się zmieścić pod płytą) */
-export const FIXER_EDGE = 0.05;
+/**
+ * Odległość skrajnego rzędu łączników od każdej krawędzi okładziny, m. Instrukcja ATLAS
+ * M-SYSTEM 3G „krok po kroku – ściany i sufity”: „zaznaczyć dookoła ściany skrajny rząd
+ * łączników 7 cm od każdego brzegu”; 7 cm mieści się w wybranym rozstawie.
+ */
+export const FIXER_EDGE = 0.07;
 
-/** Osie co `step` od `lo`, ostatnia na `hi`; skrajne odsunięte od krawędzi o `edge` */
-function fixerAxis(lo: number, hi: number, step: number, edge: number): number[] {
-  const out: number[] = [];
-  const n = Math.ceil((hi - lo) / step - 1e-9);
-  for (let i = 0; i < n; i++) out.push(lo + i * step);
-  out.push(hi);
-  return out.map((v) => round3(Math.min(hi - edge, Math.max(lo + edge, v))));
+/** Najmniejszy odstęp sąsiednich rzędów łączników – bliższy rząd pośredni łączymy ze skrajnym, m */
+const FIXER_MERGE = 0.05;
+
+/**
+ * Kolumny łączników na odcinku `lo`..`hi`: w osiach co `step` liczonych od początku ściany
+ * (0 – tam wypadają styki płyt 120 cm), skrajne 7 cm od brzegów. Oś pośrednia bliżej niż
+ * 5 cm od skrajnej odpada (jej rolę przejmuje skrajna).
+ */
+export function fixerColumns(lo: number, hi: number, step: number, edge = FIXER_EDGE): number[] {
+  const a = round3(lo + edge);
+  const b = round3(hi - edge);
+  if (b - a < FIXER_MERGE) return [round3((lo + hi) / 2)];
+  const mid: number[] = [];
+  for (let k = Math.floor(a / step + 1e-9) + 1; k * step < b - 1e-9; k++) mid.push(round3(k * step));
+  return [a, ...mid.filter((v) => v - a >= FIXER_MERGE - 1e-9 && b - v >= FIXER_MERGE - 1e-9), b];
+}
+
+/**
+ * Rzędy łączników na wysokości `H`: skrajne 7 cm od posadzki i stropu, pośrednie równo
+ * rozłożone, odstęp nigdy większy niż `step`.
+ */
+export function fixerRows(H: number, step: number, edge = FIXER_EDGE): number[] {
+  const a = edge;
+  const b = H - edge;
+  if (b - a < FIXER_MERGE) return [round3(H / 2)];
+  const n = Math.ceil((b - a) / step - 1e-9);
+  return Array.from({ length: n + 1 }, (_, i) => round3(a + ((b - a) * i) / n));
 }
 
 /**
  * Siatka łączników ATLAS M-System 3G na okładzinie od `x0` do `x1` i wysokości `H`: kolumny co
- * `sx`, rzędy co `sy`, skrajne przy krawędziach (tyle samo kolumn i rzędów co w wyliczeniu
- * łączników). Łączniki w świetle otworów pomijamy.
+ * `sx` (w osiach styków płyt), rzędy co najwyżej co `sy`, skrajne 7 cm od krawędzi (instrukcja
+ * ATLAS). Łączniki w świetle otworów pomijamy.
  */
 export function pointFixGrid(
   x0: number,
@@ -226,8 +250,8 @@ export function pointFixGrid(
   sy: number,
   openings: { x0: number; x1: number; sill: number; top: number }[] = [],
 ): FixerGrid {
-  const xs = fixerAxis(x0, x1, sx, FIXER_EDGE);
-  const ys = fixerAxis(0, H, sy, FIXER_EDGE);
+  const xs = fixerColumns(x0, x1, sx);
+  const ys = fixerRows(H, sy);
   const tol = 0.02;
   const inHole = (x: number, y: number) =>
     openings.some((o) => x > o.x0 + tol && x < o.x1 - tol && y > o.sill + tol && y < o.top - tol);

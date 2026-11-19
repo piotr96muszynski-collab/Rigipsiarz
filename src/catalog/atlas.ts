@@ -2,7 +2,9 @@
 // punktowo łącznikami talerzykowymi (bez profili stalowych).
 //
 // Źródła: karta charakterystyki zestawu ATLAS M-SYSTEM 3G (Krajowa Ocena Techniczna
-// ITB KOT-2020/1421) oraz strona produktu ATLAS. Zakresy odstępu płyty od podłoża
+// ITB KOT-2020/1421), instrukcja montażu „krok po kroku – ściany i sufity” (skrajny rząd
+// łączników 7 cm od każdego brzegu, pole między 4 łącznikami ≤ 0,36 m², docinek płyty ≥ 20 cm,
+// 4 wkręty na talerzyk) oraz strona produktu ATLAS. Zakresy odstępu płyty od podłoża
 // podano dla podłoża betonowego / murowego (tuleja L50 ø10 BX). Dla podłoża
 // drewnianego zakresy są inne – patrz karta.
 //
@@ -14,6 +16,10 @@ export const ATLAS_SOURCES = {
   KARTA_3G: {
     label: 'Karta charakterystyki ATLAS M-SYSTEM 3G (ITB KOT-2020/1421)',
     url: 'https://pliki.grupapsb.com.pl/files/InfoverProduct/st/gkvvs0l2r8jm/Files/gvd2ras0m4k7k0_zestaw-m-system-l50-sciana-atlas-karta-charakterystyki.pdf',
+  },
+  INSTRUKCJA: {
+    label: 'ATLAS M-SYSTEM 3G – instrukcja krok po kroku, ściany i sufity',
+    url: 'https://www.atlas.com.pl/wp-content/uploads/2026/08/atlas_m_system_3g_plik_instrukcja-krok-po-kroku-sciany-i-sufity.pdf',
   },
   PRODUKT: {
     label: 'ATLAS M-SYSTEM 3G – strona produktu',
@@ -89,7 +95,7 @@ const wall = (o: { id: string; fixer: PointFixer; layers?: 1 | 2; note?: string 
     fixer: o.fixer,
     insulationDefault: false,
     info:
-      `Płyty przykręcane do talerzyków łączników kotwionych w ścianie, bez profili · siatka 60×${vertical} cm · odstęp płyty od ściany ${range(o.fixer)} (beton, mur)` +
+      `Płyty przykręcane do talerzyków łączników kotwionych w ścianie, bez profili · siatka 60×${vertical} cm, skrajne łączniki 7 cm od krawędzi · odstęp płyty od ściany ${range(o.fixer)} (beton, mur)` +
       (o.note ? ` · ${o.note}` : ''),
     source: ATLAS_SOURCES.KARTA_3G,
     reference: [
@@ -124,7 +130,7 @@ const ceiling = (o: { id: string; fixer: PointFixer; note?: string }): CeilingSy
   screwsOuter: 0,
   screwsInner: 0,
   info:
-    `Płyta przykręcana do talerzyków łączników kotwionych w stropie, bez profili CD/UD · siatka 40×50 cm · odstęp płyty od stropu ${range(o.fixer)} (beton, mur)` +
+    `Płyta przykręcana do talerzyków łączników kotwionych w stropie, bez profili CD/UD · siatka 40×50 cm, skrajne łączniki 7 cm od ścian · odstęp płyty od stropu ${range(o.fixer)} (beton, mur)` +
     (o.note ? ` · ${o.note}` : ''),
   source: ATLAS_SOURCES.KARTA_3G,
   reference: [

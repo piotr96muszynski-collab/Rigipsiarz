@@ -83,17 +83,30 @@ describe('mur za ścianą narysowaną w systemie okładziny', () => {
 });
 
 describe('siatka łączników ATLAS M-System', () => {
-  it('kolumny i rzędy jak w wyliczeniu, skrajne 5 cm od krawędzi', () => {
-    const g = pointFixGrid(0, 1.2, 1, 0.6, 0.5);
-    expect(g.xs).toEqual([0.05, 0.6, 1.15]);
-    expect(g.ys).toEqual([0.05, 0.5, 0.95]);
-    expect(g.points).toHaveLength(9);
+  it('skrajne rzędy 7 cm od każdego brzegu, kolumny w osiach styków płyt (instrukcja ATLAS)', () => {
+    const g = pointFixGrid(0, 2.4, 2.6, 0.6, 0.5);
+    expect(g.xs).toEqual([0.07, 0.6, 1.2, 1.8, 2.33]);
+    // 7 … 253 cm, równo co 49,2 cm (nie więcej niż 50)
+    expect(g.ys).toHaveLength(6);
+    expect(g.ys[0]).toBeCloseTo(0.07);
+    expect(g.ys.at(-1)).toBeCloseTo(2.53);
+    for (let i = 1; i < g.ys.length; i++) expect(g.ys[i] - g.ys[i - 1]).toBeLessThanOrEqual(0.5 + 1e-9);
+    expect(g.points).toHaveLength(30);
+  });
+
+  it('oś pośrednia tuż przy skrajnej odpada, odstępy nie przekraczają rozstawu', () => {
+    // 4,85 m: oś 4,80 m leżałaby 2 cm od skrajnej (4,78 m)
+    const xs = pointFixGrid(0, 4.85, 1, 0.6, 0.5).xs;
+    expect(xs.at(-1)).toBeCloseTo(4.78);
+    expect(xs).not.toContain(4.8);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeLessThanOrEqual(0.6 + 1e-9);
   });
 
   it('pomija łączniki w świetle otworu', () => {
     const g = pointFixGrid(0, 3, 2.6, 0.6, 0.5, [{ x0: 1, x1: 2, sill: 0, top: 2.05 }]);
-    // kolumny 1,2 i 1,8 m wypadają w drzwiach; w drzwiach są rzędy 0,05 … 2,0 m (5 z 6)
-    expect(g.points.length).toBe(g.xs.length * g.ys.length - 2 * 5);
+    // kolumny 1,2 i 1,8 m wypadają w drzwiach; w świetle drzwi są rzędy 7, 56, 105 i 155 cm
+    expect(g.ys.filter((y) => y < 2.03)).toHaveLength(4);
+    expect(g.points.length).toBe(g.xs.length * g.ys.length - 2 * 4);
     expect(g.points.every((q) => !(q.x > 1.02 && q.x < 1.98 && q.y < 2.03))).toBe(true);
   });
 
@@ -104,9 +117,9 @@ describe('siatka łączników ATLAS M-System', () => {
     w.linings = [createLining(interiorSide(p, w) || 1, 'A-W-L100')];
     const l = liningLayout(p, w, w.linings[0], buildContacts(p));
     expect(l.fixers).toBeDefined();
-    expect(l.fixers!.xs[0]).toBeCloseTo(0.05);
-    expect(l.fixers!.xs.at(-1)).toBeCloseTo(4.95);
-    expect(l.fixers!.ys).toHaveLength(Math.ceil(2.6 / 0.5) + 1);
+    expect(l.fixers!.xs[0]).toBeCloseTo(0.07);
+    expect(l.fixers!.xs.at(-1)).toBeCloseTo(4.93);
+    expect(l.fixers!.ys).toHaveLength(6);
     // styki płyt na kolumnach łączników
     for (const x of l.faces[0].joints) expect(l.fixers!.xs.some((c) => Math.abs(c - x) < 0.01)).toBe(true);
   });
