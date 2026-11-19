@@ -1097,7 +1097,7 @@ export function woolLine(pid: string, netM2: number, waste: number, choice?: Woo
 
 const m2 = (v: number) => v.toFixed(1).replace('.', ',');
 function boardNote(area: number, cut: number): string {
-  return cut >= 0.05 ? `${m2(area - cut)} m² netto + ${m2(cut)} m² odpadu z docinania (wycięcia przy otworach, pasy płyt w obudowie szachtu)` : `${m2(area)} m² netto`;
+  return cut >= 0.05 ? `${m2(area - cut)} m² netto + ${m2(cut)} m² odpadu z docinania (resztki węższe niż 30 cm: wycięcia przy otworach, pasy w obudowie szachtu, docinki na poddaszu)` : `${m2(area)} m² netto`;
 }
 
 /** Uwaga do wieszaków noniuszowych: ile sztuk na jakie zwieszenie (wierzch rusztu – strop) */

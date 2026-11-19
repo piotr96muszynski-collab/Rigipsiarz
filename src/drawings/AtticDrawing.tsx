@@ -1,6 +1,7 @@
 import { splicePositions } from '../calc/layout';
 import { atticSection, type AtticGrid, type AtticSurfaceGrid } from '../calc/attic';
-import { PRODUCTS } from '../catalog/rigips';
+import type { AtticBoardLayer } from '../calc/atticBoards';
+import { PRODUCTS, boardById } from '../catalog/rigips';
 import type { Attic } from '../model/types';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, nss } from './svg';
 
@@ -208,6 +209,78 @@ export function AtticSectionDrawing({ attic, grid, title }: { attic: Attic; grid
           { pattern: 'hatch', label: 'ściany murowane' },
         ]}
       />
+    </figure>
+  );
+}
+
+/**
+ * Rozkład płyt jednej płaszczyzny poddasza (jedna warstwa): elementy z wymiarami, pełne arkusze
+ * i docinane, linie rusztu, na których wypadają styki. Ten sam rozkład idzie do 3D i na listę zakupów.
+ */
+export function AtticBoardsDrawing({ attic, g, layer, layers, title }: { attic: Attic; g: AtticSurfaceGrid; layer: AtticBoardLayer; layers: number; title: string }) {
+  const L = attic.length;
+  const run = g.surface.run;
+  const f = clamp(Math.max(L, run) / 26, 8, 30);
+  const m = f * 6.5;
+  const vb: [number, number, number, number] = [-m, -m, L + 2 * m, run + 2 * m];
+  const Y = (s: number) => run - s;
+  const slope = g.surface.kind === 'slope';
+  const full = layer.pieces.filter((p) => !p.cut).length;
+  const joints = [...new Set(layer.pieces.filter((p) => p.s0 > 0.5).map((p) => p.s0))].sort((a, b) => a - b);
+  const cols = [...new Set(layer.pieces.flatMap((p) => [p.u0, p.u1]))].sort((a, b) => a - b);
+  const name = boardById(layer.boardId).name;
+  const top = slope ? (attic.roof === 'mono' && !attic.collarHeight ? 'góra skosu (ściana)' : g.surface.b.z > g.surface.a.z ? 'góra skosu – docinka pod kątem przy kalenicy / jętce' : '') : 'krawędź przy prawym skosie / ścianie';
+  return (
+    <figure className="drawing">
+      <Paper viewBox={vb} title={title}>
+        <rect x={0} y={0} width={L} height={run} fill="#f7f8fa" />
+        {layer.pieces.map((p, i) => {
+          const pw = p.u1 - p.u0;
+          const ph = p.s1 - p.s0;
+          return (
+            <g key={i}>
+              <rect x={p.u0} y={Y(p.s1)} width={pw} height={ph} fill={p.cut ? 'url(#hatch-cut)' : C.board} stroke={INK} strokeWidth={1.1} {...nss} />
+              {(p.notches ?? []).map((n, k) => (
+                <rect key={k} x={n.u0} y={Y(n.s1)} width={n.u1 - n.u0} height={n.s1 - n.s0} fill="#fff" stroke={INK} strokeWidth={1.1} strokeDasharray="4 3" {...nss} />
+              ))}
+              {pw > f * 2.8 && ph > f * 1.5 && (
+                <text x={p.u0 + pw / 2} y={Y(p.s0 + ph / 2) + f * 0.2} fontSize={f * 0.5} textAnchor="middle" fill={INK}>
+                  {cm(pw)}×{cm(ph)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        {g.cd.map((s) => (
+          <line key={s} x1={0} y1={Y(s)} x2={L} y2={Y(s)} stroke={C.secondary} strokeWidth={0.8} strokeDasharray="3 5" {...nss} />
+        ))}
+        <rect x={0} y={0} width={L} height={run} fill="none" stroke={INK} strokeWidth={2} {...nss} />
+        <ChainH xs={cols} y={0} off={-f * 1.6} f={f * 0.75} color={INK} />
+        <Dim x1={0} y1={0} x2={L} y2={0} off={-f * 3.6} f={f} label={cm(L)} />
+        {joints.length > 0 && <ChainV ys={[0, ...joints.map(Y), run]} x={0} off={-f * 1.6} f={f * 0.75} color={C.secondary} />}
+        <Dim x1={L} y1={0} x2={L} y2={run} off={f * 2.2} f={f} label={cm(run)} />
+        <text x={L / 2} y={run + f * 1.8} fontSize={f * 0.85} textAnchor="middle" fill={INK}>
+          {slope ? 'dół skosu (ścianka kolankowa / podłoga)' : 'krawędź przy lewym skosie'}
+        </text>
+        {top && (
+          <text x={L / 2} y={-f * 5.4} fontSize={f * 0.85} textAnchor="middle" fill={INK}>
+            {top}
+          </text>
+        )}
+      </Paper>
+      <Legend
+        items={[
+          { color: C.board, label: `${name}, arkusz pełny ${layer.sheetW}×${layer.sheetLen} cm (${full} szt.)` },
+          { pattern: 'cut', label: `element docinany (${layer.pieces.length - full} szt.)` },
+          { color: C.secondary, dashed: true, label: 'element rusztu – tu wypadają styki i wkręty' },
+        ]}
+      />
+      <figcaption className="muted small">
+        {layers > 1 ? `Warstwa ${layer.layer + 1} z ${layers} (${layer.layer === 0 ? 'przy ruszcie' : layer.layer === layers - 1 ? 'lico' : 'środkowa'}). ` : ''}
+        Płyty dłuższą krawędzią w poprzek rusztu, wzdłuż krokwi. Styki krótkich krawędzi zawsze na elemencie rusztu, w sąsiednich pasach
+        przesunięte o min. 40 cm{layers > 1 ? ', kolejna warstwa przesunięta o pół płyty' : ''}. Docinki węższe niż 30 cm zastąpione krótszą płytą obok.
+        {slope ? ' Przy kalenicy lub jętce i przy ściance kolankowej płyty docinasz pod kątem dachu.' : ''} Wymiary w cm, po licu zabudowy.
+      </figcaption>
     </figure>
   );
 }
