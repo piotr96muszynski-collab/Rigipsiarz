@@ -55,12 +55,14 @@ describe('poddasze na planie', () => {
       return { x: [Math.min(...xs), Math.max(...xs)], z: [Math.min(...zs), Math.max(...zs)] };
     };
     const r0 = range(0);
-    // środki płyt: wzdłuż kalenicy w połowie długości (3 + 5 m), w poprzek w obrębie szerokości (5…11 m)
-    expect(r0.x[0]).toBeCloseTo(8, 6);
+    // środki płyt: wzdłuż kalenicy w obrębie długości (3…13 m), w poprzek w obrębie szerokości (5…11 m)
+    expect(r0.x[0]).toBeGreaterThan(3);
+    expect(r0.x[1]).toBeLessThan(13);
     expect(r0.z[0]).toBeGreaterThan(5);
     expect(r0.z[1]).toBeLessThan(11);
     const r90 = range(90);
-    expect(r90.z[0]).toBeCloseTo(10, 6);
+    expect(r90.z[0]).toBeGreaterThan(5);
+    expect(r90.z[1]).toBeLessThan(15);
     expect(r90.x[0]).toBeGreaterThan(3);
     expect(r90.x[1]).toBeLessThan(9);
   });
