@@ -1,3 +1,4 @@
+import { compoundFor, resolveFinishing, tapeFor } from '../catalog/finishing';
 import { describe, expect, it } from 'vitest';
 import {
   BOARDS,
@@ -32,6 +33,7 @@ const KNOWN_DIFF = new Set([
   'S-4.05.241AKU-3:WIESZAK_NONIUSZ',
   'S-4.05.241AKU-3:ZAWLECZKA',
   'S-4.05.23AKU-2:MASA', // kalkulator podaje masę jak dla jednej warstwy
+  'NG-ZP-KAP-1:MASA', // kalkulator Norgips: 0,3 kg/m² przy profilach kapeluszowych, w pozostałych systemach 0,2 kg/m² na warstwę
   'S-CD-2P-2:LACZNIK_KRZ', // kalkulator liczy profile montażowe co 40 cm, tabela systemu dopuszcza 50 cm
   'S-CD-2P-2:CD60',
   'S-UA-1:UD30', // pas o rozpiętości 2,2 m ma duży obwód na m²
@@ -86,7 +88,9 @@ function compare(sys: WallSystem | CeilingSystem, lines: ConsumptionLine[], ref:
   for (const r of ref) {
     if (!r.product || KNOWN_DIFF.has(`${id}:${r.product}`) || geometryDependent(id, r.product) || ATLAS_WALL_EDGE(id)) continue;
     if (!sys.maker && rigipsCalculatorDiff(sys, r.product)) continue;
-    const got = lines.find((l) => l.key === r.product);
+    // wzorce innych producentów zapisują masę i taśmę jako MASA / TASMA_SPOIN – aplikacja liczy masę i taśmę producenta
+    const key = r.product === 'MASA' ? compoundFor(resolveFinishing(), sys.maker).product : r.product === 'TASMA_SPOIN' ? tapeFor(resolveFinishing(), sys.maker).product : r.product;
+    const got = lines.find((l) => l.key === key);
     if (!got) continue; // np. wkręty przy innej płycie – sprawdzane osobno
     checked.push(r.product);
     const diff = Math.abs(got.qty - r.qty) / r.qty;
