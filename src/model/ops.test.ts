@@ -3,7 +3,7 @@ import { calculateProject } from '../calc/materials';
 import { analyzeJunctions } from '../geometry/geometry';
 import { findRoomAt } from '../geometry/rooms';
 import { createProject } from './factory';
-import { addWall, clipToMasonry, mergeNodeIfOverlaps, moveNode, snapPoint } from './ops';
+import { addWall, clipToMasonry, mergeNodeIfOverlaps, moveNode, setDefaultWallSystem, snapPoint } from './ops';
 
 /** Prostokątny pokój narysowany jak narzędziem „Pokój” na planie */
 function drawRoom(w: number, h: number) {
@@ -132,5 +132,26 @@ describe('nowa ściana nie przechodzi przez mur', () => {
   it('bez istniejących ścian nic nie zmienia', () => {
     const r = clipToMasonry(createProject(), { x: 0, y: 0 }, { x: 900, y: 0 });
     expect(r).toEqual({ point: { x: 900, y: 0 }, clipped: false });
+  });
+});
+
+describe('ustawienia nowych ścian', () => {
+  it('nowa ściana dostaje system, płytę, rozstaw i wełnę z ustawień projektu', () => {
+    const p = createProject();
+    setDefaultWallSystem(p, 'W-CW50-1');
+    p.settings.wallDefaults = { boardId: 'RF12.5', studSpacing: 40, insulation: false };
+    const w = addWall(p, { x: 0, y: 0 }, { x: 300, y: 0 })!;
+    expect(w).toMatchObject({ systemId: 'W-CW50-1', boardId: 'RF12.5', studSpacing: 40, insulation: false });
+    // ściana z innym systemem bierze wartości swojego systemu
+    const other = addWall(p, { x: 0, y: 100 }, { x: 300, y: 100 }, { systemId: 'W-CW75-1' })!;
+    expect(other.studSpacing).toBe(60);
+  });
+
+  it('zmiana systemu nowych ścian kasuje wcześniejsze ustawienia płyty i rozstawu', () => {
+    const p = createProject();
+    p.settings.wallDefaults = { studSpacing: 30 };
+    setDefaultWallSystem(p, 'W-CW100-1');
+    expect(p.settings.wallDefaults).toBeUndefined();
+    expect(addWall(p, { x: 0, y: 0 }, { x: 300, y: 0 })!.systemId).toBe('W-CW100-1');
   });
 });

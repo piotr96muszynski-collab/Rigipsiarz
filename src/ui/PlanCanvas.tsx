@@ -3,7 +3,9 @@ import { bbox, dist, existingRooms, isNewWall, masonrySide, nodeMap, pointInPoly
 import { boardById } from '../catalog/rigips';
 import { findRoomAt } from '../geometry/rooms';
 import { createCeiling, createOpening } from '../model/factory';
-import { addWall, clipToMasonry, hitWall, mergeNodeIfOverlaps, offsetAlongWall, snapPoint, type SnapResult } from '../model/ops';
+import { addWalls, clipToMasonry, hitWall, mergeNodeIfOverlaps, offsetAlongWall, removeOverlaps, type SnapResult } from '../model/ops';
+import { findOverlaps, uncoveredParts } from '../geometry/contacts';
+import { anchorsOf, angleMarks, snapGuided, snapMove, type AngleMark, type Guide, type GuideSnap } from '../geometry/snap';
 import type { Point, Project } from '../model/types';
 import { awayFromFinger, BUBBLE_H, BUBBLE_W } from './labelPlace';
 import { fmtCm, liningThickness, wallColor, wallThickness } from './wallStyle';
@@ -12,8 +14,23 @@ export type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'ceiling';
 
 export type Selection =
   | { type: 'wall'; id: string; openingId?: string }
+  | { type: 'walls'; ids: string[] }
   | { type: 'ceiling'; id: string }
   | null;
+
+/** Id zaznaczonych ścian (jednej albo kilku) */
+export const selectedWallIds = (s: Selection): string[] => (s?.type === 'wall' ? [s.id] : s?.type === 'walls' ? s.ids : []);
+
+/** Dodaje albo odejmuje ścianę z zaznaczenia (zaznaczanie kilku ścian) */
+export function toggleWall(s: Selection, id: string): Selection {
+  const ids = selectedWallIds(s);
+  const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+  if (!next.length) return null;
+  return next.length === 1 ? { type: 'wall', id: next[0] } : { type: 'walls', ids: next };
+}
+
+type Snap = SnapResult & { guides: Guide[] };
+const toSnap = (r: GuideSnap): Snap => ({ point: r.point, kind: r.kind === 'guide' ? 'angle' : r.kind, guides: r.guides });
 
 interface Props {
   project: Project;
@@ -30,6 +47,8 @@ interface Props {
   insetBottom?: number;
   /** Warstwa, do której trafiają rysowane ściany */
   layer?: 'existing' | 'new';
+  /** Tryb zaznaczania kilku ścian: dotknięcie dodaje/odejmuje ścianę */
+  multi?: boolean;
   onMessage: (m: string) => void;
 }
 
@@ -40,11 +59,22 @@ interface View {
 }
 
 type Gesture =
-  | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number; moved: boolean; tapTarget: Selection }
+  | { kind: 'pan'; sx: number; sy: number; ox: number; oy: number; moved: boolean; tapTarget: Selection; additive: boolean }
   | { kind: 'pinch'; d0: number; mid: Point; view: View }
-  | { kind: 'draw'; start: Point; end: Point; startScreen: Point; moved: boolean; snap: SnapResult; down: Point }
-  | { kind: 'rect'; start: Point; end: Point; startScreen: Point; moved: boolean; mode: 'room' | 'ceiling' }
-  | { kind: 'node'; id: string; moved: boolean }
+  | { kind: 'draw'; start: Point; end: Point; startScreen: Point; moved: boolean; snap: Snap; down: Point }
+  | { kind: 'rect'; start: Point; end: Point; startScreen: Point; moved: boolean; mode: 'room' | 'ceiling'; guides: Guide[] }
+  | { kind: 'node'; id: string; moved: boolean; guides: Guide[] }
+  | {
+      kind: 'move';
+      /** położenie węzłów przed przesunięciem */
+      orig: Map<string, Point>;
+      grab: Point;
+      startScreen: Point;
+      moved: boolean;
+      guides: Guide[];
+      tapTarget: string;
+      additive: boolean;
+    }
   | { kind: 'vertex'; ceilingId: string; index: number; moved: boolean }
   | { kind: 'opening'; wallId: string; openingId: string; grab: number; moved: boolean };
 
@@ -52,7 +82,7 @@ const HANDLE_PX = 16;
 const DRAG_PX = 7;
 
 export function PlanCanvas(props: Props) {
-  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new' } = props;
+  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new', multi = false } = props;
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View>({ ox: -100, oy: -100, z: 1.2 });
@@ -61,7 +91,8 @@ export function PlanCanvas(props: Props) {
   const [, force] = useState(0);
   const rerender = () => force((x) => x + 1);
   const [chain, setChain] = useState<Point | null>(null);
-  const [hover, setHover] = useState<SnapResult | null>(null);
+  const [hover, setHover] = useState<Snap | null>(null);
+  const selIds = selectedWallIds(selection);
 
   const nodes = useMemo(() => nodeMap(project), [project]);
   // strona pomieszczenia dla ścian obrysu
@@ -130,6 +161,7 @@ export function PlanCanvas(props: Props) {
   useEffect(() => {
     if (!selection) return;
     let target: Point | null = null;
+    if (selection.type === 'walls') return;
     if (selection.type === 'wall') {
       const w = project.walls.find((x) => x.id === selection.id);
       if (!w) return;
@@ -152,7 +184,7 @@ export function PlanCanvas(props: Props) {
       setView((v) => ({ ...v, oy: target!.y - wanted / v.z }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection?.type, selection?.id, selection?.type === 'wall' ? selection.openingId : undefined, insetBottom]);
+  }, [selection?.type, selection?.type === 'walls' ? '' : selection?.id, selection?.type === 'wall' ? selection.openingId : undefined, insetBottom]);
 
   useEffect(() => {
     if (!zoom?.seq) return;
@@ -189,6 +221,11 @@ export function PlanCanvas(props: Props) {
   };
   const tolCm = HANDLE_PX / view.z;
   const grid = project.settings.gridSnap;
+  /** węzeł leżący w punkcie (do kątów względem ścian w punkcie startu) */
+  const nodeIdAt = (pt: Point) => project.nodes.find((n) => dist(n, pt) < 0.5)?.id;
+  /** przyciąganie końca rysowanej ściany: węzły, osie, piony/poziomy innych węzłów, kąt od startu */
+  const snapDraw = (pt: Point, from?: Point) =>
+    toSnap(snapGuided(project, pt, tolCm, { anchors: from ? [{ at: from, nodeId: nodeIdAt(from) }] : [], grid }));
 
   // --------- trafienia ---------
   const hitNode = (w: Point) => project.nodes.find((n) => dist(n, w) < tolCm);
@@ -228,9 +265,10 @@ export function PlanCanvas(props: Props) {
     }
     if (pointers.current.size > 2) return;
     if (e.button === 1 || e.button === 2) {
-      gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget: selection };
+      gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget: selection, additive: false };
       return;
     }
+    const additive = multi || e.shiftKey || e.ctrlKey || e.metaKey;
     const w = toWorld(s.x, s.y);
 
     if (tool === 'select') {
@@ -244,8 +282,8 @@ export function PlanCanvas(props: Props) {
         }
       }
       const n = hitNode(w);
-      if (n) {
-        gesture.current = { kind: 'node', id: n.id, moved: false };
+      if (n && !additive) {
+        gesture.current = { kind: 'node', id: n.id, moved: false, guides: [] };
         return;
       }
       const ho = hitOpening(w);
@@ -255,21 +293,28 @@ export function PlanCanvas(props: Props) {
         return;
       }
       const hw = hitWall(project, w, Math.max(tolCm, 12));
-      const hc = hw ? null : hitCeiling(w);
+      // przeciągnięcie zaznaczonej ściany przesuwa ją (razem z pozostałymi zaznaczonymi)
+      if (hw && selIds.includes(hw.id)) {
+        const ids = new Set(project.walls.filter((x) => selIds.includes(x.id)).flatMap((x) => [x.a, x.b]));
+        const orig = new Map(project.nodes.filter((x) => ids.has(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
+        gesture.current = { kind: 'move', orig, grab: w, startScreen: s, moved: false, guides: [], tapTarget: hw.id, additive };
+        return;
+      }
+      const hc = hw || additive ? null : hitCeiling(w);
       const tapTarget: Selection = hw ? { type: 'wall', id: hw.id } : hc ? { type: 'ceiling', id: hc.id } : null;
-      gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget };
+      gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget, additive };
       return;
     }
 
     if (tool === 'wall') {
-      const snap = snapPoint(project, w, tolCm, chain ?? undefined, grid);
+      const snap = snapDraw(w, chain ?? undefined);
       gesture.current = { kind: 'draw', start: chain ?? snap.point, end: snap.point, startScreen: s, moved: false, snap, down: snap.point };
       rerender();
       return;
     }
     if (tool === 'room' || tool === 'ceiling') {
-      const snap = snapPoint(project, w, tolCm, undefined, grid);
-      gesture.current = { kind: 'rect', start: snap.point, end: snap.point, startScreen: s, moved: false, mode: tool };
+      const snap = snapDraw(w);
+      gesture.current = { kind: 'rect', start: snap.point, end: snap.point, startScreen: s, moved: false, mode: tool, guides: snap.guides };
       rerender();
       return;
     }
@@ -298,7 +343,7 @@ export function PlanCanvas(props: Props) {
     const w = toWorld(s.x, s.y);
 
     if (!g) {
-      if (tool === 'wall' && e.pointerType === 'mouse') setHover(snapPoint(project, w, tolCm, chain ?? undefined, grid));
+      if (tool === 'wall' && e.pointerType === 'mouse') setHover(snapDraw(w, chain ?? undefined));
       return;
     }
     if (g.kind === 'pinch') {
@@ -326,11 +371,11 @@ export function PlanCanvas(props: Props) {
         // przeciągnięcie daleko od końca łańcucha zaczyna nową ścianę w miejscu dotknięcia
         if (chain && dist(g.down, chain) > tolCm * 2) g.start = g.down;
       }
-      g.snap = snapPoint(project, w, tolCm, g.start, grid);
+      g.snap = snapDraw(w, g.start);
       if (layer === 'new') {
         // nowa ściana zatrzymuje się na licu istniejącego muru
         const c = clipToMasonry(project, g.start, g.snap.point);
-        if (c.clipped) g.snap = { point: c.point, kind: 'wall' };
+        if (c.clipped) g.snap = { point: c.point, kind: 'wall', guides: [] };
       }
       g.end = g.snap.point;
       rerender();
@@ -338,13 +383,17 @@ export function PlanCanvas(props: Props) {
     }
     if (g.kind === 'rect') {
       if (dist(s, g.startScreen) > DRAG_PX) g.moved = true;
-      g.end = snapPoint(project, w, tolCm, undefined, grid).point;
+      const sn = snapDraw(w);
+      g.end = sn.point;
+      g.guides = sn.guides;
       rerender();
       return;
     }
     if (g.kind === 'node') {
       g.moved = true;
-      const sp = snapPoint(project, w, tolCm, undefined, grid, g.id);
+      const moved = new Set([g.id]);
+      const sp = snapGuided(project, w, tolCm, { anchors: anchorsOf(project, g.id, moved), moved, grid });
+      g.guides = sp.guides;
       update(
         (d) => {
           const n = d.nodes.find((x) => x.id === g.id);
@@ -359,11 +408,29 @@ export function PlanCanvas(props: Props) {
     }
     if (g.kind === 'vertex') {
       g.moved = true;
-      const sp = snapPoint(project, w, tolCm, undefined, grid);
+      const sp = snapDraw(w);
       update(
         (d) => {
           const c = d.ceilings.find((x) => x.id === g.ceilingId);
           if (c) c.points[g.index] = sp.point;
+        },
+        { transient: true },
+      );
+      return;
+    }
+    if (g.kind === 'move') {
+      if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
+      g.moved = true;
+      const sm = snapMove(project, new Set(g.orig.keys()), { x: w.x - g.grab.x, y: w.y - g.grab.y }, tolCm, grid);
+      g.guides = sm.guides;
+      update(
+        (d) => {
+          for (const n of d.nodes) {
+            const o = g.orig.get(n.id);
+            if (!o) continue;
+            n.x = Math.round((o.x + sm.delta.x) * 10) / 10;
+            n.y = Math.round((o.y + sm.delta.y) * 10) / 10;
+          }
         },
         { transient: true },
       );
@@ -396,22 +463,38 @@ export function PlanCanvas(props: Props) {
     gesture.current = null;
 
     if (g.kind === 'pan') {
-      if (!g.moved && tool === 'select') setSelection(g.tapTarget);
+      if (!g.moved && tool === 'select') {
+        if (g.additive) {
+          if (g.tapTarget?.type === 'wall') setSelection(toggleWall(selection, g.tapTarget.id));
+        } else setSelection(g.tapTarget);
+      }
+    } else if (g.kind === 'move') {
+      if (g.moved) {
+        const ids = [...g.orig.keys()];
+        update(
+          (d) => {
+            for (const id of ids) mergeNodeIfOverlaps(d, id);
+            // ściana przesunięta na inną: wspólny odcinek zostaje tylko raz
+            removeOverlaps(d);
+          },
+          { transient: true },
+        );
+        commit();
+        if (findOverlaps(project).length) onMessage('Pominięto odcinki ścian nałożone na istniejące');
+      } else if (g.additive) setSelection(toggleWall(selection, g.tapTarget));
+      else setSelection({ type: 'wall', id: g.tapTarget });
     } else if (g.kind === 'draw') {
       if (g.moved || chain) {
         const from = g.start;
         const to = g.end;
         if (dist(from, to) >= 10) {
-          let created: string | null = null;
-          update((d) => {
-            const wall = addWall(d, from, to, layer === 'existing' ? { kind: 'existing' } : {});
-            created = wall?.id ?? null;
-          });
+          // odcinki, na których stoi już ściana tej samej warstwy, są pomijane
+          if (!uncoveredParts(project, from, to, layer).length) onMessage('Ta ściana już tu jest – pominięto');
+          update((d) => void addWalls(d, from, to, layer === 'existing' ? { kind: 'existing' } : {}));
           // ściana zamknęła się na istniejącym węźle → koniec łańcucha
           const closed = project.nodes.some((n) => dist(n, to) < 1);
           setChain(closed && chain ? null : to);
           // nowej ściany nie zaznaczamy – panel nie zasłania rysowania kolejnych ścian
-          void created;
         } else if (!g.moved) {
           setChain(null);
         }
@@ -456,16 +539,30 @@ export function PlanCanvas(props: Props) {
             setSelection({ type: 'ceiling', id: c.id });
           }
         } else {
+          // pokój narysowany po ścianach innego pokoju dostaje tylko brakujące ściany
+          const full = pts.filter((pt, i) => {
+            const parts = uncoveredParts(project, pt, pts[(i + 1) % 4], layer);
+            return parts.length === 1 && dist(...parts[0]) >= dist(pt, pts[(i + 1) % 4]) - 1;
+          }).length;
+          if (full < 4) onMessage(full ? 'Pominięto ściany, które już tu są' : 'Te ściany już tu są – pominięto');
           update((d) => {
-            pts.forEach((pt, i) => addWall(d, pt, pts[(i + 1) % 4], layer === 'existing' ? { kind: 'existing' } : {}));
+            pts.forEach((pt, i) => addWalls(d, pt, pts[(i + 1) % 4], layer === 'existing' ? { kind: 'existing' } : {}));
           });
           setSelection(null);
         }
       }
     } else if (g.kind === 'node') {
       if (g.moved) {
-        update((d) => mergeNodeIfOverlaps(d, g.id), { transient: true });
+        update(
+          (d) => {
+            mergeNodeIfOverlaps(d, g.id);
+            // ściana przesunięta na inną: wspólny odcinek zostaje tylko raz
+            removeOverlaps(d);
+          },
+          { transient: true },
+        );
         commit();
+        if (findOverlaps(project).length) onMessage('Pominięto odcinki ścian nałożone na istniejące');
       } else {
         const wall = project.walls.find((x) => x.a === g.id || x.b === g.id);
         if (wall) setSelection({ type: 'wall', id: wall.id });
@@ -510,6 +607,31 @@ export function PlanCanvas(props: Props) {
   const snapMark = g?.kind === 'draw' ? g.snap : !g && tool === 'wall' ? hover : null;
 
   const selectedWall = selection?.type === 'wall' ? project.walls.find((w) => w.id === selection.id) : undefined;
+
+  // linie pomocnicze i kąty bieżącego gestu
+  const guides: Guide[] =
+    g?.kind === 'draw' || (g?.kind === 'rect' && g.moved)
+      ? g.kind === 'draw'
+        ? g.moved || chain
+          ? g.snap.guides
+          : []
+        : g.guides
+      : (g?.kind === 'node' || g?.kind === 'move') && g.moved
+        ? g.guides
+        : !g && tool === 'wall' && hover
+          ? hover.guides
+          : [];
+  const angles: AngleMark[] = (() => {
+    if (g?.kind === 'node' && g.moved) return angleMarks(project, [g.id, ...anchorsOf(project, g.id, new Set([g.id])).map((a) => a.nodeId!)]);
+    if (g?.kind === 'move' && g.moved) {
+      const ids = new Set(g.orig.keys());
+      const near = project.walls.filter((w) => ids.has(w.a) || ids.has(w.b)).flatMap((w) => [w.a, w.b]);
+      return angleMarks(project, new Set(near));
+    }
+    if (preview) return angleMarks(project, [], [{ nodeId: nodeIdAt(preview.a), at: preview.a, to: preview.b }]);
+    return [];
+  })();
+  const far = (2 * (size.w + size.h)) / view.z;
 
   return (
     <div className="plan-wrap">
@@ -559,7 +681,7 @@ export function PlanCanvas(props: Props) {
             if (!a0 || !b0) return null;
             const L = dist(a0, b0);
             const t = wallThickness(w);
-            const sel = selectedWall?.id === w.id;
+            const sel = selIds.includes(w.id);
             const ux = (b0.x - a0.x) / (L || 1);
             const uy = (b0.y - a0.y) / (L || 1);
             const nx = -uy;
@@ -723,6 +845,18 @@ export function PlanCanvas(props: Props) {
             />
           )}
           {chain && <circle cx={chain.x} cy={chain.y} r={6 / view.z} className="chain-start" strokeWidth={2 / view.z} />}
+          {guides.map((gd, i) => (
+            <line
+              key={`guide-${i}`}
+              x1={gd.at.x - gd.dir.x * far}
+              y1={gd.at.y - gd.dir.y * far}
+              x2={gd.at.x + gd.dir.x * far}
+              y2={gd.at.y + gd.dir.y * far}
+              className={`guide guide-${gd.kind}`}
+              strokeWidth={1.2 / view.z}
+              strokeDasharray={`${6 / view.z} ${5 / view.z}`}
+            />
+          ))}
           {snapMark && snapMark.kind !== 'grid' && snapMark.kind !== 'none' && (
             <circle
               cx={snapMark.point.x}
@@ -774,6 +908,29 @@ export function PlanCanvas(props: Props) {
               <text key={c.id} x={center.x} y={center.y} className="ceiling-label">
                 Sufit {(area / 10000).toFixed(2).replace('.', ',')} m²
               </text>
+            );
+          })}
+          {angles.map((m, i) => {
+            const c = toScreen(m.at);
+            const r = 20;
+            const p0 = { x: c.x + Math.cos(m.from) * r, y: c.y + Math.sin(m.from) * r };
+            const p1 = { x: c.x + Math.cos(m.to) * r, y: c.y + Math.sin(m.to) * r };
+            const mid = (m.from + m.to) / 2;
+            const right = Math.abs(m.deg - 90) < 0.5;
+            const t = { x: c.x + Math.cos(mid) * 38, y: c.y + Math.sin(mid) * 38 };
+            return (
+              <g key={`ang-${i}`} className={`angle-mark ${right ? 'right' : ''}`}>
+                {right ? (
+                  <path
+                    d={`M ${c.x + Math.cos(m.from) * 12} ${c.y + Math.sin(m.from) * 12} L ${c.x + Math.cos(m.from) * 12 + Math.cos(m.to) * 12} ${c.y + Math.sin(m.from) * 12 + Math.sin(m.to) * 12} L ${c.x + Math.cos(m.to) * 12} ${c.y + Math.sin(m.to) * 12}`}
+                  />
+                ) : (
+                  <path d={`M ${p0.x} ${p0.y} A ${r} ${r} 0 ${m.deg > 180 ? 1 : 0} 1 ${p1.x} ${p1.y}`} />
+                )}
+                <text x={t.x} y={t.y + 4}>
+                  {fmtDeg(m.deg)}
+                </text>
+              </g>
             );
           })}
           {selectedWall &&
@@ -845,6 +1002,8 @@ function DimBubble({ at, text }: { at: Point; text: string }) {
     </g>
   );
 }
+
+const fmtDeg = (d: number) => `${Math.abs(d - Math.round(d)) < 0.05 ? Math.round(d) : d.toFixed(1).replace('.', ',')}°`;
 
 function clampZoom(z: number) {
   return Math.max(0.05, Math.min(12, z));

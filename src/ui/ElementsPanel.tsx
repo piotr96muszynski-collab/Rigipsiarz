@@ -12,7 +12,7 @@ import {
 } from '../calc/materials';
 import { bbox, dist, interiorSide, isNewWall, wallEnds } from '../geometry/geometry';
 import { createCeiling, createLining, createOpening } from '../model/factory';
-import { addWall, deleteWall, setWallLength } from '../model/ops';
+import { addWall, deleteWall, setWallLength, setWallSystem } from '../model/ops';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { DimInput } from './DimInput';
 import { Picker, type PickOption } from './Picker';
@@ -35,7 +35,7 @@ const JUNCTION_LABEL: Record<string, string> = {
   cross: 'skrzyżowanie',
 };
 
-const SPACING_OPTIONS: PickOption<Wall['studSpacing']>[] = [
+export const SPACING_OPTIONS: PickOption<Wall['studSpacing']>[] = [
   { value: 60, label: '60 cm' },
   { value: 40, label: '40 cm', hint: 'pod płytki' },
   { value: 30, label: '30 cm' },
@@ -49,7 +49,7 @@ const DIRECTION_OPTIONS: PickOption<0 | 90>[] = [
   { value: 90, label: 'wzdłuż szerokości' },
 ];
 /** Płyty z katalogu – w arkuszu z opisem zastosowania */
-const BOARD_OPTIONS = (): PickOption<string>[] => BOARDS.map((b) => ({ value: b.id, label: b.name, hint: b.description }));
+export const BOARD_OPTIONS = (): PickOption<string>[] => BOARDS.map((b) => ({ value: b.id, label: b.name, hint: b.description }));
 
 export function ElementsPanel({ project, calc, update }: Props) {
   const count = project.walls.length + project.ceilings.length;
@@ -182,15 +182,7 @@ export function WallEditor({
           <WallSystemSelect
             id={`sys-${wall.id}`}
             value={wall.systemId}
-            onChange={(id) =>
-              edit((w) => {
-                const s = wallSystemById(id);
-                w.systemId = s.id;
-                w.boardId = s.defaultBoard;
-                w.studSpacing = s.studSpacing;
-                w.insulation = s.insulationDefault;
-              })
-            }
+            onChange={(id) => edit((w) => setWallSystem(w, id))}
           />
           <small className="hint">{sys.info}</small>
         </div>

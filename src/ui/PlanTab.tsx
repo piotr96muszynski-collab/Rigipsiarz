@@ -7,6 +7,7 @@ import { deleteWall } from '../model/ops';
 import type { Project } from '../model/types';
 import { CeilingEditor, ExistingWallEditor, WallEditor } from './ElementsPanel';
 import { PlanCanvas, type Selection, type Tool } from './PlanCanvas';
+import { MultiWallEditor, multiSummary, systemShort, WallDefaultsEditor } from './WallBatch';
 import { EXIT_FULLSCREEN_ICON, FULLSCREEN_ICON } from './fullscreen';
 import { fmtNum } from './wallStyle';
 
@@ -26,7 +27,7 @@ const TOOLS: { id: Tool; label: string; hint: string; icon: React.ReactNode }[] 
   {
     id: 'select',
     label: 'Wybierz',
-    hint: 'Dotknij ściany, otworu lub sufitu, aby go edytować. Przeciągnij punkt, aby zmienić kształt.',
+    hint: 'Dotknij ściany, otworu lub sufitu, aby go edytować. Przeciągnij punkt, aby zmienić kształt, albo zaznaczoną ścianę, aby ją przesunąć – przyciąga do osi innych ścian i kątów prostych.',
     icon: <path d="M6 3l12 9-5.5 1L15 20l-2.5 1-2.5-7L6 18z" />,
   },
   {
@@ -73,6 +74,23 @@ const EXISTING_HINT = {
   room: 'Przeciągnij prostokąt – powstanie obrys z 4 istniejących ścian (np. pustego pokoju). Okna i drzwi dodasz narzędziami obok.',
 };
 
+/** Podpowiedzi narzędzi raz zamknięte (albo użyte) nie wracają – pamiętane na tym urządzeniu */
+const HINTS_KEY = 'rigipsiarz.hintsSeen';
+function loadHints(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(HINTS_KEY) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+function saveHints(h: Record<string, boolean>) {
+  try {
+    localStorage.setItem(HINTS_KEY, JSON.stringify(h));
+  } catch {
+    /* pamięć przeglądarki niedostępna – podpowiedzi wrócą po odświeżeniu */
+  }
+}
+
 export interface FullscreenControl {
   on: boolean;
   toggle: () => void;
@@ -91,7 +109,15 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
   const [fitSignal, setFitSignal] = useState(0);
   const [zoom, setZoom] = useState({ seq: 0, factor: 1 });
   const [msg, setMsg] = useState<string | null>(null);
-  const [hintSeen, setHintSeen] = useState<Record<string, boolean>>({});
+  const [hintSeen, setHintSeenRaw] = useState<Record<string, boolean>>(loadHints);
+  const setHintSeen = (fn: (h: Record<string, boolean>) => Record<string, boolean>) =>
+    setHintSeenRaw((h) => {
+      const next = fn(h);
+      if (next !== h) saveHints(next);
+      return next;
+    });
+  const [multi, setMulti] = useState(false);
+  const [defaultsOpen, setDefaultsOpen] = useState(false);
   const msgTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [sheetH, setSheetH] = useState(0);
@@ -120,11 +146,19 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
   useEffect(() => () => clearTimeout(msgTimer.current), []);
 
   // zaznaczenie mogło zniknąć (cofnij, usunięcie)
+  const multiIds = selection?.type === 'walls' ? selection.ids.filter((id) => project.walls.some((w) => w.id === id)) : [];
   const wall = selection?.type === 'wall' ? project.walls.find((w) => w.id === selection.id) : undefined;
   const ceiling = selection?.type === 'ceiling' ? project.ceilings.find((c) => c.id === selection.id) : undefined;
   const opening = wall && selection?.type === 'wall' ? wall.openings.find((o) => o.id === selection.openingId) : undefined;
-  const hasSel = !!(wall || ceiling);
-  useBack(hasSel, () => setSelection(null));
+  const hasSel = !!(wall || ceiling || multiIds.length);
+  useBack(hasSel || multi, () => {
+    setSelection(null);
+    setMulti(false);
+  });
+  useEffect(() => {
+    if (tool !== 'select') setMulti(false);
+    if (tool !== 'wall' && tool !== 'room') setDefaultsOpen(false);
+  }, [tool]);
 
   useEffect(() => {
     const el = sheetRef.current;
@@ -138,7 +172,13 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
   }, [hasSel, wide]);
 
   const removeSelected = () => {
-    if (opening && wall) {
+    if (multiIds.length) {
+      update((d) => {
+        for (const id of multiIds) deleteWall(d, id);
+      });
+      setSelection(null);
+      onMessage(`Usunięto ściany (${multiIds.length}) – możesz cofnąć`);
+    } else if (opening && wall) {
       update((d) => {
         const w = d.walls.find((x) => x.id === wall.id);
         if (w) w.openings = w.openings.filter((o) => o.id !== opening.id);
@@ -180,8 +220,12 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
 
   const current = TOOLS.find((t) => t.id === tool)!;
   const layered = tool === 'wall' || tool === 'room';
-  const hintKey = layered ? `${tool}-${layer}` : tool;
-  const hintText = layered && layer === 'existing' ? EXISTING_HINT[tool as 'wall' | 'room'] : current.hint;
+  const hintKey = multi ? 'multi' : layered ? `${tool}-${layer}` : tool;
+  const hintText = multi
+    ? 'Dotykaj kolejnych ścian, żeby dodać je do zaznaczenia (drugie dotknięcie odznacza). Przeciągnij zaznaczoną ścianę, żeby przesunąć wszystkie.'
+    : layered && layer === 'existing'
+      ? EXISTING_HINT[tool as 'wall' | 'room']
+      : current.hint;
   const showHint = !hintSeen[hintKey] && !msg && !(hasSel && !wide);
   const empty = project.walls.length === 0 && project.ceilings.length === 0;
 
@@ -198,8 +242,11 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
       onDelete={removeSelected}
       onShowList={onShowList}
       wide={wide}
+      onSelect={setSelection}
+      onResetHints={Object.keys(hintSeen).length ? () => setHintSeen(() => ({})) : undefined}
     />
   );
+  const showDefaults = layered && layer === 'new';
 
   return (
     <div className={`plan-layout ${wide ? 'wide' : ''}`}>
@@ -216,6 +263,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           zoom={zoom}
           insetBottom={sheetH}
           layer={layer}
+          multi={multi}
           onMessage={onMessage}
         />
 
@@ -225,10 +273,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
               key={t.id}
               className={tool === t.id ? 'on' : ''}
               aria-pressed={tool === t.id}
-              onClick={() => {
-                if (tool === t.id) setHintSeen((h) => ({ ...h, [t.id]: false }));
-                setTool(t.id);
-              }}
+              onClick={() => setTool(t.id)}
               title={t.label}
             >
               <svg viewBox="0 0 24 24" aria-hidden>
@@ -284,36 +329,75 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           </button>
         </div>
 
-        {(msg || showHint) && (
-          <div className={`plan-hint ${msg ? 'msg' : ''}`} role="status">
-            <span>{msg ?? hintText}</span>
-            {!msg && (
-              <button className="hint-close" onClick={() => setHintSeen((h) => ({ ...h, [hintKey]: true }))} aria-label="Ukryj podpowiedź">
-                ×
+        <div className="plan-top">
+          <div className="plan-layer" role="radiogroup" aria-label="Co rysujesz">
+            {LAYERS.map((l) => (
+              <button
+                key={l.id}
+                role="radio"
+                aria-checked={layer === l.id}
+                className={`${layer === l.id ? 'on' : ''} layer-${l.id}`}
+                onClick={() => {
+                  setLayer(l.id);
+                  if (tool !== 'wall' && tool !== 'room') setTool('wall');
+                }}
+              >
+                <i aria-hidden />
+                {l.label}
               </button>
-            )}
+            ))}
           </div>
-        )}
-
-        <div className="plan-layer" role="radiogroup" aria-label="Co rysujesz">
-          {LAYERS.map((l) => (
-            <button
-              key={l.id}
-              role="radio"
-              aria-checked={layer === l.id}
-              className={`${layer === l.id ? 'on' : ''} layer-${l.id}`}
-              onClick={() => {
-                setLayer(l.id);
-                if (tool !== 'wall' && tool !== 'room') setTool('wall');
-              }}
-            >
-              <i aria-hidden />
-              {l.label}
+          {showDefaults && (
+            <button className={`plan-chip ${defaultsOpen ? 'on' : ''}`} aria-expanded={defaultsOpen} onClick={() => setDefaultsOpen((x) => !x)}>
+              <span className="muted">Nowe ściany:</span> <strong>{systemShort(project.settings.defaultWallSystem)}</strong>
+              <span className="muted"> · {fmtNum(project.settings.defaultHeight / 100)} m</span>
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d={defaultsOpen ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} />
+              </svg>
             </button>
-          ))}
+          )}
+          {showDefaults && defaultsOpen && (
+            <div className="plan-popover" role="dialog" aria-label="Ustawienia nowych ścian">
+              <header>
+                <strong>Ustawienia nowych ścian</strong>
+                <button className="icon-btn" onClick={() => setDefaultsOpen(false)} aria-label="Zamknij ustawienia">
+                  <svg viewBox="0 0 24 24" aria-hidden>
+                    <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </header>
+              <WallDefaultsEditor project={project} update={update} />
+            </div>
+          )}
+          {tool === 'select' && (
+            <button
+              className={`plan-chip ${multi ? 'on' : ''}`}
+              aria-pressed={multi}
+              onClick={() => {
+                setMulti((x) => !x);
+                if (multi && multiIds.length) setSelection(null);
+              }}
+              title="Zaznaczaj kilka ścian (na komputerze także Shift + klik)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />
+              </svg>
+              {multi ? `Zaznaczanie kilku${multiIds.length ? ` (${multiIds.length})` : ''} · gotowe` : 'Zaznacz kilka'}
+            </button>
+          )}
+          {(msg || showHint) && !defaultsOpen && (
+            <div className={`plan-hint ${msg ? 'msg' : ''}`} role="status">
+              <span>{msg ?? hintText}</span>
+              {!msg && (
+                <button className="hint-close" onClick={() => setHintSeen((h) => ({ ...h, [hintKey]: true }))} aria-label="Ukryj podpowiedź">
+                  ×
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {empty && layered && !wide && (
+        {empty && layered && !wide && !defaultsOpen && (
           <div className="plan-empty" aria-hidden>
             <p>
               {layer === 'existing'
@@ -368,7 +452,11 @@ function Inspector({
   onDelete,
   onShowList,
   wide,
+  onSelect,
+  onResetHints,
 }: {
+  onSelect: (s: Selection) => void;
+  onResetHints?: () => void;
   project: Project;
   calc: ProjectCalc;
   update: Props['update'];
@@ -386,14 +474,81 @@ function Inspector({
   const openingId = selection?.type === 'wall' ? selection.openingId : undefined;
   const opening = wall?.openings.find((o) => o.id === openingId);
   const waste = project.settings.wasteEnabled ? project.settings.waste : 0;
+  const multiIds = selection?.type === 'walls' ? selection.ids.filter((id) => project.walls.some((w) => w.id === id)) : [];
 
   const existing = wall ? !isNewWall(wall) : false;
   const reqs = useMemo(() => {
+    if (multiIds.length)
+      return project.walls
+        .filter((w) => multiIds.includes(w.id))
+        .flatMap((w) =>
+          isNewWall(w) ? [calc.walls.get(w.id)?.req] : (w.linings ?? []).map((l) => calc.linings.get(liningKey(w.id, l.side))?.req),
+        )
+        .filter((r) => !!r);
     if (wall && existing) return (wall.linings ?? []).map((l) => calc.linings.get(liningKey(wall.id, l.side))?.req).filter((r) => !!r);
     const r = wall ? calc.walls.get(wall.id)?.req : ceiling ? calc.ceilings.get(ceiling.id)?.req : undefined;
     return r ? [r] : [];
-  }, [wall, existing, ceiling, calc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wall, existing, ceiling, calc, multiIds.join()]);
   const lines = useMemo(() => (reqs.length ? summarize(reqs, waste) : []), [reqs, waste]);
+
+  if (multiIds.length) {
+    const kinds = new Set(project.walls.filter((w) => multiIds.includes(w.id)).map(isNewWall));
+    const sameKind = project.walls.filter((w) => kinds.has(isNewWall(w)));
+    return (
+      <div className={`inspector ${expanded ? 'open' : 'peek'}`}>
+        <header className="insp-head">
+          {collapsible ? (
+            <button className="insp-title" onClick={onToggle} aria-expanded={expanded}>
+              <span className="grab" aria-hidden />
+              <strong>Zaznaczone ściany</strong>
+              <span className="muted small">{multiSummary(project, multiIds)}</span>
+            </button>
+          ) : (
+            <div className="insp-title">
+              <strong>Zaznaczone ściany</strong>
+              <span className="muted small">{multiSummary(project, multiIds)}</span>
+            </div>
+          )}
+          <button className="icon-btn danger" onClick={onDelete} aria-label="Usuń zaznaczone ściany">
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button className="icon-btn" onClick={onClose} aria-label="Odznacz">
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </header>
+        {expanded && (
+          <div className="insp-body">
+            <MultiWallEditor project={project} ids={multiIds} update={update} />
+            {sameKind.length > multiIds.length && (
+              <div className="actions wrap">
+                <button className="btn small" onClick={() => onSelect({ type: 'walls', ids: sameKind.map((w) => w.id) })}>
+                  Zaznacz wszystkie {kinds.has(true) && kinds.size === 1 ? 'nowe ściany' : kinds.size === 1 ? 'mury' : 'ściany'} ({sameKind.length})
+                </button>
+              </div>
+            )}
+            {lines.length > 0 && (
+              <details className="insp-materials" open={wide}>
+                <summary>Materiały na zaznaczone ściany ({lines.length})</summary>
+                <ul>
+                  {lines.map((l) => (
+                    <li key={l.key}>
+                      <span>{l.name}</span>
+                      <strong>{l.packs ? `${l.packs} ${l.packUnit}` : `${fmtQty(l.qty)} ${l.unit}`}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (!wall && !ceiling) {
     const s = calc.stats;
@@ -424,14 +579,23 @@ function Inspector({
           materiałach, ale można na nie nałożyć okładzinę z płyt. Potem wybierz „Nowa zabudowa” i wstaw ściany g-k. Dotknij
           elementu, żeby ustawić wysokość, system, płytę i otwory.
         </p>
+        <details className="insp-defaults">
+          <summary>Ustawienia nowych ścian · {systemShort(project.settings.defaultWallSystem)}</summary>
+          <WallDefaultsEditor project={project} update={update} />
+        </details>
         <ul className="shortcuts muted small">
           <li>
             <kbd>W</kbd> ściana · <kbd>R</kbd> pokój · <kbd>D</kbd> drzwi · <kbd>O</kbd> okno · <kbd>S</kbd> sufit · <kbd>V</kbd> wybierz
           </li>
           <li>
-            <kbd>Del</kbd> usuń · <kbd>Esc</kbd> przerwij · <kbd>F</kbd> cały plan · kółko myszy – powiększenie · prawy przycisk – przesuwanie
+            <kbd>Shift</kbd> + klik – kilka ścian · <kbd>Del</kbd> usuń · <kbd>Esc</kbd> przerwij · <kbd>F</kbd> cały plan · kółko myszy – powiększenie · prawy przycisk – przesuwanie
           </li>
         </ul>
+        {onResetHints && (
+          <button className="btn ghost small" onClick={onResetHints}>
+            Pokaż znowu podpowiedzi narzędzi
+          </button>
+        )}
         {!wide && (
           <button className="btn" onClick={onShowList}>
             Lista zakupów
