@@ -384,7 +384,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           </div>
           {showDefaults && (
             <button className={`plan-chip ${defaultsOpen ? 'on' : ''}`} aria-expanded={defaultsOpen} onClick={() => setDefaultsOpen((x) => !x)}>
-              <span className="muted">Nowe ściany:</span> <strong>{systemShort(project.settings.defaultWallSystem)}</strong>
+              <span className="muted">Nowe ściany:</span> <strong>{systemShort(project.settings.defaultWallSystem, project.settings.wallDefaults?.boardId)}</strong>
               <span className="muted"> · {fmtNum(project.settings.defaultHeight / 100)} m</span>
               <svg viewBox="0 0 24 24" aria-hidden>
                 <path d={defaultsOpen ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} />
@@ -616,7 +616,7 @@ function Inspector({
           elementu, żeby ustawić wysokość, system, płytę i otwory.
         </p>
         <details className="insp-defaults">
-          <summary>Ustawienia nowych ścian · {systemShort(project.settings.defaultWallSystem)}</summary>
+          <summary>Ustawienia nowych ścian · {systemShort(project.settings.defaultWallSystem, project.settings.wallDefaults?.boardId)}</summary>
           <WallDefaultsEditor project={project} update={update} />
         </details>
         <ul className="shortcuts muted small">

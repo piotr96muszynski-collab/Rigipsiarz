@@ -226,7 +226,9 @@ function boardCost(boardId: string): number {
 const MAKERS: Maker[] = ['rigips', 'norgips', 'knauf', 'siniat', 'atlas'];
 function costKey(p: WallPick): number[] {
   const s = p.system;
-  const frameCost = s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'cd-lining' ? 2 : s.frame === 'single' ? 3 : 4;
+  // słupki z UA (blacha 2 mm, kątowniki, śruby M8) i UU (para U + para UD) są droższe od CW przy tej samej wysokości
+  const frameCost =
+    s.frame === 'glued' ? 0 : s.frame === 'point-fix' ? 1 : s.frame === 'cd-lining' ? 2 : s.frame === 'single' ? (s.studKind ? 3.5 : 3) : 4;
   return [
     s.layers * s.sides,
     boardCost(p.boardId),
