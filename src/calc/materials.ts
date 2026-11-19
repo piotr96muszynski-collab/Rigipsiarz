@@ -33,7 +33,7 @@ import { createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
-import { OFFCUT_MIN, bracketPositions, fixerColumns, liningAsWall, pieceArea, pointFixGrid, wallLayout } from './layout';
+import { OFFCUT_MIN, bracketPositions, ceilingBoardLayout, fixerColumns, liningAsWall, liningContacts, pieceArea, wallLayout, type WallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -232,7 +232,7 @@ export function wallRequirement(
     })
     .filter((o) => o.w > 0.05 && o.h > 0.05);
 
-  if (sys.frame === 'point-fix') return pointFixWall(req, w, j, sys, L, H, openings, warnings);
+  if (sys.frame === 'point-fix') return pointFixWall(req, w, j, sys, L, H, openings, warnings, wallLayout(p, w, j, contacts ?? buildContacts(p)));
 
   const isCD = sys.frame === 'cd-lining';
   const rows = sys.frame === 'glued' ? 0 : sys.frame === 'double' || sys.frame === 'separate' ? 2 : 1;
@@ -432,6 +432,7 @@ function pointFixWall(
   H: number,
   openings: { x0: number; x1: number; w: number; h: number; sill: number; top: number }[],
   warnings: string[],
+  layout: WallLayout,
 ): { req: Requirement; info: WallBreakdown } {
   const fixer = sys.fixer ?? FIXERS.L100;
   const sx = w.studSpacing / 100;
@@ -440,8 +441,8 @@ function pointFixWall(
   const net = Math.max(0, L * H - openingArea);
 
   // łączniki (zestaw zawiera talerzyk, kołek i 4 wkręty – osobnych wkrętów TN nie liczymy)
-  // te same łączniki co na rysunku: skrajne 7 cm od krawędzi, bez łączników w świetle otworów
-  const n = pointFixGrid(0, L, H, sx, sy, openings).points.length;
+  // te same łączniki co na rysunku i w 3D (siatka z układu płyt: krawędzie, styki, otwory)
+  const n = layout.fixers?.points.length ?? 0;
   add(req.counts, fixer.product, n);
   if (fixer.extension) add(req.counts, fixer.extension, n);
 
@@ -461,19 +462,102 @@ function pointFixWall(
   };
 }
 
+/** Odsunięcie skrajnych łączników sufitu od ścian, cm (instrukcja ATLAS: 7 cm) */
+const CEIL_EDGE = 7;
+
+/** Odległość punktu od odcinka, cm */
+function segDist(q: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const L2 = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / L2));
+  return Math.hypot(q.x - a.x - t * dx, q.y - a.y - t * dy);
+}
+
+/** Obrys odsunięty do wnętrza o `d` (przecięcia przesuniętych krawędzi), cm */
+function insetPolygon(pts: Point[], d: number): Point[] {
+  const n = pts.length;
+  const area = pts.reduce((s, p, i) => s + p.x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * p.y, 0);
+  const k = area > 0 ? 1 : -1; // wnętrze po lewej przy obiegu dodatnim
+  const lines = pts.map((p, i) => {
+    const q = pts[(i + 1) % n];
+    const L = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const nx = (-(q.y - p.y) / L) * k;
+    const ny = ((q.x - p.x) / L) * k;
+    return { p: { x: p.x + nx * d, y: p.y + ny * d }, u: { x: (q.x - p.x) / L, y: (q.y - p.y) / L } };
+  });
+  return lines.map((cur, i) => {
+    const prev = lines[(i - 1 + n) % n];
+    const den = prev.u.x * cur.u.y - prev.u.y * cur.u.x;
+    if (Math.abs(den) < 1e-9) return cur.p;
+    const t = ((cur.p.x - prev.p.x) * cur.u.y - (cur.p.y - prev.p.y) * cur.u.x) / den;
+    return { x: prev.p.x + prev.u.x * t, y: prev.p.y + prev.u.y * t };
+  });
+}
+
 /**
- * Siatka łączników ATLAS M-System 3G na suficie, cm (współrzędne planu): skrajne rzędy 7 cm
- * od ścian (instrukcja ATLAS), pośrednie co rozstaw. `xs`/`ys` – osie rzędów, `points` – łączniki
- * w obrysie.
+ * Siatka łączników ATLAS M-System 3G na suficie, cm (współrzędne planu). Najpierw łączniki
+ * wzdłuż każdej ściany, 7 cm od niej (instrukcja ATLAS) – także przy ścianach ukośnych i we
+ * wnękach obrysu – potem pośrednie w osiach siatki. Żadnego łącznika nie usuwamy; przy ścianie
+ * mogą wypaść gęściej. `xs`/`ys` – osie siatki, `points` – wszystkie łączniki.
  */
 export function ceilingFixerGrid(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c.systemId)) {
   const bb = bbox(c.points);
-  // jak na ścianie: skrajne rzędy 7 cm od brzegu, pośrednie co rozstaw od krawędzi sufitu (cm)
+  // siatka „szer. × dł.” z instrukcji: 40 cm w poprzek płyt (3 rzędy na szerokość 120 cm, styk
+  // długich krawędzi na rzędzie), 50 cm wzdłuż płyt (styk krótkich krawędzi co 250 cm na rzędzie).
+  // Płyty leżą wzdłuż osi `direction` (jak w ceilingBoardLayout).
+  const sx = c.direction === 0 ? sys.secondarySpacing : sys.mainSpacing;
+  const sy = c.direction === 0 ? sys.mainSpacing : sys.secondarySpacing;
+  // osie: skrajne 7 cm od krawędzi obrysu, pośrednie co rozstaw od krawędzi sufitu (cm)
   const axis = (lo: number, hi: number, step: number) => fixerColumns(0, (hi - lo) / 100, step / 100).map((v) => Math.round((lo + v * 100) * 10) / 10);
-  const xs = axis(bb.minX, bb.maxX, c.direction === 0 ? sys.mainSpacing : sys.secondarySpacing);
-  const ys = axis(bb.minY, bb.maxY, c.direction === 0 ? sys.secondarySpacing : sys.mainSpacing);
+  // styki płyt: każdy styk leży na rzędzie łączników (krótkie krawędzie wypadają w osiach
+  // kolumn, długie – co 120 cm – dostają własny rząd)
+  const joints = ceilingBoardLayout(c).pieces;
+  const withJoints = (base: number[], cuts: number[], lo: number, hi: number) => {
+    const out = [...base];
+    for (const v of cuts) if (v > lo + CEIL_EDGE + 0.5 && v < hi - CEIL_EDGE - 0.5 && !out.some((o) => Math.abs(o - v) < 0.5)) out.push(v);
+    return out.sort((a, b) => a - b);
+  };
+  const xs = withJoints(axis(bb.minX, bb.maxX, sx), joints.map((q) => q.x0), bb.minX, bb.maxX);
+  const ys = withJoints(axis(bb.minY, bb.maxY, sy), joints.map((q) => q.y0), bb.minY, bb.maxY);
+  const pts = c.points;
+  const n = pts.length;
   const points: Point[] = [];
-  for (const x of xs) for (const y of ys) if (pointInPolygon({ x, y }, c.points)) points.push({ x, y });
+  const add = (q: Point) => {
+    if (!points.some((o) => Math.abs(o.x - q.x) < 0.5 && Math.abs(o.y - q.y) < 0.5)) points.push({ x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10 });
+  };
+  // 1) wzdłuż ścian: odcinek 7 cm od ściany, łączniki na końcach i w osiach siatki (przy ścianie
+  //    równoległej do osi) albo co mniejszy rozstaw od narożnika (przy ścianie ukośnej)
+  if (n >= 3) {
+    const inner = insetPolygon(pts, CEIL_EDGE);
+    for (let i = 0; i < n; i++) {
+      const a = inner[i];
+      const b = inner[(i + 1) % n];
+      const L = Math.hypot(b.x - a.x, b.y - a.y);
+      if (L < 0.5) {
+        add(a);
+        continue;
+      }
+      const along: number[] = [0, L];
+      const ux = (b.x - a.x) / L;
+      const uy = (b.y - a.y) / L;
+      if (Math.abs(uy) < 1e-6) for (const x of xs) along.push((x - a.x) / ux);
+      else if (Math.abs(ux) < 1e-6) for (const y of ys) along.push((y - a.y) / uy);
+      else {
+        const step = Math.min(sx, sy);
+        for (let t = step; t < L - 0.5; t += step) along.push(t);
+      }
+      for (const t of along) if (t >= -1e-6 && t <= L + 1e-6) add({ x: a.x + ux * t, y: a.y + uy * t });
+    }
+  }
+  // 2) pośrednie: węzły siatki w obrysie, nie bliżej ściany niż rząd przyścienny
+  for (const x of xs)
+    for (const y of ys) {
+      const q = { x, y };
+      if (!pointInPolygon(q, pts)) continue;
+      const d = Math.min(...pts.map((p, i) => segDist(q, p, pts[(i + 1) % n])));
+      if (d >= CEIL_EDGE - 0.5) add(q);
+    }
   return { xs, ys, points };
 }
 
@@ -843,10 +927,12 @@ const LINING_JUNCTIONS: WallJunctions = { endA: 'existing-wall', endB: 'existing
  * Okładzina istniejącej ściany: liczona jak jednostronna ściana z systemu okładziny o długości
  * i wysokości muru, z odjęciem jego otworów (okna, drzwi wejściowe).
  */
-export function liningRequirement(p: Project, w: Wall, l: Lining): LiningResult {
+export function liningRequirement(p: Project, w: Wall, l: Lining, m?: ContactModel): LiningResult {
   const sys = wallSystemById(l.systemId);
   const synthetic = liningAsWall(w, l);
-  const { req, info } = wallRequirement(p, synthetic, LINING_JUNCTIONS, sys);
+  // ATLAS: łączniki z tej samej siatki co rysunek i 3D – na zakresie okładziny z modelu styków
+  const own = sys.frame === 'point-fix' ? liningContacts(p, w, l, m ?? buildContacts(p)) : undefined;
+  const { req, info } = wallRequirement(p, synthetic, LINING_JUNCTIONS, sys, own);
   if (!isLiningSystem(sys))
     info.warnings.push('Wybrany system nie jest okładziną – sprawdź, czy o to chodziło.');
   return { wallId: w.id, side: l.side, req, info };
@@ -878,7 +964,7 @@ export function calculateProject(p: Project): ProjectCalc {
     if (!isNewWall(w)) {
       // istniejąca ściana: liczymy tylko jej okładziny
       for (const l of w.linings ?? []) {
-        const r = liningRequirement(p, w, l);
+        const r = liningRequirement(p, w, l, contacts);
         linings.set(liningKey(w.id, l.side), r);
         liningAreaM2 += r.info.netAreaM2;
       }

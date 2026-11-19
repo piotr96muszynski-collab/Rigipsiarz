@@ -162,3 +162,82 @@ describe('łączniki ATLAS w 3D', () => {
     expect(parts.some((x) => x.type === 'box' && x.mat === 'ud')).toBe(false);
   });
 });
+
+describe('łączniki ATLAS przy ścianach i stykach płyt', () => {
+  it('sufit z ukośną ścianą: rząd łączników 7 cm od każdej ściany, także ukośnej', async () => {
+    const { createCeiling } = await import('./factory');
+    const { ceilingFixerGrid } = await import('../calc/materials');
+    const p = createProject();
+    // ścięty narożnik: ukos od (300, 0) do (400, 100)
+    const poly = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 400, y: 100 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 },
+    ];
+    const c = createCeiling(p, poly, { systemId: 'A-S-L100' });
+    const g = ceilingFixerGrid(c);
+    const a = poly[1];
+    const b = poly[2];
+    const L = Math.hypot(b.x - a.x, b.y - a.y);
+    const distToDiag = (q: { x: number; y: number }) => Math.abs((q.x - a.x) * (b.y - a.y) - (q.y - a.y) * (b.x - a.x)) / L;
+    const onDiag = g.points.filter((q) => Math.abs(distToDiag(q) - 7) < 0.6);
+    // ukos ≈ 141 cm, odcinek 7 cm od niego krótszy – łączniki na końcach i co ≤ 40 cm
+    expect(onDiag.length).toBeGreaterThanOrEqual(4);
+    // żaden łącznik nie leży bliżej ściany niż 7 cm
+    for (const q of g.points)
+      for (let i = 0; i < poly.length; i++) {
+        const s0 = poly[i];
+        const s1 = poly[(i + 1) % poly.length];
+        const dx = s1.x - s0.x;
+        const dy = s1.y - s0.y;
+        const t = Math.max(0, Math.min(1, ((q.x - s0.x) * dx + (q.y - s0.y) * dy) / (dx * dx + dy * dy)));
+        expect(Math.hypot(q.x - s0.x - t * dx, q.y - s0.y - t * dy)).toBeGreaterThan(6.4);
+      }
+  });
+
+  it('sufit: każdy styk płyt leży na rzędzie albo kolumnie łączników', async () => {
+    const { createCeiling } = await import('./factory');
+    const { ceilingFixerGrid } = await import('../calc/materials');
+    const { ceilingBoardLayout } = await import('../calc/layout');
+    const p = createProject();
+    const c = createCeiling(p, [{ x: 0, y: 0 }, { x: 610, y: 0 }, { x: 610, y: 470 }, { x: 0, y: 470 }], { systemId: 'A-S-L100' });
+    const g = ceilingFixerGrid(c);
+    for (const pc of ceilingBoardLayout(c).pieces) {
+      if (pc.x0 > 1) expect(g.xs.some((x) => Math.abs(x - pc.x0) < 0.5)).toBe(true);
+      if (pc.y0 > 1) expect(g.ys.some((y) => Math.abs(y - pc.y0) < 0.5)).toBe(true);
+    }
+  });
+
+  it('sufit: bez docinków węższych niż 30 cm – poprzednia płyta krótsza', async () => {
+    const { createCeiling } = await import('./factory');
+    const { ceilingBoardLayout } = await import('../calc/layout');
+    const p = createProject();
+    for (const [w, h] of [
+      [505, 250],
+      [510, 365],
+      [770, 245],
+    ]) {
+      const c = createCeiling(p, [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }], { systemId: 'S-CD-2P-1' });
+      for (const pc of ceilingBoardLayout(c).pieces) {
+        expect(pc.x1 - pc.x0).toBeGreaterThanOrEqual(29.5);
+        expect(pc.y1 - pc.y0).toBeGreaterThanOrEqual(29.5);
+      }
+    }
+  });
+
+  it('ściana wyższa niż arkusz: na poziomym styku płyt jest rząd łączników', () => {
+    const p = createProject();
+    pts.forEach((pt, i) => addWall(p, pt, pts[(i + 1) % 4], { kind: 'existing', height: 330 }));
+    const w = p.walls[0];
+    w.linings = [createLining(interiorSide(p, w) || 1, 'A-W-L100')];
+    const l = liningLayout(p, w, w.linings[0]);
+    const ys = l.faces[0].pieces.flatMap((pc) => [pc.y0, pc.y1]).filter((y) => y > 0.01 && y < 3.29);
+    expect(ys.length).toBeGreaterThan(0);
+    for (const y of ys) expect(l.fixers!.ys.some((r) => Math.abs(r - y) < 0.002)).toBe(true);
+    // ilość w materiałach = łączniki z rysunku
+    const calc = calculateProject(p);
+    expect(calc.linings.get(liningKey(w.id, w.linings[0].side))!.req.counts.ATLAS_3G_L100).toBe(l.fixers!.points.length);
+  });
+});

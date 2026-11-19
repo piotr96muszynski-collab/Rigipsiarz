@@ -4,7 +4,7 @@
 
 import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
 import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
-import { hangerPositions, liningLayout, pieceArea, pieceOutline, pointFixGrid, splicePositions, wallLayout } from '../calc/layout';
+import { hangerPositions, liningLayout, pieceArea, pieceOutline, splicePositions, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Ceiling, Point, Project, Wall } from '../model/types';
@@ -436,8 +436,7 @@ function buildExistingWall(
     }
     // ATLAS M-System 3G: łączniki w siatce z rysunków, talerzyk pod płytą, trzpień w murze
     if (sys.frame === 'point-fix') {
-      const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
-      const grid = pointFixGrid(l0, l1, H, l.studSpacing / 100, (sys.pointSpacing ?? 50) / 100, openings);
+      const grid = liningLayout(p, w, l, contacts).fixers ?? { points: [] };
       const dn: [number, number, number] = [nx * l.side, 0, nz * l.side];
       for (const q of grid.points) {
         const base: [number, number, number] = [ax + ux * q.x + nx * face, q.y, az + uz * q.x + nz * face];

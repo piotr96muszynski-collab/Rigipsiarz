@@ -271,7 +271,8 @@ export function fixerRows(H: number, step: number, edge = FIXER_EDGE): number[] 
 /**
  * Siatka łączników ATLAS M-System 3G na okładzinie od `x0` do `x1` i wysokości `H`: najpierw
  * łączniki wzdłuż krawędzi, 7 cm od brzegu (instrukcja ATLAS), potem pośrednie – kolumny co `sx`
- * w osiach styków płyt, rzędy co `sy` od dolnego rzędu. Łączniki w świetle otworów pomijamy.
+ * w osiach styków płyt, rzędy co `sy` od dolnego rzędu. Na każdym styku płyt (pionowym
+ * i poziomym) leży rząd łączników. Łączniki w świetle otworów pomijamy.
  */
 export function pointFixGrid(
   x0: number,
@@ -280,9 +281,19 @@ export function pointFixGrid(
   sx: number,
   sy: number,
   openings: { x0: number; x1: number; sill: number; top: number }[] = [],
+  /** styki płyt: pionowe (x) i poziome (y), m – każdy styk dostaje swój rząd łączników */
+  joints: { xs?: number[]; ys?: number[] } = {},
 ): FixerGrid {
-  const xs = fixerColumns(x0, x1, sx);
-  const ys = fixerRows(H, sy);
+  const merge = (base: number[], extra: number[] | undefined, lo: number, hi: number) => {
+    const out = [...base];
+    for (const v of extra ?? []) {
+      const r = round3(v);
+      if (r > lo + FIXER_SAME && r < hi - FIXER_SAME && !out.some((o) => Math.abs(o - r) < FIXER_SAME)) out.push(r);
+    }
+    return out.sort((a, b) => a - b);
+  };
+  const xs = merge(fixerColumns(x0, x1, sx), joints.xs, x0 + FIXER_EDGE, x1 - FIXER_EDGE);
+  const ys = merge(fixerRows(H, sy), joints.ys, FIXER_EDGE, H - FIXER_EDGE);
   const tol = 0.02;
   const inHole = (x: number, y: number) =>
     openings.some((o) => x > o.x0 + tol && x < o.x1 - tol && y > o.sill + tol && y < o.top - tol);
@@ -488,7 +499,14 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     tracks,
     sheet: { width: boardW, length: sheetLen },
     faces,
-    fixers: frame === 'point-fix' ? pointFixGrid(f0, f1, H, s, (sys.pointSpacing ?? 50) / 100, openings) : undefined,
+    fixers:
+      frame === 'point-fix'
+        ? pointFixGrid(f0, f1, H, s, (sys.pointSpacing ?? 50) / 100, openings, {
+            xs: faces.flatMap((f) => f.joints),
+            // styki poziome (ściana wyższa niż arkusz)
+            ys: faces.flatMap((f) => f.pieces.flatMap((pc) => [pc.y0, pc.y1])).filter((y) => y > 0.01 && y < H - 0.01),
+          })
+        : undefined,
     brackets: isCD ? bracketGrid(studs, f0, f1, (sys.bracketSpacing ?? 100) / 100) : undefined,
   };
 }
@@ -536,7 +554,11 @@ const LINING_JUNCTIONS: WallJunctions = { endA: 'existing-wall', endB: 'existing
  * (w narożniku obrysu okładzina dochodzi do lica sąsiedniej okładziny).
  */
 export function liningLayout(p: Project, w: Wall, l: Lining, m: ContactModel = buildContacts(p)): WallLayout {
-  const sw = liningAsWall(w, l);
+  return wallLayout(p, liningAsWall(w, l), LINING_JUNCTIONS, liningContacts(p, w, l, m));
+}
+
+/** Model styków okładziny muru: tylko jej zakres wzdłuż muru (narożniki obrysu) */
+export function liningContacts(p: Project, w: Wall, l: Lining, m: ContactModel = buildContacts(p)): ContactModel {
   const L = wallLength(p, w) / 100;
   const [u0, u1] = m.linings.get(`${w.id}:${l.side}`) ?? [0, L];
   const layers = wallSystemById(l.systemId).layers;
@@ -558,7 +580,7 @@ export function liningLayout(p: Project, w: Wall, l: Lining, m: ContactModel = b
       [`${w.id}:b`, end('b', L - u1)],
     ]),
   };
-  return wallLayout(p, sw, LINING_JUNCTIONS, own);
+  return own;
 }
 
 // ---------------------------------------------------------------------------
@@ -861,28 +883,55 @@ export function ceilingBoardLayout(c: Ceiling): { pieces: CeilingBoardPiece[]; s
   const along: 'x' | 'y' = sys.kind === 'cw-span' ? (mainAxis === 'x' ? 'y' : 'x') : mainAxis;
   const [a0, a1] = along === 'x' ? [bb.minX, bb.maxX] : [bb.minY, bb.maxY];
   const [c0, c1] = along === 'x' ? [bb.minY, bb.maxY] : [bb.minX, bb.maxX];
+  // styk krótkich krawędzi na profilu (ATLAS: na rzędzie łączników co `secondarySpacing` wzdłuż płyty)
   const sp = sys.secondarySpacing;
   const longSide = Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY);
   const sheet = pickBoardLengthCm(c.boardId, Math.min(longSide, 300));
   // długość użytkowa: wielokrotność rozstawu profili, żeby styk wypadał na profilu
   const eff = Math.max(sp, Math.floor(sheet / sp) * sp);
   const stagger = Math.max(Math.ceil(40 / sp) * sp, Math.round(eff / 2 / sp) * sp);
+  const MIN = OFFCUT_MIN * 100;
+  /**
+   * Podział odcinka a..b na kawałki o długościach `first`, potem `step`. Gdy na końcu zostałby
+   * docinek węższy niż 30 cm, poprzednia płyta jest skracana (o wielokrotność `unit`, żeby styk
+   * dalej wypadał na profilu / rzędzie łączników) – zamiast wąskiego paska.
+   */
+  const split = (a: number, b: number, first: number, step: number, unit: number): number[] => {
+    const cuts = [a];
+    let x = a;
+    let len = first;
+    while (x < b - 0.5) {
+      x = Math.min(b, x + len);
+      cuts.push(x);
+      len = step;
+    }
+    const k = cuts.length;
+    const rest = cuts[k - 1] - cuts[k - 2];
+    if (k >= 3 && rest < MIN - 0.5) {
+      const prev = cuts[k - 2] - cuts[k - 3];
+      let shorten = Math.ceil((MIN - rest) / unit - 1e-9) * unit;
+      if (prev - shorten < MIN - 0.5) shorten = Math.max(0, prev - (prev + rest) / 2);
+      if (prev + rest < 2 * MIN) cuts.splice(k - 2, 1); // za mało na dwie płyty – jedna dłuższa
+      else cuts[k - 2] -= shorten;
+    }
+    return cuts;
+  };
   const pieces: CeilingBoardPiece[] = [];
-  let row = 0;
-  for (let y = c0; y < c1 - 0.5; y += 120, row++) {
-    const yEnd = Math.min(c1, y + 120);
-    let x = a0;
-    let first = row % 2 === 1 && stagger < eff ? stagger : eff;
-    while (x < a1 - 0.5) {
-      const xEnd = Math.min(a1, x + first);
+  const rows = split(c0, c1, 120, 120, 1);
+  for (let row = 0; row + 1 < rows.length; row++) {
+    const y = rows[row];
+    const yEnd = rows[row + 1];
+    const first = row % 2 === 1 && stagger < eff ? stagger : eff;
+    const cols = split(a0, a1, first, eff, sp);
+    for (let i = 0; i + 1 < cols.length; i++) {
+      const x = cols[i];
+      const xEnd = cols[i + 1];
       const cut = xEnd - x < sheet - 0.5 || yEnd - y < 119.5;
       pieces.push(
         along === 'x'
           ? { x0: x, x1: xEnd, y0: y, y1: yEnd, cut }
           : { x0: y, x1: yEnd, y0: x, y1: xEnd, cut },
       );
-      x = xEnd;
-      first = eff;
     }
   }
   return { pieces, sheetLen: sheet, stagger };
