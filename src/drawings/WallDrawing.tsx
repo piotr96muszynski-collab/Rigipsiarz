@@ -1,4 +1,4 @@
-import { FIXER_EDGE, OPENING_JOINT_MIN, pieceOutline, type BoardFace, type BoardPiece, type CutRect, type StudKind, type WallLayout } from '../calc/layout';
+import { FIXER_EDGE, OPENING_JOINT_MIN, bracketPositions, pieceOutline, type BoardFace, type BoardPiece, type CutRect, type StudKind, type WallLayout } from '../calc/layout';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, dedupe, nss } from './svg';
 
 const STUD_COLOR: Record<StudKind, string> = {
@@ -109,6 +109,8 @@ export function WallFrameDrawing({ l, title }: { l: WallLayout; title: string })
             />
           ));
         })}
+        {/* uchwyty ES na profilach CD okładziny */}
+        {l.brackets?.points.map((q, i) => <EsMark key={`es${i}`} x={q.x * 100} y={Hc - q.y * 100} />)}
         <OuterDims l={l} f={f} studs />
       </Paper>
       <Legend
@@ -120,7 +122,9 @@ export function WallFrameDrawing({ l, title }: { l: WallLayout; title: string })
           ...(has('extra') ? [{ color: C.extra, label: `dodatkowy ${l.studLabel} (narożnik / połączenie)` }] : []),
           ...(has('joint') ? [{ color: C.joint, label: `dodatkowy ${l.studLabel} pod styk płyt przy otworze (styki warstw muszą się minąć)` }] : []),
           { color: C.track, label: `${l.trackLabel} posadzka i strop, nadproża/podokienniki +15 cm na stronę` },
-          ...(l.frame === 'cd-lining' ? [{ color: C.hanger, label: 'uchwyty ES do ściany wg rozstawu z karty systemu' }] : []),
+          ...(l.brackets
+            ? [{ color: C.hanger, label: `uchwyt ES do muru, max co ${cm(l.brackets.spacing * 100)} cm wg karty systemu (${l.brackets.points.length} szt.)` }]
+            : []),
           ...(l.openings.length ? [{ dashed: true, label: 'otwór w świetle' }] : []),
         ]}
       />
@@ -254,6 +258,92 @@ export function WallBoardsDrawing({ l, face, title }: { l: WallLayout; face: Boa
         {l.openings.length > 0 &&
           ` Przy otworach płyta zachodzi na ościeże i jest wycinana w kształt litery L (U przy wąskim otworze), a styk wypada nad lub pod otworem, co najmniej ${cm(OPENING_JOINT_MIN * 100)} cm od ościeża – dzięki temu narożniki otworu nie pękają.`}
         {endNote(face, l.L)}
+      </figcaption>
+    </figure>
+  );
+}
+
+/** Uchwyt ES w widoku: blacha 6×3 cm na profilu, kropka = otwór na kołek w murze */
+function EsMark({ x, y }: { x: number; y: number }) {
+  return (
+    <g>
+      <rect x={x - 4} y={y - 2} width={8} height={4} fill={C.hanger} fillOpacity={0.9} stroke={INK} strokeWidth={0.5} {...nss} />
+      <circle cx={x} cy={y} r={0.9} fill="#fff" />
+    </g>
+  );
+}
+
+/**
+ * Okładzina na CD 60: miejsca wiercenia pod uchwyty ES. Osie profili od lewej krawędzi okładziny
+ * (dolny łańcuch) i wysokości uchwytów od posadzki (prawy łańcuch), jak siatka łączników ATLAS.
+ */
+export function WallBracketsDrawing({ l, title }: { l: WallLayout; title: string }) {
+  const g = l.brackets;
+  if (!g) return null;
+  const { Lc, Hc, f, vb } = frame(l);
+  const box: [number, number, number, number] = [vb[0], vb[1], vb[2] + f * 3, vb[3]];
+  // osie profili jak na rysunku konstrukcji (profil skrajny w osi krawędzi okładziny)
+  const xs = dedupe(l.studs.filter((st) => st.segments.length).map((st) => st.x * 100), 0.5);
+  // łańcuch: rzędy uchwytów na pełnych profilach; uchwyty krótkich odcinków przy otworach opisane osobno
+  const ys = bracketPositions(0, l.H, g.spacing).map((y) => y * 100);
+  const onRow = (y: number) => ys.some((r) => Math.abs(r - y * 100) < 0.5);
+  const rows = ys.map((y) => Hc - y).sort((a, b) => a - b);
+  return (
+    <figure className="drawing">
+      <Paper viewBox={box} title={title}>
+        <rect x={-f} y={-f * 0.8} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
+        <rect x={-f} y={Hc} width={Lc + 2 * f} height={f * 0.8} fill="url(#hatch)" />
+        <rect x={0} y={0} width={Lc} height={Hc} fill={C.concrete} opacity={0.35} stroke={INK} strokeWidth={1.1} {...nss} />
+        {/* osie profili CD (pion) – na nich uchwyty */}
+        {l.studs.map((st, i) =>
+          st.segments.map(([y0, y1], k) => (
+            <line
+              key={`${i}-${k}`}
+              x1={clamp(st.x * 100, 3, Lc - 3)}
+              y1={Hc - y1 * 100}
+              x2={clamp(st.x * 100, 3, Lc - 3)}
+              y2={Hc - y0 * 100}
+              stroke={C.stud}
+              strokeWidth={0.6}
+              strokeDasharray="8 4"
+              {...nss}
+            />
+          )),
+        )}
+        {ys.map((y) => (
+          <line key={`y${y}`} x1={0} y1={Hc - y} x2={Lc} y2={Hc - y} stroke={C.hanger} strokeWidth={0.4} strokeDasharray="2 5" {...nss} />
+        ))}
+        <Openings l={l} f={f} />
+        {g.points.map((q, i) => (
+          <g key={i}>
+            <EsMark x={q.x * 100} y={Hc - q.y * 100} />
+            {!onRow(q.y) && (
+              <text x={q.x * 100 + 5} y={Hc - q.y * 100 - 3} fontSize={f * 0.65} fill={C.hanger} fontWeight={600}>
+                {cm(q.y * 100)}
+              </text>
+            )}
+          </g>
+        ))}
+        <ChainH xs={[0, ...xs, Lc]} y={Hc} off={f * 2} f={f * 0.85} />
+        <Dim x1={0} y1={Hc} x2={Lc} y2={Hc} off={f * 4.2} f={f} label={`${cm(Lc)} cm`} />
+        <ChainV ys={[0, ...rows, Hc]} x={Lc} off={f * 2} f={f * 0.85} />
+        <Dim x1={0} y1={0} x2={0} y2={Hc} off={-f * 2.2} f={f} label={`${cm(Hc)} cm`} />
+      </Paper>
+      <Legend
+        items={[
+          { color: C.hanger, label: `uchwyt ES – 1 kołek w murze (${g.points.length} szt. na rysunku)` },
+          { color: C.stud, dashed: true, label: `oś profilu ${l.studLabel} (rozstaw ${cm(l.spacing * 100)} cm)` },
+          { color: C.hanger, dashed: true, label: `rząd uchwytów na pełnych profilach, max co ${cm(g.spacing * 100)} cm wzdłuż profilu` },
+          ...(g.points.some((q) => !onRow(q.y)) ? [{ color: C.hanger, label: 'liczba przy uchwycie – wysokość od posadzki (profil skrócony przy otworze)' }] : []),
+          ...(l.openings.length ? [{ dashed: true, label: 'otwór w świetle – profile nad i pod otworem mają własne uchwyty' }] : []),
+        ]}
+      />
+      <figcaption className="muted small">
+        Wymiary w cm. Dolny łańcuch: osie profili CD od lewej krawędzi okładziny, prawy: rzędy uchwytów od posadzki.
+        Największy rozstaw uchwytów ({cm(g.spacing * 100)} cm) z karty systemu; uchwyty rozłożone równo na długości profilu,
+        skrajne w połowie odstępu od UD (położenie skrajnych przyjęte – karta go nie podaje), krótki odcinek nad i pod
+        otworem ma co najmniej jeden uchwyt. Wytycz osie profili od lewej krawędzi, zaznacz wysokości, wierć pod kołki i
+        przykręć uchwyty; ramiona uchwytu odegnij i przykręć do półek CD po wypoziomowaniu płaszczyzny.
       </figcaption>
     </figure>
   );

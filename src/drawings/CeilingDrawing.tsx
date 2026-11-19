@@ -1,7 +1,7 @@
 import { ceilingBoardLayout, hangerPositions, splicePositions } from '../calc/layout';
-import { ceilingFixerGrid, ceilingGrid, type CeilingGridLine } from '../calc/materials';
+import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, type CeilingGridLine } from '../calc/materials';
 import { ceilingSystemById } from '../catalog/rigips';
-import { bbox, pointInPolygon } from '../geometry/geometry';
+import { bbox } from '../geometry/geometry';
 import type { Ceiling } from '../model/types';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, nss } from './svg';
 
@@ -37,14 +37,7 @@ export function CeilingGridDrawing({ c, title }: { c: Ceiling; title: string }) 
   const mains = grid.filter((g) => g.level === 'main');
   const secs = grid.filter((g) => g.level === 'secondary');
   const clip = `clip-${c.id}`;
-  const crossings =
-    sys.kind === 'direct'
-      ? []
-      : mains.flatMap((m) =>
-          secs
-            .map((s) => (m.axis === 'x' ? { x: s.at, y: m.at } : { x: m.at, y: s.at }))
-            .filter((p) => pointInPolygon(p, c.points)),
-        );
+  const crossings = ceilingCrossings(c, sys, grid);
   const kind = sys.kind;
   const hung = kind === 'two-level' || kind === 'one-level' || kind === 'direct';
   const cwSpan = kind === 'cw-span';

@@ -186,6 +186,30 @@ export interface WallLayout {
   faces: BoardFace[];
   /** ATLAS M-System 3G: siatka łączników talerzykowych (zamiast rusztu) */
   fixers?: FixerGrid;
+  /** Okładzina na CD 60: uchwyty ES na profilach – miejsca wiercenia w murze */
+  brackets?: BracketGrid;
+}
+
+/** Uchwyty ES okładziny na CD 60, m (x – oś profilu od węzła a, y od posadzki) */
+export interface BracketGrid {
+  /** jeden uchwyt = jeden kołek w murze */
+  points: { x: number; y: number }[];
+  /** największy rozstaw uchwytów wzdłuż profilu z karty systemu, m */
+  spacing: number;
+}
+
+/**
+ * Uchwyty ES na odcinku profilu CD od `y0` do `y1` (m): tyle, żeby odstęp nie przekroczył
+ * `spacing` z karty systemu, rozłożone równo – skrajne pół odstępu od końców odcinka (tak jak
+ * wieszaki w suficie; karty podają tylko największy rozstaw, położenie skrajnych jest przyjęte).
+ * Krótki odcinek (nad/pod otworem) ma co najmniej jeden uchwyt.
+ */
+export function bracketPositions(y0: number, y1: number, spacing: number): number[] {
+  const run = y1 - y0;
+  if (run <= 0.01) return [];
+  const n = Math.max(1, Math.ceil(run / spacing - 1e-9));
+  const step = run / n;
+  return Array.from({ length: n }, (_, i) => round3(y0 + step * (i + 0.5)));
 }
 
 /** Siatka łączników talerzykowych na ścianie, m (x od węzła a, y od posadzki) */
@@ -458,7 +482,19 @@ export function wallLayout(p: Project, w: Wall, j: WallJunctions, m: ContactMode
     sheet: { width: boardW, length: sheetLen },
     faces,
     fixers: frame === 'point-fix' ? pointFixGrid(f0, f1, H, s, (sys.pointSpacing ?? 50) / 100, openings) : undefined,
+    brackets: isCD ? bracketGrid(studs, f0, f1, (sys.bracketSpacing ?? 100) / 100) : undefined,
   };
+}
+
+/** Uchwyty ES na wszystkich odcinkach profili CD (te same profile co na rysunku i w 3D) */
+function bracketGrid(studs: StudElement[], f0: number, f1: number, spacing: number): BracketGrid {
+  // profil przy końcu okładziny stoi całą półką na okładzinie – oś 3 cm od jej krawędzi
+  const half = 0.03;
+  const points = studs.flatMap((st) => {
+    const x = round3(Math.min(f1 - half, Math.max(f0 + half, st.x)));
+    return st.segments.flatMap(([y0, y1]) => bracketPositions(y0, y1, spacing).map((y) => ({ x, y })));
+  });
+  return { points, spacing };
 }
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;

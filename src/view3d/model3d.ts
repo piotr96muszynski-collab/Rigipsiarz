@@ -3,8 +3,8 @@
 // Układ osi (jak w three.js): x = x planu, z = y planu, y = wysokość od posadzki.
 
 import { boardById, ceilingSystemById, wallFrameDepth, wallSystemById } from '../catalog/rigips';
-import { ceilingFixerGrid, ceilingGrid, liningKey, pickBoardLength, type ProjectCalc } from '../calc/materials';
-import { pieceArea, pieceOutline, pointFixGrid, wallLayout } from '../calc/layout';
+import { ceilingCrossings, ceilingFixerGrid, ceilingGrid, pickBoardLength, type ProjectCalc } from '../calc/materials';
+import { hangerPositions, liningLayout, pieceArea, pieceOutline, pointFixGrid, splicePositions, wallLayout } from '../calc/layout';
 import { STUD_W, buildContacts, partRange, wallSection, type ContactModel } from '../geometry/contacts';
 import { analyzeJunctions, existingRooms, isNewWall, masonrySide, nodeMap, polygonPerimeterEdges, wallEnds } from '../geometry/geometry';
 import type { Ceiling, Point, Project, Wall } from '../model/types';
@@ -14,7 +14,7 @@ import { profileFor, type ProfileSpec, type WebSide } from './profiles';
 export type Layer3D = 'existing' | 'wallBoards' | 'wallFrame' | 'ceilingBoards' | 'ceilingFrame';
 
 /** Materiały elementów rusztu; płyty mają klucz `board:<id>` */
-export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'masonry' | 'disc' | 'anchor';
+export type FrameMat = 'cw' | 'uw' | 'ua' | 'cdMain' | 'cdSec' | 'ud' | 'hanger' | 'connector' | 'masonry' | 'disc' | 'anchor';
 export type MatKey = FrameMat | `board:${string}`;
 
 export interface BoxPart {
@@ -167,6 +167,9 @@ const TRACK_H = 0.04; // wysokość ścianki UW widoczna w 3D
 const CD_H = 0.027;
 const CD_W = 0.06;
 const UD_W = 0.028;
+// uchwyt ES w 3D: szerokość blachy na murze i wysokość ramion, m
+const ES_W = 0.07;
+const ES_H = 0.03;
 /** Talerzyk KT 3G 120 PP: średnica 120 mm */
 export const DISC_R = 0.06;
 const DISC_T = 0.006;
@@ -340,7 +343,6 @@ function buildExistingWall(
   p: Project,
   w: Wall,
   inner: 1 | -1 | 0,
-  calc: ProjectCalc | undefined,
   nodes: ReturnType<typeof nodeMap>,
   contacts: ContactModel,
   parts: Part3D[],
@@ -397,22 +399,39 @@ function buildExistingWall(
     const bt = board.thickness / 1000;
     const depth = wallFrameDepth(sys) / 1000;
     const face = center + l.side * (T / 2);
-    // ruszt CD okładziny: pionowe profile w miejscach z wyliczeń
+    // ruszt CD okładziny: pionowe profile i uchwyty ES z tego samego układu co na rysunkach
     if (sys.frame === 'cd-lining') {
-      const studs = calc?.linings.get(liningKey(w.id, l.side))?.info.studPositions ?? [];
-      for (const x of studs) {
-        const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
-        const u = Math.min(l1 - CD_W / 2, Math.max(l0 + CD_W / 2, x));
-        const op = openings.find((o) => x > o.x0 && x < o.x1);
-        const n = face + l.side * (depth - CD_H / 2);
-        // środnik CD od strony płyt, półki w stronę muru
-        const prof = profileFor('cdMain', 'up', l.side > 0 ? 'b+' : 'b-');
-        const cd = (v0: number, v1: number) => box('wallFrame', 'cdMain', u - CD_W / 2, u + CD_W / 2, v0, v1, n, CD_H, prof);
-        if (!op) cd(TRACK_H, H - TRACK_H);
-        else {
-          if (op.sill > TRACK_H) cd(TRACK_H, op.sill);
-          if (op.top < H - TRACK_H) cd(op.top, H - TRACK_H);
+      const lay = liningLayout(p, w, l, contacts);
+      const [l0, l1] = contacts.linings.get(`${w.id}:${l.side}`) ?? [0, L];
+      const n = face + l.side * (depth - CD_H / 2);
+      // środnik CD od strony płyt, półki w stronę muru
+      const prof = profileFor('cdMain', 'up', l.side > 0 ? 'b+' : 'b-');
+      const at = (x: number) => Math.min(l1 - CD_W / 2, Math.max(l0 + CD_W / 2, x));
+      for (const st of lay.studs)
+        for (const [y0, y1] of st.segments) {
+          const v0 = Math.max(y0, TRACK_H);
+          const v1 = Math.min(y1, H - TRACK_H);
+          if (v1 - v0 > 0.005) box('wallFrame', 'cdMain', at(st.x) - CD_W / 2, at(st.x) + CD_W / 2, v0, v1, n, CD_H, prof);
         }
+      // uchwyt ES: blacha na murze (tu wiercimy pod kołek) i dwa ramiona przykręcone do półek CD
+      for (const q of lay.brackets?.points ?? []) {
+        const u = at(q.x);
+        box('wallFrame', 'hanger', u - ES_W / 2, u + ES_W / 2, q.y - ES_H / 2, q.y + ES_H / 2, face + l.side * 0.001, 0.002);
+        for (const sgn of [-1, 1]) {
+          const x = u + sgn * (CD_W / 2 + 0.001);
+          box('wallFrame', 'hanger', x - 0.001, x + 0.001, q.y - ES_H / 2, q.y + ES_H / 2, face + (l.side * depth) / 2, depth);
+        }
+        // kołek w murze
+        parts.push({
+          type: 'cyl',
+          layer: 'wallFrame',
+          mat: 'anchor',
+          c: [ax + ux * u + nx * (face - l.side * 0.02), q.y, az + uz * u + nz * (face - l.side * 0.02)],
+          axis: [nx * l.side, 0, nz * l.side],
+          r: ANCHOR_R,
+          len: 0.045,
+          owner: w.id,
+        });
       }
     }
     // ATLAS M-System 3G: łączniki w siatce z rysunków, talerzyk pod płytą, trzpień w murze
@@ -477,28 +496,46 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
       rotY: axis === 'x' ? 0 : -Math.PI / 2,
       owner: c.id,
       // CD: środnik od spodu (do niego mocujemy płyty), półki do góry
-      ...(mat === 'hanger' ? {} : { profile: profileFor(mat, 'along', 'a-') }),
+      ...(mat === 'hanger' || mat === 'connector' ? {} : { profile: profileFor(mat, 'along', 'a-') }),
     });
   };
 
   // profile CD: dolne (montażowe) przy płycie, nośne nad nimi w suficie dwupoziomowym
-  for (const g of ceilingGrid(c)) {
+  const grid = ceilingGrid(c, sys);
+  const onCD = (g: (typeof grid)[number]) => g.level === 'secondary' || twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
+  const hung = twoLevel || sys.kind === 'one-level' || sys.kind === 'direct';
+  for (const g of grid) {
     const isMain = g.level === 'main';
     const y0 = twoLevel && isMain ? yFrame + CD_H : yFrame;
     const mat: FrameMat = isMain ? 'cdMain' : 'cdSec';
     for (const [s0, s1] of g.segments) {
       lineBox(g.axis, g.at, s0, s1, y0, mat);
-      if (!isMain) continue;
-      // wieszaki na profilach nośnych
+      // łącznik wzdłużny CD: tuleja 10 cm na styku profili (co 4 m, jak na rysunku)
+      if (onCD(g)) for (const sp of splicePositions(s0, s1)) lineBox(g.axis, g.at, sp - 5, sp + 5, y0 - 0.001, 'connector', CD_W + 0.004, CD_H + 0.002);
+      if (!isMain || !hung) continue;
+      // wieszaki na profilach nośnych – te same miejsca co na rysunku (tu wiercimy w stropie)
       const top = y0 + CD_H;
       const rod = sys.kind === 'direct' ? 0.08 : 0.35;
-      const run = s1 - s0;
-      const count = Math.max(2, Math.ceil(run / sys.hangerSpacing));
-      const step = run / count;
-      for (let k = 0; k < count; k++) {
-        const along = s0 + step * (k + 0.5);
-        lineBox(g.axis, g.at, along - 0.4, along + 0.4, top, 'hanger', 0.008, rod);
-      }
+      for (const along of hangerPositions(s0, s1, sys.hangerSpacing)) lineBox(g.axis, g.at, along - 0.4, along + 0.4, top, 'hanger', 0.008, rod);
+    }
+  }
+
+  // łączniki na skrzyżowaniach nośnych i montażowych (krzyżowe, jednopoziomowe, UA–CD)
+  const mainAxis = grid.find((g) => g.level === 'main')?.axis ?? 'x';
+  const secAxis: 'x' | 'y' = mainAxis === 'x' ? 'y' : 'x';
+  for (const q of ceilingCrossings(c, sys, grid)) {
+    const along = mainAxis === 'x' ? q.x : q.y;
+    const at = mainAxis === 'x' ? q.y : q.x;
+    if (twoLevel) {
+      // łącznik krzyżowy: strzemię nad nośnym, ramiona po bokach do montażowego
+      const yTop = yFrame + 2 * CD_H;
+      lineBox(mainAxis, at, along - 1.5, along + 1.5, yTop, 'connector', CD_W + 0.006, 0.002);
+      for (const sgn of [-1, 1]) lineBox(mainAxis, at + sgn * (CD_W * 50 + 0.2), along - 1.5, along + 1.5, yFrame, 'connector', 0.002, 2 * CD_H);
+    } else {
+      // jednopoziomowy / UA–CD: dwa łączniki po obu stronach nośnego, na montażowym
+      const across = mainAxis === 'x' ? q.y : q.x;
+      const atSec = mainAxis === 'x' ? q.x : q.y;
+      for (const sgn of [-1, 1]) lineBox(secAxis, atSec, across + sgn * 4.5 - 1.5, across + sgn * 4.5 + 1.5, yFrame + CD_H, 'connector', CD_W + 0.006, 0.002);
     }
   }
 
@@ -538,7 +575,8 @@ function buildCeiling(c: Ceiling, parts: Part3D[]) {
   });
 }
 
-export function buildModel3D(p: Project, calc?: ProjectCalc): Model3D {
+/** Model 3D projektu; `_calc` zostaje dla zgodności wywołań – układ rusztu liczy się z tych samych funkcji co rysunki */
+export function buildModel3D(p: Project, _calc?: ProjectCalc): Model3D {
   const parts: Part3D[] = [];
   const nodes = nodeMap(p);
   const rooms = existingRooms(p);
@@ -547,7 +585,7 @@ export function buildModel3D(p: Project, calc?: ProjectCalc): Model3D {
   for (const w of p.walls) {
     if (!nodes.has(w.a) || !nodes.has(w.b)) continue;
     if (isNewWall(w)) buildWall(p, w, nodes, contacts, junctions, parts);
-    else buildExistingWall(p, w, masonrySide(p, w, rooms), calc, nodes, contacts, parts);
+    else buildExistingWall(p, w, masonrySide(p, w, rooms), nodes, contacts, parts);
   }
   for (const c of p.ceilings) buildCeiling(c, parts);
 

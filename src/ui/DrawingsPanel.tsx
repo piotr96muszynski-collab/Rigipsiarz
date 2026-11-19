@@ -6,7 +6,7 @@ import { PRODUCTS, boardById, ceilingSystemById, wallSystemById, type WallSystem
 import { CeilingBoardsDrawing, CeilingGridDrawing } from '../drawings/CeilingDrawing';
 import { JunctionDetail, OpeningDetail, type DetailKind } from '../drawings/Details';
 import { CeilingSection, WallSection } from '../drawings/Sections';
-import { WallBoardsDrawing, WallFixersDrawing, WallFrameDrawing, faceName } from '../drawings/WallDrawing';
+import { WallBoardsDrawing, WallBracketsDrawing, WallFixersDrawing, WallFrameDrawing, faceName } from '../drawings/WallDrawing';
 import { CeilingFixersDrawing } from '../drawings/CeilingDrawing';
 import { analyzeJunctions, type WallJunctions } from '../geometry/geometry';
 import { buildContacts } from '../geometry/contacts';
@@ -323,6 +323,16 @@ function SheetBody({ l, sys, name, req }: { l: WallLayout; sys: WallSystem; name
           <p className="small stud-list">
             <strong>Osie {l.frame === 'cd-lining' ? 'profili CD' : 'słupków'} od lewej krawędzi (cm):</strong> {studs.join(' · ')}
           </p>
+          {l.brackets && (
+            <>
+              <h4>Uchwyty ES – miejsca wiercenia</h4>
+              <WallBracketsDrawing l={l} title={`${name} – uchwyty ES`} />
+              <p className="small stud-list">
+                <strong>Wysokości uchwytów od posadzki (cm):</strong>{' '}
+                {[...new Set(l.brackets.points.map((q) => Math.round(q.y * 100)))].sort((a, b) => a - b).join(' · ')}
+              </p>
+            </>
+          )}
         </>
       )}
       <h4>Rozkład płyt</h4>

@@ -33,7 +33,7 @@ import { createCeiling, createProject, createWall } from '../model/factory';
 import { compoundById, resolveFinishing, tapeById, type FinishingSettings } from '../catalog/finishing';
 import { analyzeJoints, type Joint } from './joints';
 import { buildContacts, partRange, type ContactModel } from '../geometry/contacts';
-import { OFFCUT_MIN, fixerColumns, liningAsWall, pieceArea, pointFixGrid, wallLayout } from './layout';
+import { OFFCUT_MIN, bracketPositions, fixerColumns, liningAsWall, pieceArea, pointFixGrid, wallLayout } from './layout';
 
 // ---------------------------------------------------------------------------
 // Zapotrzebowanie „surowe” jednego elementu (ściany lub sufitu), w metrach.
@@ -252,7 +252,8 @@ export function wallRequirement(
     if (len <= 0.01) return;
     addPiece(req, product, len);
     if (isCD) {
-      const brackets = Math.max(1, Math.ceil(len / bracketM - 1e-9));
+      // tyle samo uchwytów co na rysunku „miejsca wiercenia” i w 3D
+      const brackets = bracketPositions(0, len, bracketM).length;
       add(req.counts, 'WIESZAK_ES', brackets);
       add(req.counts, 'LN9', brackets * 2);
       add(req.counts, 'KOLEK', brackets);
@@ -502,6 +503,24 @@ export interface CeilingGridLine {
   level: 'main' | 'secondary';
 }
 
+/**
+ * Skrzyżowania profili nośnych i montażowych (cm, w układzie planu) – tam stoją łączniki:
+ * krzyżowy (sufit dwupoziomowy), dwa jednopoziomowe albo dwa UA–CD. Okładzina na uchwytach
+ * bezpośrednich i sufity przęsłowe CW nie mają łączników krzyżowych.
+ */
+export function ceilingCrossings(
+  c: Ceiling,
+  sys: CeilingSystem = ceilingSystemById(c.systemId),
+  grid: CeilingGridLine[] = ceilingGrid(c, sys),
+): Point[] {
+  if (sys.kind !== 'two-level' && sys.kind !== 'one-level' && sys.kind !== 'ua-span') return [];
+  const mains = grid.filter((g) => g.level === 'main');
+  const secs = grid.filter((g) => g.level === 'secondary');
+  return mains.flatMap((m) =>
+    secs.map((sl) => (m.axis === 'x' ? { x: sl.at, y: m.at } : { x: m.at, y: sl.at })).filter((pt) => pointInPolygon(pt, c.points)),
+  );
+}
+
 /** Linie rusztu sufitowego (współrzędne w cm) – wspólne dla wyliczeń i rysunku/3D */
 export function ceilingGrid(c: Ceiling, sys: CeilingSystem = ceilingSystemById(c.systemId)): CeilingGridLine[] {
   const bb = bbox(c.points);
@@ -572,8 +591,6 @@ export function ceilingRequirement(
   add(req.meters, cwSpan ? TAPE_FOR_PROFILE[profile] : 'TASMA_USZ30', P);
 
   const grid = ceilingGrid(c, sys);
-  const mains = grid.filter((g) => g.level === 'main');
-  const secs = grid.filter((g) => g.level === 'secondary');
   const mainProduct = sys.kind === 'ua-span' ? 'UA50' : cwSpan ? `CW${profile}` : 'CD60';
 
   let longestMain = 0;
@@ -613,19 +630,11 @@ export function ceilingRequirement(
       `Rozpiętość ${fmtLen(longestMain)} m przekracza ${fmtLen(maxSpan / 100)} m dopuszczalne dla tego sufitu przęsłowego – zmień kierunek profili, zagęść rozstaw albo wybierz sufit podwieszany.`,
     );
 
-  // skrzyżowania profili nośnych i montażowych
-  if (secs.length) {
-    let crossings = 0;
-    for (const m of mains) {
-      for (const sl of secs) {
-        const pt = m.axis === 'x' ? { x: sl.at, y: m.at } : { x: m.at, y: sl.at };
-        if (pointInPolygon(pt, c.points)) crossings++;
-      }
-    }
-    if (sys.kind === 'two-level') add(req.counts, 'LACZNIK_KRZ', crossings);
-    else if (sys.kind === 'one-level') add(req.counts, 'LACZNIK_JEDNO', crossings * 2);
-    else if (sys.kind === 'ua-span') add(req.counts, 'LACZNIK_UA_CD', crossings * 2);
-  }
+  // skrzyżowania profili nośnych i montażowych (te same co na rysunku i w 3D)
+  const crossings = ceilingCrossings(c, sys, grid).length;
+  if (sys.kind === 'two-level') add(req.counts, 'LACZNIK_KRZ', crossings);
+  else if (sys.kind === 'one-level') add(req.counts, 'LACZNIK_JEDNO', crossings * 2);
+  else if (sys.kind === 'ua-span') add(req.counts, 'LACZNIK_UA_CD', crossings * 2);
 
   // płyty
   const bb = bbox(c.points);
