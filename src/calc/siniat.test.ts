@@ -216,3 +216,23 @@ describe('grubość poszycia z płyt różnej grubości w geometrii', () => {
     expect(liningThickness(l)).toBeCloseTo((37 + 55) / 1000);
   });
 });
+
+describe('Siniat – ściany wysokie SW / BS i wykończenie Q', () => {
+  it('SW150 (C100, 2×12,5 Ogień+): co 30 cm do 9 m, zdwojone SWSW do 11 m', () => {
+    const s = wallSystemById('SN-W-SW100-2');
+    expect([s.frame, s.profile, s.studSpacing, s.maxHeight?.[30]]).toEqual(['single', 100, 30, 900]);
+    expect(Math.max(...s.variants!.filter((v) => v.doubleStuds).map((v) => v.maxHeight ?? 0))).toBe(1100);
+    expect(s.info).toMatch(/U100 specjalny/);
+  });
+  it('255BB100 (BS): wysokość 12 m tylko w odmianach na słupkach zdwojonych', () => {
+    const s = wallSystemById('SN-W-B100-BS-2');
+    expect(s.maxHeight).toBeUndefined();
+    expect(s.variants!.every((v) => v.doubleStuds && v.maxHeight === 1200)).toBe(true);
+    expect(s.info).toMatch(/przewiązki z blachy stalowej/);
+  });
+  it('125A75 Expert-Q: odmiana ściany 2×12,5 z wykończeniem Q3/Q4', () => {
+    const q = wallSystemById('SN-W-A75-2').variants!.filter((v) => v.code === '125A75-Q');
+    expect(q.map((v) => v.board)).toEqual(['SN-EXP12.5', 'SN-WODA12.5']);
+    expect(q[0].label).toMatch(/Q3\/Q4/);
+  });
+});

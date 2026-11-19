@@ -235,6 +235,8 @@ def skip(name, why):
 
 # --- ściany działowe (rozdz. 4) ------------------------------------------------------------------
 WALL_CODE = re.compile(r'^([\d,]+)(AA|BB|A|B|C|D|G|UU)(\d+)(-PWA|-400|-300)?$')
+# ściany wysokie na C100 (rozdz. 4, s. 66–69): SW = pojedyncze słupki, SWSW = zdwojone; liczba = grubość ściany
+SW_CODE = re.compile(r'^(SWSW|SW)([\d,]+)(-400|-300)?$')
 
 
 def wall_rows():
@@ -249,11 +251,22 @@ def wall_rows():
             sysc, _, bname = code.partition('/')
             # płyta dosztywniająca między rzędami: z tabeli zużycia (1,0 m² Ogień Plus 12,5 na m² ściany)
             mid = 'SN-OP12.5' if 'DOSZTYWNIAJĄC' in c['title'] else None
+            bs = ' (BS)' in sysc
+            q = '-Q' in bname  # wykończenie Q3/Q4 – ta sama ściana, szpachlowanie całopowierzchniowe
+            bname = bname.replace('-Q', '')
+            # komórka sklejona z kolumną konstrukcji (255BB100 (BS)/Ogień Plus + Cicha 2xC100+2xC100 Ogień Plus 3) + Cicha)
+            bname = re.sub(r'\s+\d+xC\d+\+.*$', '', bname)
+            sw = SW_CODE.match(sysc)
             m = WALL_CODE.match(sysc.replace(' (BS)', ''))
-            if not m or ' (BS)' in sysc or bname.startswith(('LS', 'RTG', 'CC')) or '-Q' in bname or m[2] in ('G', 'UU'):
-                skip(code.split('/')[0], 'ściany specjalne (RTG, LS – niepełne opłytowanie, gięte, kinowe SLA, wysokie SW i BS, wykończenie Q)')
+            if sw:
+                fam, prof, suffix = sw[1], 100, sw[3] or ''
+                thk = num(sw[2])
+            elif not m or bname.startswith(('LS', 'RTG', 'CC')) or m[2] in ('G', 'UU'):
+                skip(code.split('/')[0], SPECIAL_WHY)
                 continue
-            fam, prof, suffix = m[2], int(m[3]), m[4] or ''
+            else:
+                fam, prof, suffix = m[2], int(m[3]), m[4] or ''
+                thk = num(m[1])
             spacing = 60
             if suffix in ('-400', '-300'):
                 spacing = int(suffix[1:]) // 10
@@ -262,7 +275,7 @@ def wall_rows():
             try:
                 codes = board_codes(bname)
             except KeyError:
-                skip(code, 'ściany specjalne (RTG, LS – niepełne opłytowanie, gięte, kinowe SLA, wysokie SW i BS, wykończenie Q)')
+                skip(code, SPECIAL_WHY)
                 continue
             cl = find_clad(rest)
             nl, th, ci = cl
@@ -273,10 +286,10 @@ def wall_rows():
             dens = num(rest[hi - 1]) if wool else None
             mi = max(i for i, t in enumerate(rest) if is_mass(t))
             ac = [num(t) for t in rest[hi + 1:mi]]
-            out.append(dict(page=c['page'], code=code, sys=sysc, fam=fam, prof=prof, pwa=suffix == '-PWA', spacing=spacing, mid=mid,
-                            double=fam in ('AA', 'BB'), codes=codes, layers=nl, th=th, maxh=num(rest[hi]) // 10,
+            out.append(dict(page=c['page'], code=code, sys=sysc, fam=fam, prof=prof, pwa=suffix == '-PWA', spacing=spacing, mid=mid, bs=bs, q=q,
+                            double=fam in ('AA', 'BB', 'SWSW'), codes=codes, layers=nl, th=th, maxh=num(rest[hi]) // 10,
                             wool=wool or 0, dens=dens, rw=ac[0] if ac else None, ra1=ac[1] if len(ac) > 1 else None,
-                            mass=num(rest[mi]), ei=ei_of(rest[mi + 1:]), thk=num(re.match(r'[\d,]+', sysc)[0])))
+                            mass=num(rest[mi]), ei=ei_of(rest[mi + 1:]), thk=thk))
     # tablice doboru wysokości (bez wymagań ogniowych): rozstaw 40/30 cm i słupki zdwojone
     tab = []
     for c in tables:
@@ -290,8 +303,12 @@ def wall_rows():
     return out, tab
 
 
+SPECIAL_WHY = ('ściany specjalne: RTG z płytami z ołowiem (rozstaw słupków 62,5 cm, inne poszycie z każdej strony), LS – niepełne opłytowanie, '
+               'gięte, kinowe SLA (inne poszycie z każdej strony, łączniki Phoni SL)')
+
 WALL_FAM = {
     # rodzina: (kategoria, frame, sides, opis)
+    'SW': ('działowa', 'single', 2, 'wysoka ściana działowa'),
     'A': ('działowa', 'single', 2, 'ściana działowa'),
     'B': ('podwójna', 'double', 2, 'ściana na dwurzędowej konstrukcji'),
     'D': ('podwójna', 'double', 2, 'ściana na dwurzędowej konstrukcji z dylatacją 10 mm'),
@@ -310,9 +327,9 @@ def layer_desc(codes, nl, th):
 
 
 def wall_key(r):
-    fam = {'AA': 'A', 'BB': 'B'}.get(r['fam'], r['fam'])
+    fam = {'AA': 'A', 'BB': 'B', 'SWSW': 'SW'}.get(r['fam'], r['fam'])
     mixed = mix_key(r['codes'])
-    return (fam, r['pwa'], r['prof'], r['layers'], mixed, r['mid'])
+    return (fam, r['pwa'], r['prof'], r['layers'], mixed, r['mid'], r['bs'])
 
 
 def make_walls(rows, tab, ch_sources):
@@ -320,11 +337,11 @@ def make_walls(rows, tab, ch_sources):
     for r in rows:
         groups.setdefault(wall_key(r), []).append(r)
     walls = []
-    for (fam, pwa, prof, nl, mixed, mid), vs in groups.items():
+    for (fam, pwa, prof, nl, mixed, mid, bs), vs in groups.items():
         cat, frame, sides, kind = WALL_FAM[fam]
-        kind = kind + (' z płytą dosztywniającą' if mid else '')
-        sid = f'SN-W-{fam}{prof}' + ('-PWA' if pwa else '') + ('-PD' if mid else '') + f'-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
-        single = [v for v in vs if not v['double'] and v['spacing'] == 60]
+        kind = 'wysoka ściana (BS) na dwurzędowej zdwojonej konstrukcji' if bs else kind + (' z płytą dosztywniającą' if mid else '')
+        sid = f'SN-W-{fam}{prof}' + ('-PWA' if pwa else '') + ('-PD' if mid else '') + ('-BS' if bs else '') + f'-{nl}' + (f'-{mix_id(mixed)}' if mixed else '')
+        single = [v for v in vs if not v['double'] and v['spacing'] == 60] or [v for v in vs if not v['double']]
         default = min((v for v in (single or vs)), key=lambda v: (PREF.index(v['codes'][-1]), v['th'], -v['maxh']))
         dcode, dth = default['codes'][-1], default['th']
         variants, seen = [], set()
@@ -333,8 +350,10 @@ def make_walls(rows, tab, ch_sources):
             lab = layer_desc(v['codes'], nl, v['th'])
             lab += f' · słupki{" zdwojone" if v["double"] else ""} co {v["spacing"]} cm'
             lab += (f' · wełna {v["wool"]} mm' + (f' ({pl(v["dens"])} kg/m³)' if v.get('dens') else '')) if v['wool'] else ' · bez wełny'
+            if v['q']:
+                lab += ' · wykończenie Q3/Q4 – szpachlowanie całopowierzchniowe'
             o = OrderedDict()
-            o['code'] = v['code'].split('/')[0]
+            o['code'] = v['code'].split('/')[0] + ('-Q' if v['q'] else '')
             o['label'] = lab
             o['board'] = board_id(outer, v['th'])
             if len(v['codes']) > 1:
@@ -358,9 +377,9 @@ def make_walls(rows, tab, ch_sources):
             seen.add(k)
             variants.append(o)
         # tablice doboru: wyższe ściany przy rozstawie 40/30 cm i na słupkach zdwojonych (bez wymagań ogniowych)
-        tfam = {'A': ('A', 'AA'), 'B': ('B', 'BB'), 'D': ('D',), 'C': ('C',)}[fam]
-        hmax = {60: default['maxh']}
-        if not mixed and not mid:
+        tfam = {'A': ('A', 'AA'), 'B': ('B', 'BB'), 'D': ('D',), 'C': ('C',), 'SW': ()}[fam]
+        hmax = {default['spacing']: default['maxh']}
+        if not mixed and not mid and not bs:
             for t in tab:
                 if t['fam'] in tfam and t['prof'] == prof and t['layers'] == nl and t['pwa'] == pwa and (t['spacing'] != 60 or t['double']):
                     lab = f'{nl}×{pl(t["th"])} – dowolna płyta Nida z tabeli · słupki{" zdwojone" if t["double"] else ""} co {t["spacing"]} cm · bez wymagań ogniowych'
@@ -393,8 +412,9 @@ def make_walls(rows, tab, ch_sources):
             w['innerLayers'] = inner_count(default['codes'], nl)
         if mid:
             w['midBoard'] = mid
-        w['studSpacing'] = 60
-        w['maxHeight'] = {sp: hmax[sp] for sp in (30, 40, 60) if sp in hmax}
+        w['studSpacing'] = default['spacing']
+        if not default['double']:  # same słupki zdwojone (BS): wysokości tylko w odmianach
+            w['maxHeight'] = {sp: hmax[sp] for sp in (30, 40, 60) if sp in hmax}
         w['insulationDefault'] = bool(default['wool'])
         if eis:
             w['fire'] = f'EI {eis[0]}' if len(eis) == 1 else f'EI {eis[0]} – EI {eis[-1]}'
@@ -402,12 +422,17 @@ def make_walls(rows, tab, ch_sources):
             w['acoustic'] = f'Rw do {max(rws)} dB'
         if frame == 'separate':
             w['gap'] = max(0.5, (default['thk'] - 2 * prof - 2 * nl * dth) / 10)
-        info = [f'Grubość {pl(default["thk"])} mm', f'słupki C{prof} co 60 cm do {pl(default["maxh"] / 100)} m (płyta {short(dcode, dth)})']
-        extra = [f'co {sp} cm do {pl(hmax[sp] / 100)} m' for sp in (40, 30) if sp in hmax]
+        info = [f'Grubość {pl(default["thk"])} mm',
+                f'słupki C{prof}{" zdwojone" if default["double"] else ""} co {default["spacing"]} cm do {pl(default["maxh"] / 100)} m (płyta {short(dcode, dth)})']
+        extra = [f'co {sp} cm do {pl(hmax[sp] / 100)} m' for sp in (40, 30) if sp in hmax and sp != default['spacing']]
         if extra:
             info.append('gęstsze słupki bez wymagań ogniowych: ' + ', '.join(extra) + ' (tablice doboru wysokości)')
         if any(v['double'] for v in vs) or any(o.get('doubleStuds') for o in variants):
-            info.append('wyższe odmiany na słupkach zdwojonych (' + ('AA' if fam == 'A' else 'BB') + ')')
+            info.append('wyższe odmiany na słupkach zdwojonych (' + {'A': 'AA', 'SW': 'SWSW'}.get(fam, 'BB') + ')')
+        if fam == 'SW' or bs:
+            info.append('profil U100 specjalny przy stropie i wkręty FLAT HEAD do blachy 2 mm wg karty – aplikacja liczy zwykłe U100; słupki łączone na długości wg karty')
+        if bs:
+            info.append('przewiązki z blachy stalowej 2 mm między rzędami (1 szt./m² wg karty) – aplikacja ich nie liczy, dolicz wg karty')
         if mid:
             info.append(f'płyta dosztywniająca {short("OP", 12.5)} 12,5 mm między rzędami, przykręcona do słupków jednego rzędu (liczona w płytach i wkrętach)')
         if pwa:
