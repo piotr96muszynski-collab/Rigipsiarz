@@ -23,6 +23,9 @@ import { useImmersive } from './fullscreen';
 import { useHistory } from './useHistory';
 import { withLiningBacking } from '../model/backing';
 import { fmtNum } from './wallStyle';
+import { DimInput } from './DimInput';
+import { maxCeilingHeight } from '../calc/ceilingLevels';
+import { ceilingSystemById } from '../catalog/rigips';
 
 // three.js ładujemy dopiero przy otwarciu widoku 3D (mniejszy start aplikacji; offline działa z pamięci podręcznej)
 const View3D = lazy(() => import('../view3d/View3D'));
@@ -470,6 +473,8 @@ function ProjectView({
               <small className="hint">Dotyczy płyt, wkrętów, taśm, masy i wełny. Profile liczone są z rozkroju.</small>
             </div>
             <hr />
+            <ProjectHeights project={project} update={update} />
+            <hr />
             <WoolSettings
               wool={project.settings.wool}
               onChange={(t, choice) =>
@@ -492,6 +497,31 @@ function ProjectView({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Wysokość do stropu (nowe ściany i strop nad nowymi sufitami) i wysokość nowych sufitów podwieszanych */
+function ProjectHeights({ project, update }: { project: Project; update: (fn: (d: Project) => void) => void }) {
+  const st = project.settings;
+  const sys = ceilingSystemById(st.defaultCeilingSystem);
+  const top = maxCeilingHeight(st.defaultHeight, sys, sys.defaultBoard);
+  return (
+    <div className="field">
+      <div className="grid-2">
+        <DimInput label="Strop (wysokość ścian)" unit="m" value={st.defaultHeight} min={100} max={1000} onChange={(v) => update((d) => void (d.settings.defaultHeight = v))} />
+        <DimInput
+          label="Sufit podwieszany"
+          unit="m"
+          value={Math.min(st.ceilingHeight ?? top, top)}
+          min={50}
+          max={top}
+          onChange={(v) => update((d) => void (d.settings.ceilingHeight = v))}
+        />
+      </div>
+      <small className="hint">
+        Dotyczy nowych ścian i sufitów. Ściany dochodzą do stropu, sufit wisi pod nim, a profil UD kotwi się do ścian na poziomie sufitu. Narysowane sufity zmienisz w ich ustawieniach.
+      </small>
     </div>
   );
 }

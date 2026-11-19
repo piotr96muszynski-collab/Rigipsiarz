@@ -3,6 +3,7 @@
 
 import type { Board, CeilingSystem, WallSystem } from '../catalog/rigips';
 import { C, Callout, Dim, INK, Legend, Paper, cm, nss } from './svg';
+import type { CeilingLevels } from '../calc/ceilingLevels';
 
 const T_BOARD = 12.5;
 
@@ -152,8 +153,10 @@ export function WallSection({ sys, board, spacing, wool }: { sys: WallSystem; bo
   );
 }
 
+const m2 = (cmv: number) => (cmv / 100).toFixed(2).replace('.', ',');
+
 /** Przekrój pionowy sufitu poprzecznie do profili nośnych */
-export function CeilingSection({ sys, board, wool }: { sys: CeilingSystem; board: Board; wool: Wool }) {
+export function CeilingSection({ sys, board, wool, levels }: { sys: CeilingSystem; board: Board; wool: Wool; levels?: CeilingLevels }) {
   const f = 22;
   const tb = board.thickness || T_BOARD;
   const nt = sys.layers * tb;
@@ -284,7 +287,18 @@ export function CeilingSection({ sys, board, wool }: { sys: CeilingSystem; board
         {/* wymiary */}
         <Dim x1={0} y1={0} x2={first} y2={0} off={-f * 5.4} f={f * 0.85} label={`${cm(firstOff * 10)}`} ext={false} />
         <Dim x1={first} y1={0} x2={first + span} y2={0} off={-f * 5.4} f={f * 0.85} label={`${cm(spacing * 10)} mm`} ext={false} />
-        <Dim x1={x1} y1={0} x2={x1} y2={bottom} off={f * 3.4} f={f * 0.85} label={direct ? `≈ ${cm(bottom)}` : 'wg projektu'} />
+        <Dim
+          x1={x1}
+          y1={0}
+          x2={x1}
+          y2={bottom}
+          off={f * 3.4}
+          f={f * 0.85}
+          label={levels ? cm(Math.round((levels.slab - levels.ceiling) * 10)) : direct ? `≈ ${cm(bottom)}` : 'wg projektu'}
+        />
+        {levels && (hung || direct) && yMain > 30 && (
+          <Dim x1={x1} y1={0} x2={x1} y2={yMain} off={f * 1.3} f={f * 0.75} label={cm(Math.round(levels.hangerGap * 10))} />
+        )}
         <Dim x1={x1} y1={yMain} x2={x1} y2={bottom} off={f * 1.3} f={f * 0.75} label={cm(bottom - yMain)} />
         {/* odnośniki */}
         <Callout x={xs[0] + 20} y={yMain + 10} tx={xs[0] + 140} ty={yMain - 60} n={nMain} f={f} />
@@ -298,6 +312,10 @@ export function CeilingSection({ sys, board, wool }: { sys: CeilingSystem; board
       <figcaption className="muted small">
         Przekrój poprzeczny do profili {singleGrid ? mainName : 'nośnych'}, wymiary w mm. Rozpiętość skrócona. Pierwszy profil{' '}
         {cm(firstOff)} cm od ściany (tak jak na rzucie rusztu). Od wierzchu profilu {mainName} do spodu płyty: {cm(bottom - yMain)} mm.
+        {levels &&
+          ` Strop na ${m2(levels.slab)} m, spód płyt na ${m2(levels.ceiling)} m${
+            hung || direct ? `, zwieszenie (wierzch rusztu – strop) ${cm(Math.round(levels.hangerGap * 10))} mm` : ''
+          }; min. ${cm(levels.depth.minMm)} mm od stropu do spodu płyt (${levels.depth.source}).`}
       </figcaption>
     </figure>
   );
