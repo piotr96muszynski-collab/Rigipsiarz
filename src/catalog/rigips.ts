@@ -11,6 +11,7 @@ import { CORNER_STOCK_LENGTHS, FINISHING_PRODUCTS } from './finishing';
 import { RIGIPS_CEILINGS, RIGIPS_WALLS } from './rigips.gen';
 import { ATLAS_CEILING_SYSTEMS, ATLAS_PRODUCTS, ATLAS_WALL_SYSTEMS, type PointFixer } from './atlas';
 import { NORGIPS_BOARDS, NORGIPS_CEILING_SYSTEMS, NORGIPS_WALL_SYSTEMS } from './norgips';
+import { KNAUF_BOARDS, KNAUF_CEILING_SYSTEMS, KNAUF_WALL_SYSTEMS } from './knauf';
 
 export type Unit = 'szt.' | 'mb' | 'm²' | 'kg' | 'opak.' | 'rolka' | 'worek';
 
@@ -351,6 +352,7 @@ export const BOARDS: Board[] = [
     screws: 'ridurit',
   },
   ...NORGIPS_BOARDS,
+  ...KNAUF_BOARDS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -662,6 +664,7 @@ const HAND_WALLS: WallSystem[] = [
   },
   ...ATLAS_WALL_SYSTEMS,
   ...NORGIPS_WALL_SYSTEMS,
+  ...KNAUF_WALL_SYSTEMS,
 ];
 
 /** Systemy podstawowe – widoczne od razu; reszta katalogu jest pod „Pozostałe systemy” i w wyszukiwarce */
@@ -892,6 +895,7 @@ const CEILING_LIST: CeilingSystem[] = [
   cwSpanSystem(100, 2),
   ...ATLAS_CEILING_SYSTEMS,
   ...NORGIPS_CEILING_SYSTEMS,
+  ...KNAUF_CEILING_SYSTEMS,
 ];
 
 /** Sufity podstawowe – widoczne od razu; reszta pod „Pozostałe systemy” */
