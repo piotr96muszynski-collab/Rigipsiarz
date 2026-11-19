@@ -519,7 +519,8 @@ function ceilingReference(fam) {
   line(/^Taśma (spoinowa|z włókna)|FLEECE|Fiba ?Tape/, 'm', plain ? 'TASMA_SPOIN' : undefined, 'Taśma spoinowa');
   line(/Kończy|Finish|Premium Light|Airless/, 'kg', 'MASA_WYK', 'Masa wykończeniowa');
   line(/Wełna|Aku-Płyta|Polterm|Mata/, 'm2', undefined, 'Wełna mineralna');
-  line(/Paroizolacja/, 'm2', undefined, 'Paroizolacja');
+  // w poddaszach folia jest elementem systemu (aplikacja liczy ją domyślnie), w okładzinach „w razie potrzeby”
+  line(/Paroizolacja/, 'm2', fam.attic ? 'FOLIA_PAROIZ' : undefined, 'Paroizolacja');
   const rest = new Map();
   for (const row of v.mats) {
     if (used.has(row) || !UNIT[row[2]]) continue;
