@@ -111,7 +111,7 @@ export function atticRequirement(
     if (grid.profile.startsWith('LATA')) add(req.counts, 'TD35', A * sys.screwsOuter);
     else addBoardScrews(req, A, boards, sys.screwsOuter, sys.screwsInner);
     // więźba widoczna: płyty cięte na pasy między krokwiami – karty 4.71.11 i 4.71.12 podają 3 mb taśmy na m²
-    addJointing(req, A, sys.layers, a.boardId, between ? 3 : 1.4, fin);
+    addJointing(req, A, sys.layers, a.boardId, between ? 3 : 1.4, fin, sys.maker);
   }
 
   // płyty z rozkładu (ten sam co na rysunku i w 3D): elementy + resztki, z których nic się już nie wytnie

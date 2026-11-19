@@ -3,7 +3,7 @@ import { analyzeJoints, edgesTotal, wallThicknessMm } from './joints';
 import { calculateProject } from './materials';
 import { createCeiling, createOpening, createProject, createWall } from '../model/factory';
 import { wallSystemById } from '../catalog/rigips';
-import { COMPOUNDS, CORNER_TYPES, FINISHING_PRODUCTS, boardEdge } from '../catalog/finishing';
+import { COMPOUNDS, CORNER_TYPES, FINISHING_PRODUCTS, MAKER_FINISHING, TAPES, boardEdge } from '../catalog/finishing';
 import { BOARDS, PRODUCTS } from '../catalog/rigips';
 import type { Project } from '../model/types';
 
@@ -189,6 +189,72 @@ describe('spoinowanie Q1 – masa i taśma z ustawień', () => {
     expect(total(p, 'TASMA_TUFF')[0].qty).toBeGreaterThan(26 * 1.4);
   });
 
+  it('Rigips Premium Light – 0,40 kg/m² (karta 09.2025)', () => {
+    const p = wall();
+    p.settings.finishing = { compound: 'premium-light' };
+    const { req } = calculateProject(p).walls.values().next().value!;
+    expect(req.kg.MASA_PREMIUM_LIGHT).toBeCloseTo(26 * 0.4);
+    expect(req.kg.MASA).toBeUndefined();
+    expect(req.meters.TASMA_SPOIN).toBeCloseTo(26 * 1.4);
+    expect(PRODUCTS.MASA_PREMIUM_LIGHT.pack).toBe(21);
+  });
+
+  /** Ta sama ściana w systemie innego producenta */
+  const makerWall = (systemId: string, boardId: string) => {
+    const p = wall();
+    Object.assign(p.walls[0], { systemId, boardId });
+    return calculateProject(p).walls.values().next().value!.req;
+  };
+
+  it('domyślnie masa i taśma producenta systemu: Knauf Uniflott + Kurt', () => {
+    const req = makerWall('KN-W111-CW100', 'KN-A13');
+    expect(req.kg.MASA_UNIFLOTT).toBeCloseTo(26 * 0.25);
+    expect(req.meters.TASMA_KURT).toBeCloseTo(26 * 1.4);
+    expect(req.kg.MASA).toBeUndefined();
+    expect(req.meters.TASMA_SPOIN).toBeUndefined();
+  });
+
+  it('Siniat: Nida Start + Nida Finish i taśma Nida', () => {
+    const req = makerWall('SN-W-A50-1', 'SN-EXP12.5');
+    expect(req.kg.MASA_NIDA_START).toBeCloseTo(26 * 0.3);
+    expect(req.kg.MASA_NIDA_FINISH).toBeCloseTo(26 * 0.1);
+    expect(req.meters.TASMA_NIDA).toBeCloseTo(26 * 1.4);
+  });
+
+  it('Norgips: Norgips Start i taśma fizelinowa 76 mb', () => {
+    const req = makerWall('NG-SD-CW50-1', 'NG-GKB12.5');
+    expect(req.kg.MASA_NORGIPS_START).toBeCloseTo(26 * 0.2);
+    expect(req.meters.TASMA_NORGIPS_FIZ).toBeCloseTo(26 * 1.4);
+  });
+
+  it('wybrana ręcznie masa obowiązuje także w systemie innego producenta', () => {
+    const p = wall();
+    Object.assign(p.walls[0], { systemId: 'KN-W111-CW100', boardId: 'KN-A13' });
+    p.settings.finishing = { compound: 'vario', tape: 'paper' };
+    const { req } = calculateProject(p).walls.values().next().value!;
+    expect(req.kg.MASA).toBeCloseTo(26 * 0.25);
+    expect(req.meters.TASMA_SPOIN).toBeCloseTo(26 * 1.4);
+    expect(req.kg.MASA_UNIFLOTT).toBeUndefined();
+  });
+
+  it('kolejne warstwy płyt wg tabeli zużycia (Knauf G-K Start: 1 warstwa 0,3, 2 warstwy 0,5 kg/m²)', () => {
+    const p = wall();
+    const two = wallSystemById('W-CW75-2');
+    Object.assign(p.walls[0], { systemId: two.id });
+    p.settings.finishing = { compound: 'gk-start' };
+    const { req } = calculateProject(p).walls.values().next().value!;
+    expect(two.layers).toBe(2);
+    expect(req.kg.MASA_GK_START).toBeCloseTo(26 * 0.5);
+  });
+
+  it('Nida Max – spoiny bez taśmy, taśma tylko w kątach', () => {
+    const p = wall();
+    p.settings.finishing = { compound: 'nida-max' };
+    const { req } = calculateProject(p).walls.values().next().value!;
+    expect(req.kg.MASA_NIDA_MAX).toBeCloseTo(26 * 0.2);
+    expect(req.meters.TASMA_SPOIN).toBeUndefined();
+  });
+
   it('listwy narożnikowe trafiają na listę zakupów z rozkroju', () => {
     const p = wall();
     p.walls[0].endB = 'free';
@@ -201,7 +267,15 @@ describe('katalog wykończenia', () => {
   it('produkty wykończenia są w katalogu, typy narożników wskazują istniejące produkty', () => {
     for (const id of Object.keys(FINISHING_PRODUCTS)) expect(PRODUCTS[id]).toBeDefined();
     for (const c of CORNER_TYPES) if (c.product) expect(PRODUCTS[c.product], c.id).toBeDefined();
-    for (const c of COMPOUNDS) expect(PRODUCTS[c.product]).toBeDefined();
+    for (const c of COMPOUNDS) {
+      expect(PRODUCTS[c.product], c.id).toBeDefined();
+      if (c.finish) expect(PRODUCTS[c.finish.product], c.id).toBeDefined();
+    }
+    for (const t of TAPES) expect(PRODUCTS[t.product], t.id).toBeDefined();
+    for (const [m, d] of Object.entries(MAKER_FINISHING)) {
+      expect(COMPOUNDS.some((c) => c.id === d.compound), m).toBe(true);
+      expect(TAPES.some((t) => t.id === d.tape), m).toBe(true);
+    }
   });
   it('rodzaj krawędzi płyt', () => {
     expect(boardEdge(BOARDS.find((b) => b.id === 'RB12.5')!)).toBe('4PRO');

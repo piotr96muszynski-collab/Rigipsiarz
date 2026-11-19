@@ -1,0 +1,17 @@
+# Knauf W635.pl – ściana szybu instalacyjnego na słupkach z dwóch profili UW z płytą pośrednią między profilami.
+# Knauf Systemfinder (https://systems.knauf.com/pl-PL/systemfinder), filtr „Profile: 2xUW 75 / 2xUW100”, odczyt 19.11.2026.
+# Kolumny jak w walls.txt + płyta pośrednia | liczba jej warstw. Poszycie jednostronne (od pomieszczenia);
+# płyta pośrednia mieści się w głębokości profilu (grubość = profil + poszycie). Wysokość tylko dla rozstawu 60 cm.
+# sys|grid|profile|layers|boards|cladThk|wool|EI|Rw|RA1|thk|mass|H300/H400/H600 (m)|mid|midLayers
+W635|U|2xUW75|2|F15|2x 15|50|60|52|50|105|40|//4.5|F13|1
+W635|U|2xUW75|2|HF15|2x 15|50|60|52|50|105|40|//4.5|HF13|1
+W635|U|2xUW75|2|DIA13|2x 12.5|50|30|55|52|100|56|//4.5|DIA13|2
+W635|U|2xUW75|3|DIA13|3x 12.5|50|60|56|54|112.5|69|//4.5|DIA13|2
+W635|U|2xUW75|4|F15+F13|2x 15 + 2x 12.5|50|120|55|54|130|60|//4.5|F13|1
+W635|U|2xUW75|4|HF15+HF13|2x 15 + 2x 12.5|50|120|55|54|130|60|//4.5|HF13|1
+W635|U|2xUW100|2|F15|2x 15|50|60|52|50|130|41|//5.25|F13|1
+W635|U|2xUW100|2|HF15|2x 15|50|60|52|50|130|41|//5.25|HF13|1
+W635|U|2xUW100|2|DIA13|2x 12.5|50|30|55|52|125|56|//5.25|DIA13|2
+W635|U|2xUW100|3|DIA13|3x 12.5|50|60|56|54|137.5|69|//5.25|DIA13|2
+W635|U|2xUW100|4|F15+F13|2x 15 + 2x 12.5|50|120|55|54|155|61|//5.25|F13|1
+W635|U|2xUW100|4|HF15+HF13|2x 15 + 2x 12.5|50|120|55|54|155|61|//5.25|HF13|1
