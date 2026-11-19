@@ -1,4 +1,5 @@
 // Protokół Bluetooth LE dalmierzy Bosch (GLM 50 C, PLR 30 C / 40 C / 50 C i podobne).
+// Potwierdzone na PLR 30 C (2026-11-19): usługa 00005301-…, polecenie C0 55 02 01 00 1A, wynik C0 55 10 06 + float32 LE od bajtu 7, CRC OK.
 // Bosch nie publikuje opisu protokołu. Poniższe wartości pochodzą z otwartych projektów,
 // które odczytują pomiary z GLM 50 C / PLR przez BLE, i trzeba je potwierdzić na prawdziwym egzemplarzu
 // (do tego służy ekran „Dalmierz – diagnostyka”).

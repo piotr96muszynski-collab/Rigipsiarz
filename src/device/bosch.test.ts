@@ -82,3 +82,16 @@ describe('diagnostyka', () => {
     for (const c of BOSCH_CHANNELS) expect(DIAG_CANDIDATE_SERVICES).toContain(c.service);
   });
 });
+
+describe('ramki z prawdziwego PLR 30 C (dziennik z 2026-11-19)', () => {
+  it('odczytuje odległość z ramek wyniku', () => {
+    expect(distanceCm(fromHex('C0 55 10 06 00 F2 13 C8 07 E0 40 00 00 00 00 00 00 00 00 FE'))).toBe(700.1);
+    expect(distanceCm(fromHex('C0 55 10 06 00 F3 13 5F 76 DD 40 00 00 00 00 00 00 00 00 C4'))).toBe(692.1);
+  });
+  it('sumy kontrolne ramek się zgadzają', () => {
+    expect(parseFrame(fromHex('C0 55 10 06 00 F2 13 C8 07 E0 40 00 00 00 00 00 00 00 00 FE'))?.crcOk).toBe(true);
+  });
+  it('odpowiedź na włączenie synchronizacji (bez nagłówka C0) nie jest pomiarem', () => {
+    expect(distanceCm(fromHex('00 10 02 00 F1 13 00 00 00 00 00 00 00 00 00 00 00 00 EC'))).toBeNull();
+  });
+});
