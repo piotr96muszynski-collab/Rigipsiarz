@@ -2729,3 +2729,159 @@ kbd {
 .plan .labels .angle-mark.right text {
   fill: var(--ok);
 }
+
+/* ---------- boczne menu sekcji projektu ---------- */
+.title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.title-wrap .title-input {
+  flex: none;
+  padding: 2px 8px 4px;
+}
+.section-name {
+  padding: 0 9px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* pas przy lewej krawędzi (dolna połowa ekranu), z którego wyciąga się menu */
+.drawer-edge {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  bottom: 0;
+  z-index: 44;
+  touch-action: pan-y;
+}
+.drawer {
+  --p: 0;
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+}
+.drawer.open {
+  --p: 1;
+}
+.drawer.open,
+.drawer.dragging {
+  pointer-events: auto;
+}
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 40%);
+  opacity: var(--p);
+  transition: opacity 0.22s ease;
+  touch-action: pan-y;
+}
+.drawer-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(300px, 84vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: 0 10px 40px rgb(0 0 0 / 22%);
+  padding: env(safe-area-inset-top) 10px env(safe-area-inset-bottom) calc(10px + env(safe-area-inset-left));
+  transform: translateX(calc((var(--p) - 1) * 100% - (1 - var(--p)) * 24px));
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.drawer:not(.open):not(.dragging) .drawer-panel {
+  visibility: hidden;
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s 0.24s;
+}
+.drawer.dragging .drawer-scrim,
+.drawer.dragging .drawer-panel {
+  transition: none;
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 8px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.drawer-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.drawer-item {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.drawer-item svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--muted);
+}
+.drawer-item:hover {
+  background: var(--surface-2);
+}
+.drawer-item.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.drawer-item.on svg {
+  color: var(--accent);
+}
+.drawer-foot {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer-scrim,
+  .drawer-panel {
+    transition: none !important;
+  }
+}
+@media print {
+  .drawer,
+  .drawer-edge,
+  .menu-btn {
+    display: none !important;
+  }
+}
