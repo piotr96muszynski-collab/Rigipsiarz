@@ -94,5 +94,6 @@ export function atticRoofRequirement(a: Attic, sys: CeilingSystem, fin: Finishin
   const vapor = ceilingVaporSpec(sys);
   if (vaporBarrierOn(a.vaporBarrier, vapor)) vaporBarrierLines(req, areaM2, vapor);
 
-  return { req, grid, areaM2, perimeterM, hangers, warnings, assumptions };
+  // rozkład płyt na płaszczyznach o dowolnym obrysie jeszcze nie jest liczony – płyty po polu z naddatkiem
+  return { req, grid, boards: { surfaces: [], sheets: [], warnings: [] }, areaM2, perimeterM, hangers, warnings, assumptions };
 }

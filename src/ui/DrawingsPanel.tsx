@@ -1,4 +1,4 @@
-import { AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
+import { AtticBoardsDrawing, AtticSectionDrawing, AtticSurfaceDrawing } from '../drawings/AtticDrawing';
 import { AtticRoofFaceDrawing, AtticRoofPlanDrawing } from '../drawings/AtticRoofDrawing';
 import { useMemo, useState } from 'react';
 import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc/layout';
@@ -256,6 +256,24 @@ export function DrawingsPanel({ project, calc }: Props) {
               <div key={g.surface.id}>
                 <h4>{g.surface.label} – ruszt i punkty mocowania</h4>
                 <AtticSurfaceDrawing attic={a} g={g} grid={r.grid} title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()}`} />
+                {(() => {
+                  const layers = r.boards.surfaces.find((b) => b.id === g.surface.id)?.layers ?? [];
+                  // lico na wierzchu: najpierw warstwa widoczna, potem kolejne w stronę rusztu
+                  return [...layers].reverse().map((l) => (
+                    <div key={l.layer}>
+                      <h4>
+                        {g.surface.label} – rozkład płyt{layers.length > 1 ? `, warstwa ${l.layer + 1}` : ''}
+                      </h4>
+                      <AtticBoardsDrawing
+                        attic={a}
+                        g={g}
+                        layer={l}
+                        layers={layers.length}
+                        title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()} – płyty${layers.length > 1 ? ` warstwa ${l.layer + 1}` : ''}`}
+                      />
+                    </div>
+                  ));
+                })()}
               </div>
             ))}
             <p className="small">
