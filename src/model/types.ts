@@ -2,6 +2,7 @@
 
 import type { FinishingSettings } from '../catalog/finishing';
 import type { BoardLengthPref } from '../calc/boardLength';
+import type { ProjectProfileLengths } from '../calc/profileLength';
 import type { WoolChoice } from '../catalog/insulation';
 
 export type Id = string;
@@ -190,6 +191,8 @@ export interface ProjectSettings {
   finishing?: Partial<FinishingSettings>;
   /** Długość arkuszy płyt w tym projekcie, cm ('auto' = dopasowana do wysokości); brak = jak w ustawieniach aplikacji */
   boardLength?: BoardLengthPref;
+  /** Długości handlowe profili w tym projekcie: id profilu (CW75, UD30…) → m albo 'auto'; brak = jak w aplikacji */
+  profileLengths?: ProjectProfileLengths;
 }
 
 /**

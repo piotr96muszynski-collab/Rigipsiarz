@@ -10,6 +10,7 @@ import type { Attic } from '../model/types';
 import { atticFrameOf, atticGrid, type AtticGrid } from './attic';
 import { layerBoards } from './ceilingLevels';
 import { ceilingVaporSpec, vaporBarrierLines, vaporBarrierOn } from './vaporBarrier';
+import { joinsFor, profileMaxStock } from './profileLength';
 import { add, addBoardScrews, addJointing, addNote, addPiece, anchorsFor, emptyReq, pickBoardLength, type Requirement } from './materials';
 
 export interface AtticResult {
@@ -74,7 +75,7 @@ export function atticRequirement(
       // elementy rusztu wzdłuż kalenicy, na całej długości pomieszczenia
       for (let i = 0; i < g.cd.length; i++) {
         addPiece(req, grid.profile, L);
-        if (frame.joiner) add(req.counts, frame.joiner, Math.max(0, Math.ceil(L / 4 - 1e-9) - 1));
+        if (frame.joiner) add(req.counts, frame.joiner, joinsFor(L, profileMaxStock(grid.profile, 4)));
       }
       const n = g.cd.length * g.hangerU.length;
       hangers += n;
