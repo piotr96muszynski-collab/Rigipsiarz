@@ -8,6 +8,7 @@ import { buildContacts, cornerStudPositions, partRange, type ContactModel, type 
 import { bbox, firstWall, isNewWall, nodeMap, projectOnSegment, throughPair, wallEnds, wallLength, type WallJunctions } from '../geometry/geometry';
 import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { pickBoardLengthCm, rowSegments } from './boardLength';
+import { profileMaxStock } from './profileLength';
 
 // ---------------------------------------------------------------------------
 // Ściany
@@ -886,8 +887,8 @@ export function hangerPositions(s0: number, s1: number, spacing: number): number
   return Array.from({ length: n }, (_, i) => s0 + step * (i + 0.5));
 }
 
-/** Łączniki wzdłużne CD: co 4 m (długość profilu) od początku odcinka */
-export function splicePositions(s0: number, s1: number, stock = 400): number[] {
+/** Łączniki wzdłużne CD: co długość profilu (ustawienie projektu, domyślnie 4 m) od początku odcinka */
+export function splicePositions(s0: number, s1: number, stock = profileMaxStock('CD60') * 100): number[] {
   const run = s1 - s0;
   const n = Math.max(0, Math.ceil(run / stock - 1e-9) - 1);
   return Array.from({ length: n }, (_, i) => s0 + stock * (i + 1));

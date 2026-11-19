@@ -3482,3 +3482,33 @@ button.catalog-part {
   stroke-width: 0.25em;
   pointer-events: none;
 }
+.item-len {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.85rem;
+}
+.item-len span {
+  white-space: nowrap;
+}
+.item-len select {
+  width: auto;
+  flex: none;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: inherit;
+  padding: 0 6px;
+}
+.profile-len-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+.profile-len-name {
+  min-width: 2.2em;
+}

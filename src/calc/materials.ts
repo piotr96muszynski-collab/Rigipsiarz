@@ -1,7 +1,6 @@
 import {
   BOARDS,
   PRODUCTS,
-  STOCK_LENGTHS,
   boardById,
   isLiningSystem,
   isHatCeiling,
@@ -17,6 +16,7 @@ import {
   type Unit,
 } from '../catalog/rigips';
 import { pickBoardLengthCm } from './boardLength';
+import { activeProfileLength, joinsFor, profileLengthChoices, profileMaxStock, profileOverlap, profileStocks, type ProfileLengthPref } from './profileLength';
 import { FIXERS } from '../catalog/atlas';
 import {
   analyzeJunctions,
@@ -766,7 +766,7 @@ export function ceilingRequirement(
       const run = (s1 - s0) / 100;
       const product = g.level === 'main' ? mainProduct : 'CD60';
       addPiece(req, product, run);
-      if (product === 'CD60') add(req.counts, 'LACZNIK_WZDL', Math.max(0, Math.ceil(run / 4 - 1e-9) - 1));
+      if (product === 'CD60') add(req.counts, 'LACZNIK_WZDL', joinsFor(run, profileMaxStock('CD60')));
       if (g.level !== 'main') continue;
       longestMain = Math.max(longestMain, run);
       if (sys.kind === 'ua-span') {
@@ -834,22 +834,36 @@ export function ceilingRequirement(
 
 const KERF = 0.005;
 
+/** 1 przedłużenie, 2–4 przedłużenia, 5+ przedłużeń */
+const plExt = (n: number) =>
+  n === 1 ? 'przedłużenie' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'przedłużenia' : 'przedłużeń';
+
 export interface CutResult {
   bars: { stock: number; pieces: number[] }[];
+  /** Liczba przedłużeń (elementy dłuższe niż najdłuższy profil) */
+  joins: number;
 }
 
-export function cutPieces(pieces: number[], stocks: number[]): CutResult {
+/**
+ * Rozkrój elementów na sztuki handlowe. Element dłuższy niż najdłuższy profil jest
+ * przedłużany: pełne sztuki + dostawka, przy `overlap` > 0 każda dostawka zachodzi
+ * na poprzednią sztukę o długość zakładu.
+ */
+export function cutPieces(pieces: number[], stocks: number[], overlap = 0): CutResult {
   const sortedStocks = [...stocks].sort((a, b) => a - b);
   const max = sortedStocks[sortedStocks.length - 1];
   const defaultStock = stocks[0];
   const list: number[] = [];
   const bars: { stock: number; pieces: number[]; free: number }[] = [];
+  const lap = overlap < max / 2 ? overlap : 0;
+  let joins = 0;
   for (const p of pieces) {
     let rest = p;
     // elementy dłuższe niż najdłuższy profil – pełne sztuki + dostawka
     while (rest > max + 1e-9) {
       bars.push({ stock: max, pieces: [max], free: 0 });
-      rest -= max;
+      rest = rest - max + lap;
+      joins++;
     }
     if (rest > 0.01) list.push(rest);
   }
@@ -868,21 +882,8 @@ export function cutPieces(pieces: number[], stocks: number[]): CutResult {
       bars.push({ stock: fit, pieces: [p], free: fit - p - KERF });
     }
   }
-  return { bars: bars.map(({ stock, pieces }) => ({ stock, pieces })) };
+  return { bars: bars.map(({ stock, pieces }) => ({ stock, pieces })), joins };
 }
-
-const stockFamily = (productId: string) =>
-  productId.startsWith('CW')
-    ? 'CW'
-    : productId.startsWith('UW')
-      ? 'UW'
-      : productId.startsWith('UA')
-        ? 'UA'
-        : productId.startsWith('CD')
-          ? 'CD'
-          : productId.startsWith('UD')
-            ? 'UD'
-            : productId;
 
 // ---------------------------------------------------------------------------
 // Zestawienie materiałów
@@ -899,6 +900,8 @@ export interface MaterialLine {
   packs?: number;
   packUnit?: Unit;
   note?: string;
+  /** Profil z wyborem długości handlowej (lista zakupów); `first` – pierwsza linia tego profilu */
+  profile?: { pid: string; pref: ProfileLengthPref; choices: number[]; first: boolean };
 }
 
 const GROUP_ORDER: Product['group'][] = ['Płyty', 'Profile', 'Akcesoria do sufitów', 'Mocowanie', 'Izolacja', 'Wykończenie'];
@@ -975,23 +978,40 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
     });
   }
 
-  // profile i narożniki – rozkrój
+  // profile i narożniki – rozkrój (długości wg ustawienia profilu w projekcie / aplikacji)
   for (const [pid, pieces] of Object.entries(merged.pieces)) {
     const product = PRODUCTS[pid];
-    const stocks = STOCK_LENGTHS[stockFamily(pid)] ?? [product.length ?? 3];
-    const { bars } = cutPieces(pieces, stocks);
+    const stocks = profileStocks(pid, product.length ?? 3);
+    const choices = profileLengthChoices(pid);
+    const pref = activeProfileLength(pid);
+    const overlap = profileOverlap(pid);
+    const { bars, joins } = cutPieces(pieces, stocks, overlap);
     const byStock = new Map<number, number>();
     for (const b of bars) byStock.set(b.stock, (byStock.get(b.stock) ?? 0) + 1);
     const totalM = pieces.reduce((a, b) => a + b, 0);
+    const notes: string[] = [`${fmtLen(totalM)} mb w elementach`];
+    if (joins > 0)
+      notes.push(
+        overlap > 0
+          ? `${joins} ${plExt(joins)} na zakład ${Math.round(overlap * 100)} cm (skręcić wkrętami LN)`
+          : pid.startsWith('CD')
+            ? `${joins} ${plExt(joins)} łącznikiem wzdłużnym`
+            : `${joins} ${joins === 1 ? 'styk' : 'styki'} na długości`,
+      );
+    let first = true;
     for (const [stock, count] of [...byStock.entries()].sort((a, b) => a[0] - b[0])) {
-      lines.push({
+      const line: MaterialLine = {
         key: `bar-${pid}-${stock}`,
         group: product.group === 'Wykończenie' ? 'Wykończenie' : 'Profile',
         name: `${product.name}, dł. ${fmtLen(stock)} m`,
         qty: count,
         unit: 'szt.',
-        note: byStock.size === 1 ? `${fmtLen(totalM)} mb w elementach` : undefined,
-      });
+        // uwaga przy pierwszej linii profilu (przy jednej długości – jak dotąd)
+        note: first && (byStock.size === 1 || joins > 0) ? notes.slice(byStock.size === 1 ? 0 : 1).join(' · ') || undefined : undefined,
+      };
+      if (choices.length) line.profile = { pid, pref, choices, first };
+      first = false;
+      lines.push(line);
     }
   }
 
