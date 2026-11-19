@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { liningLayout, wallLayout, type WallLayout } from '../calc/layout';
+import { liningAsWall, liningLayout, wallLayout, type WallLayout } from '../calc/layout';
+import { ceilingVaporSpec, vaporBarrierOn, wallVaporSpec } from '../calc/vaporBarrier';
 import { ceilingFixerGrid, ceilingInsulation, liningKey, wallInsulation } from '../calc/materials';
 import type { MaterialLine, ProjectCalc, Requirement } from '../calc/materials';
 import { PRODUCTS, boardById, ceilingSystemById, wallSystemById, type WallSystem } from '../catalog/rigips';
@@ -84,6 +85,9 @@ const JUNCTION_DETAIL: Record<string, DetailKind | undefined> = {
   free: 'free',
 };
 
+const wallVapor = (w: Wall) => vaporBarrierOn(w.vaporBarrier, wallVaporSpec(wallSystemById(w.systemId)));
+const ceilingVapor = (c: Project['ceilings'][number]) => vaporBarrierOn(c.vaporBarrier, ceilingVaporSpec(ceilingSystemById(c.systemId)));
+
 export function DrawingsPanel({ project, calc }: Props) {
   const junctions = useMemo(() => analyzeJunctions(project), [project]);
   const walls = project.walls.filter((w) => calc.walls.has(w.id));
@@ -97,12 +101,14 @@ export function DrawingsPanel({ project, calc }: Props) {
   // unikalne systemy i detale w projekcie
   const wallSystems = useMemo(() => {
     const m = new Map<string, (typeof walls)[number]>();
-    for (const w of walls) m.set(`${w.systemId}|${w.boardId}|${w.studSpacing}|${JSON.stringify(wallInsulation(w))}`, w);
+    // ściany i okładziny (paroizolacja zwykle tylko w okładzinach)
+    for (const w of [...walls, ...linings.map(({ w, l }) => liningAsWall(w, l))])
+      m.set(`${w.systemId}|${w.boardId}|${w.studSpacing}|${JSON.stringify(wallInsulation(w))}|${wallVapor(w)}`, w);
     return [...m.values()];
-  }, [walls]);
+  }, [walls, linings]);
   const ceilingSystems = useMemo(() => {
     const m = new Map<string, (typeof ceilings)[number]>();
-    for (const c of ceilings) m.set(`${c.systemId}|${c.boardId}|${JSON.stringify(ceilingInsulation(c))}`, c);
+    for (const c of ceilings) m.set(`${c.systemId}|${c.boardId}|${JSON.stringify(ceilingInsulation(c))}|${ceilingVapor(c)}`, c);
     return [...m.values()];
   }, [ceilings]);
   const details = useMemo(() => {
@@ -224,7 +230,7 @@ export function DrawingsPanel({ project, calc }: Props) {
           return (
             <div key={w.id}>
               <h4>{sys.name}</h4>
-              <WallSection sys={sys} board={boardById(w.boardId)} spacing={w.studSpacing} wool={wallInsulation(w, sys)} />
+              <WallSection sys={sys} board={boardById(w.boardId)} spacing={w.studSpacing} wool={wallInsulation(w, sys)} vapor={wallVapor(w)} />
             </div>
           );
         })}
@@ -233,7 +239,7 @@ export function DrawingsPanel({ project, calc }: Props) {
           return (
             <div key={c.id}>
               <h4>{sys.name}</h4>
-              <CeilingSection sys={sys} board={boardById(c.boardId)} wool={ceilingInsulation(c)} levels={calc.ceilings.get(c.id)?.levels} />
+              <CeilingSection sys={sys} board={boardById(c.boardId)} wool={ceilingInsulation(c)} levels={calc.ceilings.get(c.id)?.levels} vapor={ceilingVapor(c)} />
             </div>
           );
         })}

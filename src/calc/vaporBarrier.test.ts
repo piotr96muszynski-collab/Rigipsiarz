@@ -93,3 +93,37 @@ describe('paroizolacja – ilości', () => {
     expect(lines.find((l) => l.key === 'TASMA_PAROIZ')?.note).toMatch(/DoubleFit/);
   });
 });
+
+describe('paroizolacja – przekroje i 3D', () => {
+  it('przekrój poddasza ma folię w legendzie, zwykły sufit nie; 3D ma warstwę folii', async () => {
+    const { createElement } = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { DrawingsPanel } = await import('../ui/DrawingsPanel');
+    const { buildModel3D } = await import('../view3d/model3d');
+    const attic = withCeiling('S-PODD-1');
+    const html = (p: Project) => renderToStaticMarkup(createElement(DrawingsPanel, { project: p, calc: calculateProject(p) }));
+    expect(html(attic)).toContain('folia paroizolacyjna');
+    expect(html(withCeiling('S-CD-2P-1'))).not.toContain('folia paroizolacyjna');
+    expect(buildModel3D(attic, calculateProject(attic)).parts.some((x) => x.mat === 'vapor')).toBe(true);
+    const plain = withCeiling('S-CD-2P-1');
+    expect(buildModel3D(plain, calculateProject(plain)).parts.some((x) => x.mat === 'vapor')).toBe(false);
+  });
+
+  it('okładzina CD 60 z folią: folia na przekroju i w 3D', async () => {
+    const { createElement } = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { DrawingsPanel } = await import('../ui/DrawingsPanel');
+    const { buildModel3D } = await import('../view3d/model3d');
+    const p = createProject();
+    p.nodes = [
+      { id: uid(), x: 0, y: 0 },
+      { id: uid(), x: 400, y: 0 },
+    ];
+    const w = createExistingWall(p, p.nodes[0].id, p.nodes[1].id, { height: 250 });
+    w.linings = [{ ...createLining(1, 'O-CD-1'), insulation: true, vaporBarrier: true }];
+    p.walls = [w];
+    const calc = calculateProject(p);
+    expect(renderToStaticMarkup(createElement(DrawingsPanel, { project: p, calc }))).toContain('folia paroizolacyjna');
+    expect(buildModel3D(p, calc).parts.some((x) => x.mat === 'vapor')).toBe(true);
+  });
+});

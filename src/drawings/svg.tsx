@@ -21,6 +21,8 @@ export const C = {
   board: '#efe9dc',
   boardCut: '#f6d9a8',
   wool: '#f3e48c',
+  /** folia paroizolacyjna */
+  vapor: '#b0399b',
   concrete: '#cfd4da',
   warn: '#d0312d',
 };
