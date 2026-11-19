@@ -3069,9 +3069,7 @@ button.catalog-part {
 }
 .variants summary {
   cursor: pointer;
-  min-height: var(--tap);
-  display: flex;
-  align-items: center;
+  padding: 12px 0;
   font-weight: 600;
   color: var(--accent);
 }
@@ -3149,4 +3147,72 @@ button.catalog-part {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
+}
+
+/* ---------- poddasze: przekrój w formularzu ---------- */
+.attic-section {
+  width: 100%;
+  max-height: 300px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.attic-section .as-floor {
+  stroke: var(--wall-edge);
+  stroke-width: 3;
+}
+.attic-section .as-masonry {
+  fill: var(--masonry);
+  stroke: var(--wall-edge);
+  stroke-width: 1.5;
+}
+.attic-section .as-rafter {
+  fill: #c89a5b;
+  stroke: #8a6230;
+  stroke-width: 1.5;
+}
+.attic-section .as-wool {
+  fill: #f2d24b;
+  fill-opacity: 0.55;
+  stroke: none;
+}
+.attic-section .as-wool.under {
+  fill-opacity: 0.35;
+}
+.attic-section .as-board {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+.attic-section .as-cd {
+  fill: var(--surface);
+  stroke: var(--wall-edge);
+  stroke-width: 1.5;
+}
+.attic-section .as-dim {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+.attic-section .as-text {
+  fill: var(--text);
+}
+.attic-summary {
+  margin: 0;
+}
+.attic-sub {
+  margin: 6px 0 0;
+  font-size: 0.95rem;
+}
+.attic-assumptions {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.attic-assumptions summary {
+  cursor: pointer;
+  padding: 12px 0;
+}
+.attic-assumptions ul {
+  margin: 0;
+  padding-left: 20px;
 }

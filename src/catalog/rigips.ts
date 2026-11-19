@@ -386,6 +386,14 @@ export const PRODUCTS: Record<string, Product> = {
   ZAWLECZKA: { id: 'ZAWLECZKA', name: 'Klamra zabezpieczająca (zawleczka) do wieszaka noniuszowego', group: 'Akcesoria do sufitów', unit: 'szt.' },
   WIESZAK_ES: { id: 'WIESZAK_ES', name: 'Wieszak (uchwyt) bezpośredni ES do CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
   WIESZAK_PODD: { id: 'WIESZAK_PODD', name: 'Wieszak do poddaszy do CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
+  WKRET_DREWNO: {
+    id: 'WKRET_DREWNO',
+    name: 'Wkręt do drewna do mocowania wieszaków do krokwi (min. ø 5,5 mm wg kart Rigips 4.70)',
+    group: 'Mocowanie',
+    unit: 'szt.',
+    pack: 100,
+    packUnit: 'opak.',
+  },
   UCHWYT_ELAST: {
     id: 'UCHWYT_ELAST',
     name: 'Uchwyt elastyczny do CD 60 (poddasze)',

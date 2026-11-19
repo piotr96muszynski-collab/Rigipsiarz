@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { CeilingSystemSelect, WallSystemSelect } from './SystemSelect';
-import { quickProject, type QuickInput } from '../model/factory';
-import type { Project } from '../model/types';
+import { createAttic, quickAtticProject, quickProject, type QuickInput } from '../model/factory';
+import type { Attic, Project } from '../model/types';
+import { AtticEditor } from './AtticEditor';
 import { DimInput } from './DimInput';
 
 interface Props {
@@ -9,10 +10,13 @@ interface Props {
   onCancel: () => void;
 }
 
-const MODES: { id: QuickInput['mode']; label: string; hint: string }[] = [
+type Mode = QuickInput['mode'] | 'attic';
+
+const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: 'wall', label: 'Ściana', hint: 'Jedna ściana działowa lub obudowa' },
   { id: 'room', label: 'Pomieszczenie', hint: '4 ściany, opcjonalnie z sufitem' },
   { id: 'ceiling', label: 'Sufit', hint: 'Sufit podwieszany na profilach CD' },
+  { id: 'attic', label: 'Poddasze', hint: 'Skosy i jętki na krokwiach' },
 ];
 
 export function QuickForm({ onCreate, onCancel }: Props) {
@@ -27,16 +31,19 @@ export function QuickForm({ onCreate, onCancel }: Props) {
     doors: 1,
     windows: 0,
   });
+  const [mode, setMode] = useState<Mode>('ceiling');
+  const [attic, setAttic] = useState<Attic>(() => createAttic());
+  const isAttic = mode === 'attic';
   const set = (patch: Partial<QuickInput>) => setQ((s) => ({ ...s, ...patch }));
-  const showWalls = q.mode !== 'ceiling';
-  const showCeiling = q.mode === 'ceiling' || (q.mode === 'room' && q.withCeiling);
+  const showWalls = !isAttic && q.mode !== 'ceiling';
+  const showCeiling = !isAttic && (q.mode === 'ceiling' || (q.mode === 'room' && q.withCeiling));
 
   return (
     <form
       className="card quick"
       onSubmit={(e) => {
         e.preventDefault();
-        onCreate(quickProject(q));
+        onCreate(isAttic ? quickAtticProject(attic) : quickProject(q));
       }}
     >
       <div className="card-head">
@@ -50,9 +57,12 @@ export function QuickForm({ onCreate, onCancel }: Props) {
             type="button"
             key={m.id}
             role="radio"
-            aria-checked={q.mode === m.id}
-            className={q.mode === m.id ? 'on' : ''}
-            onClick={() => set({ mode: m.id })}
+            aria-checked={mode === m.id}
+            className={mode === m.id ? 'on' : ''}
+            onClick={() => {
+              setMode(m.id);
+              if (m.id !== 'attic') set({ mode: m.id });
+            }}
           >
             <strong>{m.label}</strong>
             <small>{m.hint}</small>
@@ -60,6 +70,20 @@ export function QuickForm({ onCreate, onCancel }: Props) {
         ))}
       </div>
 
+      {isAttic && (
+        <AtticEditor
+          attic={attic}
+          edit={(fn) =>
+            setAttic((a) => {
+              const next = structuredClone(a);
+              fn(next);
+              return next;
+            })
+          }
+        />
+      )}
+
+      {!isAttic && (
       <div className="grid-3">
         <DimInput label={q.mode === 'wall' ? 'Długość ściany' : 'Długość'} unit="m" value={q.length} onChange={(v) => set({ length: v })} min={20} />
         {q.mode !== 'wall' && <DimInput label="Szerokość" unit="m" value={q.width} onChange={(v) => set({ width: v })} min={20} />}
@@ -72,6 +96,7 @@ export function QuickForm({ onCreate, onCancel }: Props) {
           max={1000}
         />
       </div>
+      )}
 
       {showWalls && (
         <>
@@ -86,7 +111,7 @@ export function QuickForm({ onCreate, onCancel }: Props) {
         </>
       )}
 
-      {q.mode === 'room' && (
+      {!isAttic && q.mode === 'room' && (
         <label className="check">
           <input type="checkbox" checked={q.withCeiling} onChange={(e) => set({ withCeiling: e.target.checked })} />
           Dolicz sufit podwieszany

@@ -11,11 +11,12 @@ import {
   type ProjectCalc,
 } from '../calc/materials';
 import { bbox, dist, interiorSide, isNewWall, wallEnds } from '../geometry/geometry';
-import { createCeiling, createLining, createOpening, fitCeilingHeight } from '../model/factory';
+import { createAttic, createCeiling, createLining, createOpening, fitCeilingHeight } from '../model/factory';
+import { AtticEditor } from './AtticEditor';
 import { ceilingLevels, ceilingSlab, maxCeilingHeight } from '../calc/ceilingLevels';
 import { addWall, applyWallChoice, deleteWall, setWallLength, setWallSystem } from '../model/ops';
 import { WallVariantInfo } from './VariantInfo';
-import type { Ceiling, Lining, Opening, Project, Wall } from '../model/types';
+import type { Attic, Ceiling, Lining, Opening, Project, Wall } from '../model/types';
 import { DimInput } from './DimInput';
 import { Picker, type PickOption } from './Picker';
 import { WoolField } from './WoolField';
@@ -54,7 +55,8 @@ const DIRECTION_OPTIONS: PickOption<0 | 90>[] = [
 export const BOARD_OPTIONS = (): PickOption<string>[] => BOARDS.map((b) => ({ value: b.id, label: b.name, hint: b.description }));
 
 export function ElementsPanel({ project, calc, update }: Props) {
-  const count = project.walls.length + project.ceilings.length;
+  const attics = project.attics ?? [];
+  const count = project.walls.length + project.ceilings.length + attics.length;
   const existing = project.walls.filter((w) => !isNewWall(w));
   const fresh = project.walls.filter(isNewWall);
   const nextY = () => {
@@ -73,6 +75,9 @@ export function ElementsPanel({ project, calc, update }: Props) {
       ))}
       {project.ceilings.map((c, i) => (
         <CeilingCard key={c.id} index={i + 1} ceiling={c} wool={project.settings.wool} calc={calc} update={update} startOpen={count <= 2} />
+      ))}
+      {attics.map((a, i) => (
+        <AtticCard key={a.id} index={i + 1} attic={a} calc={calc} update={update} startOpen={count <= 2} />
       ))}
       <div className="actions wrap">
         <button
@@ -104,8 +109,47 @@ export function ElementsPanel({ project, calc, update }: Props) {
         >
           + Sufit
         </button>
+        <button className="btn" onClick={() => update((d) => void (d.attics = [...(d.attics ?? []), createAttic()]))}>
+          + Poddasze
+        </button>
       </div>
     </div>
+  );
+}
+
+function AtticCard({ attic, index, calc, update, startOpen }: { attic: Attic; index: number; calc: ProjectCalc; update: Props['update']; startOpen: boolean }) {
+  const [open, setOpen] = useState(startOpen);
+  const r = calc.attics.get(attic.id);
+  return (
+    <article className="card element">
+      <header className="element-head">
+        <button className="element-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Chevron open={open} />
+          <span>
+            <h3>Poddasze {index}</h3>
+            <span className="muted small">
+              {fmtNum(attic.width / 100)} × {fmtNum(attic.length / 100)} m{r ? ` · ${fmtNum(r.areaM2, 1)} m² zabudowy · ` : ' · '}
+              {ceilingSystemById(attic.systemId).name}
+            </span>
+          </span>
+        </button>
+        <button className="btn ghost small danger" onClick={() => update((d) => void (d.attics = (d.attics ?? []).filter((x) => x.id !== attic.id)))}>
+          Usuń
+        </button>
+      </header>
+      {open && (
+        <AtticEditor
+          attic={attic}
+          result={r}
+          edit={(fn) =>
+            update((d) => {
+              const a = d.attics?.find((x) => x.id === attic.id);
+              if (a) fn(a);
+            })
+          }
+        />
+      )}
+    </article>
   );
 }
 
