@@ -169,7 +169,9 @@ export function recommendWalls(needs: WallNeeds, systems: WallSystem[] = allWall
     let best: WallPick | undefined;
     for (const c of candidates(sys)) {
       if (c.maxHeight && needs.heightCm > c.maxHeight + 0.5) continue;
-      if (!roomOk(c.boardId, needs.room)) continue;
+      // strefa mokra po jednej stronie: wystarczy płyta do stref mokrych na stronie B (Rigips 3.37.02x – Aquaroc)
+      const sideB = sys.sides === 2 ? (c.v?.sideB ?? sys.sideB) : undefined;
+      if (!roomOk(c.boardId, needs.room) && !(needs.room === 'wet' && sideB?.some((id) => roomOk(id, 'wet')))) continue;
       const fire = c.v?.fire;
       if (needs.fire > 0 && !(fire && fire >= needs.fire)) continue;
       const ra1 = c.v?.ra1;

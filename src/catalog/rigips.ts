@@ -705,6 +705,90 @@ export interface WallSystem {
 }
 
 /** Systemy opisane ręcznie: bez karty Rigips (wartości orientacyjne) oraz ATLAS M-System */
+/**
+ * Ściany Rigips 3.37.021–3.37.023 (+AKU) do pomieszczeń mokrych: strona A 2×12,5 płyta gipsowo-kartonowa,
+ * strona B 1×12,5 płyta cementowa AQUAROC (karta). Wartości z karty i kalkulatora zużycia rigips.pl
+ * (data/rigips-systemy.json); kalkulator podaje w zestawieniu Glasroc X Ocean 12,5 zamiast Aquaroc – obie do wyboru.
+ */
+const rigipsWetWall = (o: { code: string; profile: 50 | 75 | 100; aku?: boolean; maxHeight: number; thickness: number; mass: number; ra1?: number; slug: string }): WallSystem => {
+  const boards = o.aku ? ['AKU12.5', 'AKUF12.5'] : ['RBI12.5', 'RB12.5', 'RF12.5', 'RFP12.5', 'RFI12.5'];
+  const variants: SystemVariant[] = boards.flatMap((board) =>
+    (['AQUAROC12.5', 'XOCEAN12.5'] as const).map((b) => ({
+      code: o.code,
+      label: `2×12,5 ${boardById(board).short} / 1×12,5 ${boardById(b).short}${b === 'XOCEAN12.5' ? ' (wg kalkulatora Rigips)' : ''} · słupki co 60 cm`,
+      board,
+      sideB: [b],
+      studSpacing: 60 as const,
+      maxHeight: o.maxHeight,
+      ...(o.ra1 ? { ra1: o.ra1 } : {}),
+      wool: o.profile,
+      thickness: o.thickness,
+      mass: o.mass,
+    })),
+  );
+  return {
+    id: `W-CW${o.profile}-2${o.aku ? 'AKU' : ''}-AQ1`,
+    code: o.code,
+    name: `Ściana CW ${o.profile} do pomieszczeń mokrych, 2×12,5 ${o.aku ? 'PRO Aku' : 'PRO'} / 1×12,5 Aquaroc`,
+    category: 'działowa',
+    frame: 'single',
+    profile: o.profile,
+    layers: 2,
+    sides: 2,
+    defaultBoard: boards[0],
+    sideB: ['AQUAROC12.5'],
+    studSpacing: 60,
+    maxHeight: { 60: o.maxHeight },
+    insulationDefault: true,
+    ...(o.ra1 ? { acoustic: `RA1 ${o.ra1} dB` } : {}),
+    info:
+      `Grubość ${String(o.thickness).replace('.', ',')} mm · strona A: 2 warstwy płyty gipsowo-kartonowej, strona B (strefa mokra, pod płytki): 1 warstwa płyty cementowej Aquaroc · ` +
+      `do ${String(o.maxHeight / 100).replace('.', ',')} m przy słupkach co 60 cm · karta: profile CW/UW Hydroprofil (z powłoką antykorozyjną) – aplikacja liczy zwykłe CW/UW, ` +
+      'na płycie cementowej wkręty Aquaroc, taśma i masa do Aquaroc · klasa EI nieokreślona',
+    source: { label: `Karta systemu Rigips ${o.code}`, url: `https://www.rigips.pl/system/sciany-dzialowe-do-pomieszczen-wilgotnych-mokrych/${o.slug}` },
+    variants,
+  };
+};
+
+const RIGIPS_SIDE_B_WALLS: WallSystem[] = [
+  rigipsWetWall({ code: '3.37.021', profile: 50, maxHeight: 300, thickness: 87.5, mass: 40, slug: '3_37_021' }),
+  rigipsWetWall({ code: '3.37.022', profile: 75, maxHeight: 450, thickness: 112.5, mass: 40, ra1: 51, slug: '3_37_022' }),
+  rigipsWetWall({ code: '3.37.023', profile: 100, maxHeight: 500, thickness: 137.5, mass: 40, ra1: 53, slug: '3_37_023' }),
+  rigipsWetWall({ code: '3.37.023 AKU', profile: 100, aku: true, maxHeight: 500, thickness: 137.5, mass: 44, ra1: 58, slug: '3_37_023_aku' }),
+  // 3.41.021 AKU: podwójny ruszt CW 75 Aku, 2×12,5 PRO Aku z każdej strony + 1×12,5 PRO Aku między profilami
+  // (kalkulator: płyty 500 m² na 100 m², CW 75 Aku 360 mb, UW 75 140 mb – dwa rzędy co 60 cm)
+  {
+    id: 'W-2CW75AKU-2AKU-PD',
+    code: '3.41.021 AKU',
+    name: 'Ściana na podwójnym ruszcie CW 75 Aku, 2×12,5 PRO Aku obustronnie + płyta między rzędami',
+    category: 'podwójna',
+    frame: 'double',
+    profile: 75,
+    layers: 2,
+    sides: 2,
+    defaultBoard: 'AKU12.5',
+    midBoard: 'AKU12.5',
+    akuStuds: true,
+    studSpacing: 60,
+    maxHeight: { 60: 600 },
+    insulationDefault: true,
+    acoustic: 'RA1 64 dB',
+    info: 'Grubość 215 mm · dwa rzędy CW 75 Aku co 60 cm, między nimi płyta PRO Aku 12,5 (liczona w płytach i wkrętach) · wełna 2×75 mm · do 6,0 m · klasa EI nieokreślona',
+    source: { label: 'Karta systemu Rigips 3.41.021 AKU', url: 'https://www.rigips.pl/system/sciany-dzialowe/3_41_021_aku' },
+    variants: (['AKU12.5', 'AKUF12.5'] as const).map((board) => ({
+      code: '3.41.021 AKU',
+      label: `2×12,5 ${boardById(board).short} obustronnie + 1×12,5 między profilami · słupki co 60 cm · wełna 2×75 mm`,
+      board,
+      studSpacing: 60 as const,
+      maxHeight: 600,
+      ra1: 64,
+      wool: 75,
+      thickness: 215,
+      mass: 69,
+    })),
+  },
+];
+
 const HAND_WALLS: WallSystem[] = [
   // --- pojedynczy ruszt ---
   {
@@ -830,7 +914,7 @@ const byKey = (a: number[], b: number[]) => {
  * Katalog ścian: konstrukcje z kart Rigips (src/catalog/rigips.gen.ts – generowane z danych rigips.pl)
  * oraz systemy opisane ręcznie. Kolejność: kategoria, podstawowe, płyty standardowe, profil, liczba warstw.
  */
-export const WALL_SYSTEMS: WallSystem[] = [...RIGIPS_WALLS, ...HAND_WALLS]
+export const WALL_SYSTEMS: WallSystem[] = [...RIGIPS_WALLS, ...RIGIPS_SIDE_B_WALLS, ...HAND_WALLS]
   .map((s) => (BASIC_WALLS.has(s.id) ? { ...s, basic: true } : s))
   .map((s, i) => ({ s, k: [...(s.maker && s.maker !== 'rigips' ? [CATEGORY_ORDER.indexOf(s.category), MAKER_ORDER.indexOf(s.maker)] : wallOrder(s)), i] }))
   .sort((a, b) => byKey(a.k, b.k))
