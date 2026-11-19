@@ -157,6 +157,8 @@ export interface Attic {
   woolUnder: number;
   /** Paroizolacja pod płytami (brak = wg systemu: w poddaszach włączona) */
   vaporBarrier?: boolean;
+  /** Widoczna część krokwi poniżej lica płyt, cm – tylko systemy z widoczną więźbą (płyty między krokwiami) */
+  reveal?: number;
 }
 
 /** Domyślne parametry nowej ściany g-k (system jest w `defaultWallSystem`) */

@@ -377,7 +377,29 @@ export const PRODUCTS: Record<string, Product> = {
   // Profile sufitowe
   CD60: { id: 'CD60', name: 'Profil Rigips CD 60', group: 'Profile', unit: 'szt.', length: 4 },
   UD30: { id: 'UD30', name: 'Profil Rigips UD 30', group: 'Profile', unit: 'szt.', length: 3 },
+  // Ruszty zabudowy poddaszy inne niż CD 60 (karty Rigips 4.70.01–4.71.12, Norgips ZP)
+  KAPELUSZ: { id: 'KAPELUSZ', name: 'Profil kapeluszowy 15/48 mm', group: 'Profile', unit: 'szt.', length: 4 },
+  C_RIGISTIL: { id: 'C_RIGISTIL', name: 'Profil C RIGISTIL (główny sufitowy)', group: 'Profile', unit: 'szt.', length: 4 },
+  U_RIGISTIL: { id: 'U_RIGISTIL', name: 'Profil U RIGISTIL (przyścienny)', group: 'Profile', unit: 'szt.', length: 4 },
+  LATA5030: { id: 'LATA5030', name: 'Łata drewniana 50×30 mm', group: 'Profile', unit: 'szt.', length: 4 },
+  LATA6040: { id: 'LATA6040', name: 'Łata drewniana 60×40 mm', group: 'Profile', unit: 'szt.', length: 4 },
+  LATA6050: { id: 'LATA6050', name: 'Łata drewniana 60×50 mm', group: 'Profile', unit: 'szt.', length: 4 },
   // Akcesoria sufitowe
+  WIESZAK_KLICK: { id: 'WIESZAK_KLICK', name: 'Wieszak bezpośredni „Klick-Fix” do CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
+  WIESZAK_RIGISTIL: {
+    id: 'WIESZAK_RIGISTIL',
+    name: 'Wieszak RIGISTIL do profili C RIGISTIL – do konstrukcji drewnianej (170 lub 300 mm)',
+    group: 'Akcesoria do sufitów',
+    unit: 'szt.',
+  },
+  UCHWYT_GL: { id: 'UCHWYT_GL', name: 'Uchwyt bezpośredni GL 2 (75 mm) / GL 9 (125 mm) do profili C RIGISTIL', group: 'Akcesoria do sufitów', unit: 'szt.' },
+  LACZNIK_GL3: { id: 'LACZNIK_GL3', name: 'Łącznik wzdłużny GL 3 do profili C RIGISTIL', group: 'Akcesoria do sufitów', unit: 'szt.' },
+  WIESZAK_PLASKI: {
+    id: 'WIESZAK_PLASKI',
+    name: 'Wieszak płaski L-180 / L-270 lub wieszak do poddaszy L-350 do CD 60 (Norgips)',
+    group: 'Akcesoria do sufitów',
+    unit: 'szt.',
+  },
   WIESZAK_NONIUSZ: {
     id: 'WIESZAK_NONIUSZ',
     name: 'Wieszak noniuszowy CD 60 (górny + dolny)',
@@ -389,7 +411,7 @@ export const PRODUCTS: Record<string, Product> = {
   WIESZAK_PODD: { id: 'WIESZAK_PODD', name: 'Wieszak do poddaszy do CD 60', group: 'Akcesoria do sufitów', unit: 'szt.' },
   WKRET_DREWNO: {
     id: 'WKRET_DREWNO',
-    name: 'Wkręt do drewna do mocowania wieszaków do krokwi (min. ø 5,5 mm wg kart Rigips 4.70)',
+    name: 'Wkręt do drewna do mocowania rusztu i wieszaków do krokwi (min. ø 5,5 mm wg kart Rigips 4.70)',
     group: 'Mocowanie',
     unit: 'szt.',
     pack: 100,
@@ -437,6 +459,7 @@ export const PRODUCTS: Record<string, Product> = {
     packUnit: 'opak.',
   },
   TN25: { id: 'TN25', name: 'Wkręt do płyt TN 3,5×25', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
+  TD35: { id: 'TD35', name: 'Wkręt do płyt TD 3,5×35 (do łat drewnianych)', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
   TN35: { id: 'TN35', name: 'Wkręt do płyt TN 3,5×35', group: 'Mocowanie', unit: 'szt.', pack: 1000, packUnit: 'opak.' },
   TN45: { id: 'TN45', name: 'Wkręt do płyt TN 3,5×45', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
   TN55: { id: 'TN55', name: 'Wkręt do płyt TN 3,5×55', group: 'Mocowanie', unit: 'szt.', pack: 500, packUnit: 'opak.' },
@@ -759,6 +782,39 @@ export const CEILING_KIND_LABEL: Record<CeilingKind, string> = {
 /** Wieszaki noniuszowe (sufit podwieszany) albo mocowanie bezpośrednie: uchwyt ES, uchwyt elastyczny, wieszak do poddaszy */
 export type HangerType = 'noniusz' | 'es' | 'elastic' | 'attic';
 
+/**
+ * Ruszt zabudowy poddasza inny niż profile CD 60 na uchwytach ES / elastycznych / wieszakach do poddaszy.
+ * Systemy z tym polem służą tylko do poddaszy (mocowanie do krokwi).
+ */
+export interface AtticFrame {
+  /** direct = profil lub łata przykręcone wprost do krokwi; hanger = profil na wieszakach; between = ruszt między krokwiami (więźba widoczna) */
+  mount: 'direct' | 'hanger' | 'between';
+  /** Produkt elementu, do którego przykręca się płyty */
+  profile: string;
+  /** Nazwa elementu w opisach: „profil kapeluszowy”, „łata drewniana” */
+  profileLabel: string;
+  /** Wysokość elementu pod płytami, mm */
+  profileMm: number;
+  /** Profil przyścienny; brak = bez profilu przy ścianach */
+  edge?: string;
+  /** Produkt wieszaka i jego nazwa w opisach */
+  hanger?: string;
+  hangerLabel?: string;
+  /** Wkręty „pchełki” na jeden wieszak */
+  hangerLn9?: number;
+  /** Łącznik wzdłużny elementów rusztu */
+  joiner?: string;
+  /** Wkręty do drewna na jedno mocowanie do krokwi */
+  woodScrews: number;
+  /** Największa zabudowa pod krokwią (zasięg wieszaka), mm, i skąd ta wartość */
+  maxUnderMm?: number;
+  maxUnderWhy?: string;
+  /** Przekroje łat z największym rozstawem mocowania (krokwi) z karty, cm */
+  battens?: { product: string; size: string; mm: number; maxFix: number }[];
+  /** Największy rozstaw mocowania elementów wzdłuż krokwi (ruszt między krokwiami), cm */
+  sideFix?: number;
+}
+
 export interface CeilingSystem {
   id: string;
   code?: string;
@@ -799,6 +855,8 @@ export interface CeilingSystem {
   variants?: SystemVariant[];
   /** Zabudowa poddasza (skosy, jętki) – mocowanie do krokwi; false = okładzina sufitu mimo uchwytów elastycznych */
   attic?: boolean;
+  /** Ruszt poddasza inny niż CD 60 na wieszakach – system tylko do zabudowy poddasza */
+  atticFrame?: AtticFrame;
 }
 
 const ceilingRefCommon = (layers: number): RefLine[] => [

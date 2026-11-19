@@ -645,7 +645,8 @@ function CeilingWizard({ value, spanCm, rows, onPick }: { value: string; spanCm?
 }
 
 export function CeilingSystemSelect({ id, value, onChange, label = 'System sufitu', spanCm, onPick }: CeilingSelectProps) {
-  const all = allCeilingSystems();
+  // ruszty tylko do poddaszy (łaty, profile kapeluszowe…) wybiera się w formularzu poddasza
+  const all = allCeilingSystems().filter((s) => !s.atticFrame);
   const kinds = Object.keys(CEILING_KIND_LABEL) as CeilingKind[];
   const rows = [
     ...kinds.flatMap((k) => all.filter((s) => s.kind === k && !s.custom).map((s) => rowOf(s, CEILING_KIND_LABEL[k]))),

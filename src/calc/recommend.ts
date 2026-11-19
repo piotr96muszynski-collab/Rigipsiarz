@@ -320,6 +320,8 @@ export function recommendCeilings(needs: CeilingNeeds, systems: CeilingSystem[] 
   const picks: CeilingPick[] = [];
   for (const sys of systems) {
     if (!MOUNT_KINDS[needs.mount].includes(sys.kind)) continue;
+    // ruszty tylko do poddaszy (mocowane do krokwi) nie są sufitami
+    if (sys.atticFrame) continue;
     if (needs.maker && makerOf(sys) !== needs.maker) continue;
     if (needs.mount === 'attic' ? !isAtticSystem(sys) : needs.mount === 'direct' && isAtticSystem(sys)) continue;
     const span = ceilingMaxSpan(sys);

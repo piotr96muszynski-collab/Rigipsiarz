@@ -226,26 +226,28 @@ export function DrawingsPanel({ project, calc }: Props) {
       {attics.map((a, i) => {
         const r = calc.attics.get(a.id)!;
         const sys = ceilingSystemById(a.systemId);
-        const hangerLabel = sys.hangerType === 'attic' ? 'wieszak do poddaszy' : sys.hangerType === 'elastic' ? 'uchwyt elastyczny' : 'wieszak ES';
+        const fr = r.grid.frame;
         return (
           <section key={a.id} className="card sheet">
             <header className="sheet-head">
               <h3>Poddasze {i + 1}</h3>
               <span className="muted small">
-                {fmtNum(r.areaM2, 1)} m² zabudowy · {r.hangers} wieszaków · {sys.name}
+                {fmtNum(r.areaM2, 1)} m² zabudowy{r.hangers ? ` · ${r.hangers} ${fr.hanger ? 'wieszaków' : 'mocowań do krokwi'}` : ''} · {sys.name}
               </span>
             </header>
             <h4>Przekrój poprzeczny</h4>
             <AtticSectionDrawing attic={a} grid={r.grid} title={`Poddasze ${i + 1} – przekrój`} />
             {r.grid.surfaces.map((g) => (
               <div key={g.surface.id}>
-                <h4>{g.surface.label} – ruszt i punkty mocowania wieszaków</h4>
-                <AtticSurfaceDrawing attic={a} g={g} title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()}`} hangerLabel={hangerLabel} />
+                <h4>{g.surface.label} – ruszt i punkty mocowania</h4>
+                <AtticSurfaceDrawing attic={a} g={g} grid={r.grid} title={`Poddasze ${i + 1} – ${g.surface.label.toLowerCase()}`} />
               </div>
             ))}
             <p className="small">
-              Wieszaki mocuje się do krokwi (na suficie do jętek) w miejscach przecięcia z profilami CD. Wymiary czerwone: osie krokwi z wieszakami od ściany
-              szczytowej. Wymiary niebieskie: profile CD od dolnej krawędzi płaszczyzny, mierzone po licu zabudowy.
+              {fr.mount === 'between'
+                ? 'Ruszt jest między krokwiami: elementy wzdłuż krokwi po obu stronach każdego pola, poprzeczki między nimi. Wymiary czerwone: osie krokwi od ściany szczytowej.'
+                : `${fr.hanger ? 'Wieszaki mocuje się' : 'Ruszt przykręca się'} do krokwi (na suficie do jętek) w miejscach przecięcia z elementami rusztu. Wymiary czerwone: osie krokwi z mocowaniem od ściany szczytowej.`}{' '}
+              Wymiary niebieskie: elementy rusztu od dolnej krawędzi płaszczyzny, mierzone po licu zabudowy.
             </p>
             <CutTable req={r.req} title="Lista cięć profili" />
           </section>

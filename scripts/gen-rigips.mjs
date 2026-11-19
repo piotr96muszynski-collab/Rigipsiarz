@@ -359,6 +359,41 @@ const CEIL_SKIP = [
   [/wieszakach z elementem rozprężnym/i, 'ta sama konstrukcja co 4.05.241 AKU, na wieszakach z prętem (bez klasy ogniowej)'],
 ];
 
+/**
+ * Ruszty poddaszy inne niż CD 60 na uchwytach ES / elastycznych / wieszakach do poddaszy (pole `atticFrame`).
+ * Rozstawy, przekroje łat i zużycie pochodzą z tabeli i kalkulatora systemu; tu jest tylko rodzaj konstrukcji.
+ * `mm` = wysokość elementu pod płytami: grubość zabudowy z karty minus płyty (kapeluszowy 15, C RIGISTIL 18).
+ */
+const ATTIC_FRAMES = {
+  '4.70.01': { title: 'łaty drewniane do krokwi', frame: { mount: 'direct', profile: 'LATA5030', profileLabel: 'łata drewniana', profileMm: 30, woodScrews: 1 }, battens: true, plural: 'Łaty drewniane' },
+  '4.70.02': { title: 'profile kapeluszowe do krokwi', frame: { mount: 'direct', profile: 'KAPELUSZ', profileLabel: 'profil kapeluszowy', profileMm: 15, edge: 'UD30', woodScrews: 2 }, plural: 'Profile kapeluszowe' },
+  '4.70.03': {
+    title: 'CD 60 na wieszakach Klick-Fix',
+    frame: { mount: 'hanger', profile: 'CD60', profileLabel: 'profil CD 60', profileMm: 27, edge: 'UD30', hanger: 'WIESZAK_KLICK', hangerLabel: 'wieszak Klick-Fix', hangerLn9: 0, joiner: 'LACZNIK_WZDL', woodScrews: 2 },
+  },
+  '4.70.07': {
+    title: 'C RIGISTIL na wieszakach do konstrukcji drewnianej',
+    frame: {
+      mount: 'hanger', profile: 'C_RIGISTIL', profileLabel: 'profil C RIGISTIL', profileMm: 18, edge: 'U_RIGISTIL', hanger: 'WIESZAK_RIGISTIL', hangerLabel: 'wieszak RIGISTIL', hangerLn9: 0,
+      joiner: 'LACZNIK_GL3', woodScrews: 2, maxUnderMm: 150, maxUnderWhy: 'karta 4.70.07: do 150 mm wełny pod krokwiami',
+    },
+  },
+  '4.70.08': {
+    title: 'C RIGISTIL na uchwytach GL 2 / GL 9',
+    frame: {
+      mount: 'hanger', profile: 'C_RIGISTIL', profileLabel: 'profil C RIGISTIL', profileMm: 18, edge: 'U_RIGISTIL', hanger: 'UCHWYT_GL', hangerLabel: 'uchwyt GL 2 / GL 9', hangerLn9: 4,
+      joiner: 'LACZNIK_GL3', woodScrews: 2, maxUnderMm: 120, maxUnderWhy: 'uchwyt GL 9 o długości 125 mm',
+    },
+  },
+  '4.70.81': { title: 'łaty drewniane do krokwi', frame: { mount: 'direct', profile: 'LATA5030', profileLabel: 'łata drewniana', profileMm: 30, woodScrews: 2 }, battens: true, plural: 'Łaty drewniane' },
+  '4.71.11': { title: 'łaty drewniane między krokwiami (więźba widoczna)', frame: { mount: 'between', profile: 'LATA5030', profileLabel: 'ruszt z łat drewnianych', profileMm: 30, woodScrews: 1 }, battens: true },
+  '4.71.12': {
+    title: 'C RIGISTIL i U RIGISTIL między krokwiami (więźba widoczna)',
+    frame: { mount: 'between', profile: 'C_RIGISTIL', profileLabel: 'ruszt z profili C RIGISTIL', profileMm: 18, edge: 'U_RIGISTIL', woodScrews: 1 },
+  },
+};
+const BATTEN = { '50/30': ['LATA5030', 30], '50x30': ['LATA5030', 30], '60/40': ['LATA6040', 40], '60/50': ['LATA6050', 50] };
+
 const cm = (text) => {
   const v = num(text);
   return v && v >= 100 ? v / 10 : undefined;
@@ -369,7 +404,8 @@ for (const s of data.systems) {
   if (!CEIL_CATS.has(s.cat)) continue;
   const code = s.list[0];
   const sysName = clean(s.list[1]);
-  const why = CEIL_SKIP.find(([re]) => re.test(sysName))?.[1];
+  const AF = s.cat === 'poddasza' ? ATTIC_FRAMES[code] : undefined;
+  const why = AF ? undefined : CEIL_SKIP.find(([re]) => re.test(sysName))?.[1];
   if (why) {
     skip(s, why);
     continue;
@@ -395,7 +431,7 @@ for (const s of data.systems) {
       break;
     }
     const layers = groups.reduce((a, g) => a + g.n, 0);
-    if (boardsM2 && Math.abs(boardsM2 - layers * 100) > 10) {
+    if (boardsM2 && !AF && Math.abs(boardsM2 - layers * 100) > 10) {
       skip(s, `odmiana „${label.slice(0, 50)}” – ilość płyt niezgodna z opisem`);
       continue;
     }
@@ -410,11 +446,11 @@ for (const s of data.systems) {
     const kind = cross ? 'two-level' : trans ? 'one-level' : 'direct';
     const hangRow = v.mats.find(([, , u, , names]) => u === 'PC' && /^(Wieszak|Uchwyt)/.test(matName(names[0])));
     const hangName = hangRow ? matName(hangRow[4][0]) : '';
-    const hangerType = kind !== 'direct' ? 'noniusz' : /do poddaszy/i.test(sysName) ? 'attic' : /elastyczny/i.test(hangName) ? 'elastic' : 'es';
+    const hangerType = AF ? undefined : kind !== 'direct' ? 'noniusz' : /do poddaszy/i.test(sysName) ? 'attic' : /elastyczny/i.test(hangName) ? 'elastic' : 'es';
     const cdM = qty(v, /^CD ?60/, 'm');
-    const along = cm(cell(s, v, /Podłużnie/));
+    const along = cm(cell(s, v, /Podłużnie/)) ?? (AF ? cm(cell(s, v, /rozstaw łat drewnianych/)) : undefined);
     const across = cm(cell(s, v, /Poprzecznie/));
-    let hangerSpacing = cm(cell(s, v, /rozstaw wieszaków|rozstaw mocowania/));
+    let hangerSpacing = cm(cell(s, v, AF ? /rozstaw wieszaków|rozstaw mocowania|rozstaw krokwi/ : /rozstaw wieszaków|rozstaw mocowania/));
     // okładziny sufitów nie mają w tabeli rozstawu uchwytów – wynika z zużycia profili i uchwytów w kalkulatorze
     if (!hangerSpacing && hangRow) hangerSpacing = Math.min(100, Math.floor((cdM / hangRow[1]) * 20) * 5);
     // Rigips: profile „główne” (górne) i „nośne” (dolne, pod płytę); w aplikacji to odpowiednio nośne i montażowe
@@ -442,8 +478,23 @@ for (const s of data.systems) {
         mainSpacing, secondarySpacing, hangerSpacing, across,
         screwsOuter: outerScrews, screwsInner: innerScrews,
         attic: s.cat === 'poddasza', variants: [], loads: [],
+        ...(AF ? { af: AF, frame: { ...AF.frame } } : {}),
       };
       ceilFams.set(key, fam);
+    }
+    if (AF) {
+      // przekroje łat i ich rozstawy mocowania: każda odmiana karty to inny przekrój
+      const size = clean(cell(s, v, /przekr[oó]j/)).match(/\d+ ?[\/x] ?\d+/)?.[0].replace(/\s/g, '');
+      if (AF.battens && BATTEN[size] && !(fam.frame.battens ??= []).some((b) => b.size === size.replace(/[\/x]/, '×'))) {
+        fam.frame.battens.push({ product: BATTEN[size][0], size: size.replace(/[\/x]/, '×'), mm: BATTEN[size][1], maxFix: hangerSpacing });
+        fam.frame.battens.sort((a, b) => a.maxFix - b.maxFix);
+        fam.frame.profile = fam.frame.battens[0].product;
+        fam.frame.profileMm = fam.frame.battens[0].mm;
+        // ogólny rozstaw mocowania systemu = największy z karty (dla najgrubszej łaty)
+        fam.hangerSpacing = Math.max(fam.hangerSpacing, hangerSpacing);
+      }
+      const side = cm(cell(s, v, /mocowania łat podłużnych/));
+      if (side && fam.frame.mount === 'between') fam.frame.sideFix = Math.max(fam.frame.sideFix ?? 0, side);
     }
     // odmiany z obciążeniem dodatkowym różnią się tylko rozstawem wieszaków – trafiają do opisu
     if (load && !/^bez obciążenia/.test(load)) {
@@ -492,8 +543,20 @@ function ceilingReference(fam) {
   const boards = boardRows.filter((x) => x[2] === 'm2').reduce((a, x) => a + x[1], 0);
   if (boards) out.push({ label: 'Płyty', qty: boards / 100, unit: 'm²' });
   line(/^CD ?60/, 'm', 'CD60', 'Profil CD 60');
+  line(/^Profil kapeluszowy/, 'm', 'KAPELUSZ', 'Profil kapeluszowy 15/48');
+  line(/^(Profil )?C RIGISTIL/, 'm', 'C_RIGISTIL', 'Profil C RIGISTIL');
+  line(/^U RIGISTIL/, 'm', 'U_RIGISTIL', 'Profil U RIGISTIL');
+  line(/^Łata drewniana/, 'm', fam.frame?.profile, 'Łata drewniana');
+  line(/^Wieszak bezpośredni "Klick-Fix"/, 'PC', 'WIESZAK_KLICK', 'Wieszak Klick-Fix');
+  line(/^Wieszak RIGISTIL/, 'PC', 'WIESZAK_RIGISTIL', 'Wieszak RIGISTIL do konstrukcji drewnianej');
+  line(/^Uchwyt bezpośredni GL/, 'PC', 'UCHWYT_GL', 'Uchwyt bezpośredni GL 2 / GL 9');
+  line(/^Łącznik wzdłużny GL 3/, 'PC', 'LACZNIK_GL3', 'Łącznik wzdłużny GL 3');
+  line(/^Wkręt (do drewna|mocujący)/, 'PC', fam.attic ? 'WKRET_DREWNO' : undefined, 'Wkręt do drewna (mocowanie do krokwi)');
+  line(/^Wkręty TD 3,5x35/, 'PC', 'TD35', 'Wkręt TD 35 (płyty do łat)');
   line(/^UD 30/, 'm', 'UD30', 'Profil UD 30');
-  if (fam.kind === 'direct') {
+  if (fam.frame) {
+    // wieszaki rusztów poddaszy są wyżej
+  } else if (fam.kind === 'direct') {
     const product = { es: 'WIESZAK_ES', elastic: 'UCHWYT_ELAST', attic: 'WIESZAK_PODD' }[fam.hangerType];
     line(/^(Uchwyt|Wieszak do poddaszy)/, 'PC', product, { es: 'Uchwyt ES', elastic: 'Uchwyt elastyczny', attic: 'Wieszak do poddaszy' }[fam.hangerType]);
   } else {
@@ -503,7 +566,7 @@ function ceilingReference(fam) {
     line(/^Łącznik krzyżowy/, 'PC', 'LACZNIK_KRZ', 'Łącznik krzyżowy CD 60');
     line(/^Łącznik poprzeczny/, 'PC', 'LACZNIK_JEDNO', 'Łącznik poprzeczny CD 60');
   }
-  line(/^Łącznik wzdłużny/, 'PC', 'LACZNIK_WZDL', 'Łącznik wzdłużny CD 60');
+  line(/^Łącznik wzdłużny (?!GL)/, 'PC', 'LACZNIK_WZDL', 'Łącznik wzdłużny CD 60');
   for (const len of [25, 35, 45, 55]) line(new RegExp(`^Wkręty\\s+TN 3,5x${len}\\b`), 'PC', `TN${len}`, `Wkręt TN ${len}`);
   line(/^Wkręty\s+TN 4,2x70/, 'PC', 'TN70', 'Wkręt TN 70');
   for (const len of [25, 35, 45]) line(new RegExp(`^Wkręty HartFix 3,[89]x${len}`), 'PC', `HARTFIX${len}`, `Wkręt HartFix ${len}`);
@@ -550,11 +613,21 @@ for (const fam of ceilFams.values()) {
       ? `Sufit ${fireOnly ? 'ogniochronny ' : ''}dwupoziomowy CD 60`
       : fam.kind === 'one-level'
         ? `Sufit ${fireOnly ? 'ogniochronny ' : ''}jednopoziomowy CD 60`
-        : fam.attic
+        : fam.af
+          ? `Poddasze: ${fam.af.title}`
+          : fam.attic
           ? `Poddasze: CD 60 na ${{ es: 'uchwytach ES', elastic: 'uchwytach elastycznych', attic: 'wieszakach do poddaszy' }[fam.hangerType]}`
           : `Okładzina sufitu ${fireOnly ? 'ogniochronna ' : ''}CD 60 na ${fam.hangerType === 'elastic' ? 'uchwytach elastycznych' : 'uchwytach ES'}`;
+  const fr = fam.frame;
+  const frLabel = fr ? fr.profileLabel.charAt(0).toUpperCase() + fr.profileLabel.slice(1) : '';
   const info = [
-    fam.kind === 'direct'
+    fr
+      ? fr.mount === 'hanger'
+        ? `Profile ${fr.profile === 'CD60' ? 'CD 60' : 'C RIGISTIL'} co ${fam.secondarySpacing} cm, ${fr.hangerLabel} co max ${fam.hangerSpacing} cm`
+        : fr.mount === 'direct'
+          ? `${fam.af.plural} co ${fam.secondarySpacing} cm przykręcone do każdej krokwi${fr.battens ? ` · łaty ${fr.battens.map((b) => `${b.size} mm przy krokwiach co max ${b.maxFix} cm`).join(', ')}` : ` (mocowanie co max ${fam.hangerSpacing} cm)`}`
+          : `${frLabel}: poprzeczki co ${fam.secondarySpacing} cm między krokwiami, elementy wzdłuż krokwi mocowane co max ${fr.sideFix ?? 100} cm · krokwie zostają widoczne`
+      : fam.kind === 'direct'
       ? `Profile CD co ${fam.secondarySpacing} cm, ${HANGER_NAME[fam.hangerType]} co ${fam.hangerSpacing} cm`
       : `Profile nośne (górne) co ${fam.mainSpacing} cm, montażowe (dolne) co ${fam.secondarySpacing} cm, wieszaki co ${fam.hangerSpacing} cm`,
     fam.kind === 'direct' && fam.across && fam.across !== fam.secondarySpacing ? `przy płytach w poprzek profili z płytą typ A profile co ${fam.across} cm` : undefined,
@@ -576,13 +649,14 @@ for (const fam of ceilFams.values()) {
     mainSpacing: fam.mainSpacing,
     secondarySpacing: fam.secondarySpacing,
     hangerSpacing: fam.hangerSpacing,
-    hangerType: fam.hangerType,
+    ...(fam.hangerType ? { hangerType: fam.hangerType } : {}),
     screwsOuter: fam.screwsOuter,
     screwsInner: fam.screwsInner,
     fire: range(fam.variants.map((x) => x.fire), 'EI', fam.variants.some((x) => !x.fire) || uniq(fam.variants.map((x) => x.fire)).length > 1 ? ' (zależnie od płyty – patrz odmiany)' : ''),
     info,
     source: { label: `Rigips ${fam.code} – strona systemu i kalkulator zużycia`, url: `https://www.rigips.pl${fam.s.url}` },
     ...(fam.kind === 'direct' ? { attic: fam.attic } : {}),
+    ...(fam.frame ? { atticFrame: fam.frame } : {}),
     reference: ceilingReference(fam),
     variants: fam.variants,
   });
@@ -592,7 +666,7 @@ if (DEBUG) {
   console.log('\nSufity:');
   for (const c of ceilings)
     console.log(
-      `${c.id.padEnd(20)} ${c.kind.padEnd(9)} ${c.hangerType.padEnd(8)} L${c.layers} ${c.defaultBoard.padEnd(11)} ${(c.innerBoard ?? '').padEnd(8)} ${c.mainSpacing}/${c.secondarySpacing}/${c.hangerSpacing} wkr ${c.screwsOuter}/${c.screwsInner} ${String(c.variants.length).padStart(2)}v ${c.fire ?? ''} | ${c.name}`,
+      `${c.id.padEnd(20)} ${c.kind.padEnd(9)} ${(c.hangerType ?? c.atticFrame?.mount ?? '').padEnd(8)} L${c.layers} ${c.defaultBoard.padEnd(11)} ${(c.innerBoard ?? '').padEnd(8)} ${c.mainSpacing}/${c.secondarySpacing}/${c.hangerSpacing} wkr ${c.screwsOuter}/${c.screwsInner} ${String(c.variants.length).padStart(2)}v ${c.fire ?? ''} | ${c.name}`,
     );
   console.log(`\nPominięte (${uniq(skipped).length}):\n` + uniq(skipped).join('\n'));
 }

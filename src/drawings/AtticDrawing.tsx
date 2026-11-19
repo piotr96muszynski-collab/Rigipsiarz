@@ -1,5 +1,6 @@
 import { splicePositions } from '../calc/layout';
 import type { AtticGrid, AtticSurfaceGrid } from '../calc/attic';
+import { PRODUCTS } from '../catalog/rigips';
 import type { Attic } from '../model/types';
 import { C, ChainH, ChainV, Dim, INK, Legend, Paper, clamp, cm, nss } from './svg';
 
@@ -10,7 +11,7 @@ const RAFTER_EDGE = '#8a6230';
  * Rozwinięcie jednej płaszczyzny (skosu albo sufitu pod jętkami): krokwie, profile CD w poprzek krokwi
  * i punkty mocowania wieszaków. Poziomo długość wzdłuż kalenicy, pionowo długość po skosie od dolnej krawędzi.
  */
-export function AtticSurfaceDrawing({ attic, g, title, hangerLabel }: { attic: Attic; g: AtticSurfaceGrid; title: string; hangerLabel: string }) {
+export function AtticSurfaceDrawing({ attic, g, grid, title }: { attic: Attic; g: AtticSurfaceGrid; grid: AtticGrid; title: string }) {
   const L = attic.length;
   const run = g.surface.run;
   const f = clamp(Math.max(L, run) / 26, 8, 30);
@@ -21,7 +22,11 @@ export function AtticSurfaceDrawing({ attic, g, title, hangerLabel }: { attic: A
   // wszystkie krokwie (jasne) i te z wieszakami (z punktami)
   const all: number[] = [];
   for (let u = Math.max(0, attic.firstRafter); u <= L + 1e-6; u += Math.max(20, attic.rafterSpacing)) all.push(u);
-  const splices = splicePositions(0, L);
+  const fr = grid.frame;
+  const between = fr.mount === 'between';
+  const splices = fr.joiner && !between ? splicePositions(0, L) : [];
+  const edgeName = fr.edge ? PRODUCTS[fr.edge].name.replace(/^Profil (Rigips )?/, '').replace(/ \(.*$/, '') : '';
+  const profName = PRODUCTS[grid.profile].name.replace(/^Profil (Rigips )?/, '');
 
   return (
     <figure className="drawing">
@@ -30,18 +35,26 @@ export function AtticSurfaceDrawing({ attic, g, title, hangerLabel }: { attic: A
         {all.map((u) => (
           <rect key={u} x={u - attic.rafterWidth / 2} y={0} width={attic.rafterWidth} height={run} fill={RAFTER} stroke={RAFTER_EDGE} strokeWidth={0.6} {...nss} />
         ))}
-        {g.cd.map((s) => (
-          <line key={s} x1={0} y1={Y(s)} x2={L} y2={Y(s)} stroke={C.main} strokeWidth={3} {...nss} />
-        ))}
+        {between
+          ? grid.bays.flatMap((b) => [
+              ...g.cd.map((s) => <line key={`${b.u}-${s}`} x1={b.u} y1={Y(s)} x2={b.u + b.w} y2={Y(s)} stroke={C.main} strokeWidth={3} {...nss} />),
+              <line key={`${b.u}-l`} x1={b.u + 1} y1={0} x2={b.u + 1} y2={run} stroke={C.ud} strokeWidth={3} {...nss} />,
+              <line key={`${b.u}-r`} x1={b.u + b.w - 1} y1={0} x2={b.u + b.w - 1} y2={run} stroke={C.ud} strokeWidth={3} {...nss} />,
+            ])
+          : g.cd.map((s) => <line key={s} x1={0} y1={Y(s)} x2={L} y2={Y(s)} stroke={C.main} strokeWidth={3} {...nss} />)}
         {g.cd.flatMap((s) => splices.map((u) => <rect key={`${s}-${u}`} x={u - f * 0.5} y={Y(s) - f * 0.15} width={f} height={f * 0.3} fill={INK} />))}
         {g.cd.flatMap((s) => g.hangerU.map((u) => <circle key={`${s}-${u}`} cx={u} cy={Y(s)} r={f * 0.3} fill={C.hanger} />))}
-        {/* UD 30 na ścianach szczytowych */}
-        <line x1={0} y1={0} x2={0} y2={run} stroke={C.ud} strokeWidth={4} {...nss} />
-        <line x1={L} y1={0} x2={L} y2={run} stroke={C.ud} strokeWidth={4} {...nss} />
+        {/* profil przyścienny na ścianach szczytowych */}
+        {fr.edge && !between && (
+          <>
+            <line x1={0} y1={0} x2={0} y2={run} stroke={C.ud} strokeWidth={4} {...nss} />
+            <line x1={L} y1={0} x2={L} y2={run} stroke={C.ud} strokeWidth={4} {...nss} />
+          </>
+        )}
         <rect x={0} y={0} width={L} height={run} fill="none" stroke={INK} strokeWidth={1} {...nss} />
 
         {/* osie krokwi z wieszakami */}
-        <ChainH xs={[0, ...g.hangerU, L]} y={0} off={-f * 1.6} f={f * 0.75} color={C.hanger} />
+        <ChainH xs={between ? [0, ...grid.rafters, L] : [0, ...g.hangerU, L]} y={0} off={-f * 1.6} f={f * 0.75} color={C.hanger} />
         <Dim x1={0} y1={0} x2={L} y2={0} off={-f * 3.6} f={f} label={cm(L)} />
         {/* rozstaw profili CD od dolnej krawędzi */}
         <ChainV ys={[0, ...g.cd.map(Y), run]} x={0} off={-f * 1.6} f={f * 0.75} color={C.main} />
@@ -56,10 +69,19 @@ export function AtticSurfaceDrawing({ attic, g, title, hangerLabel }: { attic: A
       <Legend
         items={[
           { color: RAFTER, label: `krokwie${slope ? '' : ' / jętki'} ${cm(attic.rafterWidth)}×${cm(attic.rafterHeight)} co ${cm(attic.rafterSpacing)} cm` },
-          { color: C.main, label: `CD 60 w poprzek krokwi – ${g.cd.length} szt. po ${cm(L)} cm` },
-          { color: C.hanger, label: `${hangerLabel} – ${g.cd.length * g.hangerU.length} szt., po 2 wkręty do drewna w krokiew` },
-          { color: C.ud, label: 'UD 30 na ścianach szczytowych' },
-          ...(splices.length ? [{ color: INK, label: 'łącznik wzdłużny CD 60' }] : []),
+          between
+            ? { color: C.main, label: `${profName}: poprzeczki między krokwiami – ${g.cd.length * grid.bays.length} szt.` }
+            : { color: C.main, label: `${profName} w poprzek krokwi – ${g.cd.length} szt. po ${cm(L)} cm` },
+          ...(between
+            ? [{ color: C.ud, label: `${fr.edge ? edgeName : profName} wzdłuż krokwi, po obu stronach każdego pola – ${grid.bays.length * 2} szt. po ${cm(run)} cm` }]
+            : [
+                {
+                  color: C.hanger,
+                  label: `${fr.hanger ? fr.hangerLabel : 'mocowanie do krokwi'} – ${g.cd.length * g.hangerU.length} szt., po ${fr.woodScrews} ${fr.woodScrews === 1 ? 'wkręcie' : 'wkręty'} do drewna w krokiew`,
+                },
+              ]),
+          ...(fr.edge && !between ? [{ color: C.ud, label: `${edgeName} na ścianach szczytowych` }] : []),
+          ...(splices.length ? [{ color: INK, label: 'łącznik wzdłużny' }] : []),
         ]}
       />
     </figure>
@@ -157,8 +179,14 @@ export function AtticSectionDrawing({ attic, grid, title }: { attic: Attic; grid
           ...(attic.woolBetween || attic.woolUnder
             ? [{ pattern: 'wool' as const, label: `wełna: ${attic.woolBetween ? `${attic.woolBetween} mm między krokwiami` : ''}${attic.woolBetween && attic.woolUnder ? ' + ' : ''}${attic.woolUnder ? `${attic.woolUnder} mm pod krokwiami` : ''}` }]
             : []),
-          { color: C.main, label: `profile CD 60 co ${grid.cdSpacing} cm` },
-          { color: INK, label: `lico płyt ${grid.depthMm} mm pod spodem krokwi; wymiary sufitu i skosów po licu płyt` },
+          { color: C.main, label: `${grid.frame.profileLabel} co ${grid.cdSpacing} cm` },
+          {
+            color: INK,
+            label:
+              grid.depthMm < 0
+                ? `lico płyt ${-grid.depthMm} mm nad spodem krokwi (krokwie widoczne); wymiary sufitu i skosów po licu płyt`
+                : `lico płyt ${grid.depthMm} mm pod spodem krokwi; wymiary sufitu i skosów po licu płyt`,
+          },
           { pattern: 'hatch', label: 'ściany murowane' },
         ]}
       />
