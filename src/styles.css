@@ -1054,8 +1054,111 @@ li.done .item-qty strong {
   display: flex;
   align-items: center;
 }
-.joint > strong {
+.joint strong {
   font-size: 0.95rem;
+}
+/* Etykieta z przyciskiem „i”; opis po dotknięciu łamie się pod spodem na całą szerokość */
+.label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.label-row h3 {
+  margin: 0;
+}
+.info-tip {
+  flex: none;
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: italic 700 0.8rem/1 Georgia, serif;
+  cursor: pointer;
+  padding: 0;
+}
+/* Większe pole dotyku niż sam znaczek */
+.info-tip::after {
+  content: '';
+  position: absolute;
+  inset: -11px;
+}
+.info-tip.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.info-tip-text {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.fin-grid {
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .fin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.finishing summary {
+  list-style: none;
+}
+.finishing summary::-webkit-details-marker {
+  display: none;
+}
+.finishing summary::before {
+  content: '▸';
+  flex: none;
+  width: 1.1em;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.finishing details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.finishing .fin-section {
+  padding-block: 8px;
+}
+.finishing .fin-section[open] {
+  padding-bottom: 18px;
+}
+.finishing .fin-section:not([open]) {
+  gap: 0;
+}
+.fin-section > summary {
+  gap: 8px;
+}
+.fin-sum-title {
+  flex: 1;
+  font-size: 1.05rem;
+}
+.fin-sum-meta {
+  display: flex;
+  gap: 6px;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+.badge.warn {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+.fin-more {
+  font-size: 0.92rem;
+}
+.fin-more[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* ---------- komunikat o aktualizacji ---------- */
@@ -3217,4 +3320,7 @@ button.catalog-part {
 .attic-assumptions ul {
   margin: 0;
   padding-left: 20px;
+}
+.fin-section > p {
+  margin: 0;
 }

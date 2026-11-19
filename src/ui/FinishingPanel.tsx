@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import {
   COMPOUNDS,
+  DEFAULT_FINISHING,
   EDGE_LABEL,
   Q1_STEPS,
   TAPES,
@@ -18,6 +19,7 @@ import { JOINT_KIND_LABEL, defaultTypeId, edgesTotal, type Joint, type JointEdge
 import type { ProjectCalc } from '../calc/materials';
 import type { Project } from '../model/types';
 import { Warnings } from './SystemSelect';
+import { InfoTip } from './InfoTip';
 import { Picker } from './Picker';
 import { fmtNum } from './wallStyle';
 
@@ -119,40 +121,53 @@ export function FinishingPanel({ project, calc, update }: Props) {
     );
   };
 
+  /** Ile pozycji wykończenia domyślnego różni się od ustawień fabrycznych */
+  const changedDefaults = DEFAULT_ROWS.filter((r) => f[r.key] !== DEFAULT_FINISHING[r.key]).length;
+  const ownChoices = (list: Joint[]) =>
+    list.filter((j) => [j.outer, j.inner].some((e) => e && e.lengths.length > 0 && !e.isDefault)).length;
+
   return (
     <div className="elements finishing">
       <section className="card">
-        <div className="card-head">
+        <div className="label-row">
           <h3>Spoinowanie (poziom Q1)</h3>
-          <small className="muted">Masa i taśma na spoinach płyt, łbach wkrętów, narożnikach i kątach. Gładź (Q2–Q4) nie jest liczona.</small>
+          <InfoTip label="Spoinowanie Q1">
+            Masa i taśma na spoinach płyt, łbach wkrętów, narożnikach i kątach. Gładź (Q2–Q4) nie jest liczona.
+          </InfoTip>
         </div>
-        <div className="field">
-          <label htmlFor="fin-compound">Masa szpachlowa</label>
-          <Picker
-            id="fin-compound"
-            label="Masa szpachlowa"
-            value={f.compound}
-            mode="sheet"
-            options={COMPOUNDS.map((c) => ({ value: c.id, label: c.name, hint: `${fmtNum(c.kgPerM2, 2)} kg/m² · ${c.kind}` }))}
-            onChange={(v) => setF({ compound: v })}
-          />
-          <small className="hint">{compoundById(f.compound).info}</small>
-        </div>
-        <div className="field">
-          <label htmlFor="fin-tape">Taśma spoinowa</label>
-          <Picker
-            id="fin-tape"
-            label="Taśma spoinowa"
-            value={f.tape}
-            mode="sheet"
-            options={TAPES.map((t) => ({ value: t.id, label: t.name, hint: t.info }))}
-            onChange={(v) => setF({ tape: v })}
-          />
-          <small className="hint">{tapeById(f.tape).info}</small>
-        </div>
-        {boards.length > 0 && (
+        <div className="fin-grid">
           <div className="field">
-            <span className="label">Krawędzie płyt w projekcie</span>
+            <div className="label-row">
+              <label htmlFor="fin-compound">Masa szpachlowa</label>
+              <InfoTip label="Masa szpachlowa">{compoundById(f.compound).info}</InfoTip>
+            </div>
+            <Picker
+              id="fin-compound"
+              label="Masa szpachlowa"
+              value={f.compound}
+              mode="sheet"
+              options={COMPOUNDS.map((c) => ({ value: c.id, label: c.name, hint: `${fmtNum(c.kgPerM2, 2)} kg/m² · ${c.kind}` }))}
+              onChange={(v) => setF({ compound: v })}
+            />
+          </div>
+          <div className="field">
+            <div className="label-row">
+              <label htmlFor="fin-tape">Taśma spoinowa</label>
+              <InfoTip label="Taśma spoinowa">{tapeById(f.tape).info}</InfoTip>
+            </div>
+            <Picker
+              id="fin-tape"
+              label="Taśma spoinowa"
+              value={f.tape}
+              mode="sheet"
+              options={TAPES.map((t) => ({ value: t.id, label: t.name, hint: t.info }))}
+              onChange={(v) => setF({ tape: v })}
+            />
+          </div>
+        </div>
+        <details className="fin-more">
+          <summary>{boards.length > 0 ? 'Krawędzie płyt i technologia Q1' : 'Technologia Q1 krok po kroku'}</summary>
+          {boards.length > 0 && (
             <ul className="plain-list">
               {boards.map((b) => (
                 <li key={b.id}>
@@ -161,10 +176,7 @@ export function FinishingPanel({ project, calc, update }: Props) {
                 </li>
               ))}
             </ul>
-          </div>
-        )}
-        <details>
-          <summary>Technologia Q1 krok po kroku</summary>
+          )}
           <ol className="plain-list">
             {Q1_STEPS.map((s) => (
               <li key={s}>{s}</li>
@@ -173,50 +185,71 @@ export function FinishingPanel({ project, calc, update }: Props) {
         </details>
       </section>
 
-      <section className="card">
-        <div className="card-head">
-          <h3>Wykończenie domyślne</h3>
-          <small className="muted">Dotyczy wszystkich połączeń bez własnego wyboru poniżej.</small>
+      <details className="card fin-section">
+        <summary>
+          <span className="fin-sum-title">Wykończenie domyślne</span>
+          <span className="fin-sum-meta">
+            {changedDefaults ? <span className="badge">zmienione: {changedDefaults}</span> : <span className="muted">fabryczne</span>}
+          </span>
+        </summary>
+        <p className="muted small">Dotyczy wszystkich połączeń bez własnego wyboru poniżej.</p>
+        <div className="fin-grid">
+          {DEFAULT_ROWS.map((r) => (
+            <div className="field" key={r.key}>
+              <div className="label-row">
+                <label htmlFor={`fin-${r.key}`}>{r.label}</label>
+                <InfoTip label={r.label}>{cornerTypeById(f[r.key])?.info}</InfoTip>
+              </div>
+              <Picker
+                id={`fin-${r.key}`}
+                label={r.label}
+                value={f[r.key]}
+                mode="sheet"
+                options={cornerTypesFor(r.use).map((t) => ({ value: t.id, label: t.name, hint: t.info }))}
+                onChange={(v) => setF({ [r.key]: v })}
+              />
+            </div>
+          ))}
         </div>
-        {DEFAULT_ROWS.map((r) => (
-          <div className="field" key={r.key}>
-            <label htmlFor={`fin-${r.key}`}>{r.label}</label>
-            <Picker
-              id={`fin-${r.key}`}
-              label={r.label}
-              value={f[r.key]}
-              mode="sheet"
-              options={cornerTypesFor(r.use).map((t) => ({ value: t.id, label: t.name, hint: t.info }))}
-              onChange={(v) => setF({ [r.key]: v })}
-            />
-            <small className="hint">{cornerTypeById(f[r.key])?.info}</small>
-          </div>
-        ))}
-      </section>
+      </details>
 
       {calc.joints.length === 0 && <p className="muted">Dodaj ściany lub sufity, żeby zobaczyć ich połączenia.</p>}
       {GROUPS.map((g) => {
         const list = calc.joints.filter((j) => g.kinds.includes(j.kind));
         if (!list.length) return null;
+        const own = ownChoices(list);
+        const warn = list.reduce((n, j) => n + j.warnings.length, 0);
         return (
-          <section className="card" key={g.title}>
-            <h3>{g.title}</h3>
+          <details className="card fin-section" key={g.title} open={warn > 0 || undefined}>
+            <summary>
+              <span className="fin-sum-title">
+                {g.title} <span className="muted">· {list.length}</span>
+              </span>
+              <span className="fin-sum-meta">
+                {own > 0 && <span className="badge">własne: {own}</span>}
+                {warn > 0 && <span className="badge warn">uwagi: {warn}</span>}
+              </span>
+            </summary>
             {list.map((j) => (
               <div className="opening joint" key={j.id}>
-                <strong>{title(j)}</strong>
-                {j.frame.length > 0 && (
-                  <ul className="plain-list small muted">
-                    {j.frame.map((t) => (
-                      <li key={t}>{t}</li>
-                    ))}
-                  </ul>
-                )}
+                <div className="label-row">
+                  <strong>{title(j)}</strong>
+                  {j.frame.length > 0 && (
+                    <InfoTip label={`Konstrukcja: ${title(j)}`}>
+                      <ul className="plain-list small">
+                        {j.frame.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    </InfoTip>
+                  )}
+                </div>
                 {j.outer && j.outer.lengths.length > 0 && edgeSelect(j, 'outer', j.outer)}
                 {j.inner && j.inner.lengths.length > 0 && edgeSelect(j, 'inner', j.inner)}
                 <Warnings items={j.warnings} />
               </div>
             ))}
-          </section>
+          </details>
         );
       })}
     </div>
