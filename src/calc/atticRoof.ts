@@ -469,10 +469,10 @@ export function planToFace(f: RoofFace, p: P2): { t: number; s: number } {
 }
 
 /** Część wspólna prostej p·d = const (s na płaszczyźnie) z płaszczyzną: przedziały wzdłuż `e` */
-export function faceSpans(f: RoofFace, s: number): [number, number][] {
+export function faceSpans(f: RoofFace, s: number, pieces: P2[][] = f.pieces): [number, number][] {
   const dd = f.d0 + s * f.cos;
   const iv: [number, number][] = [];
-  for (const pc of f.pieces) {
+  for (const pc of pieces) {
     // pas wokół prostej: przecięcie krawędzi kawałka z prostą
     const xs: number[] = [];
     for (let i = 0; i < pc.length; i++) {
@@ -531,25 +531,29 @@ export function segmentFixes(rafters: number[], t0: number, t1: number, maxSpaci
   return out;
 }
 
-/** Linie rusztu na płaszczyźnie: rozstaw `spacing`, skrajne `edge` od dolnej i górnej krawędzi */
-export function faceCdLines(f: RoofFace, spacing: number, edge: number, maxFix: number, every: boolean): RoofCdLine[] {
+/**
+ * Linie rusztu na płaszczyźnie: rozstaw `spacing`, skrajne `edge` od dolnej i górnej krawędzi. `pieces` –
+ * obszar, na którym leżą odcinki (więźba widoczna: pola między krokwiami z `faceBays`, odcinki bez mocowań
+ * pośrednich – przykręcone na końcach do krokwi).
+ */
+export function faceCdLines(f: RoofFace, spacing: number, edge: number, maxFix: number, every: boolean, pieces?: P2[][]): RoofCdLine[] {
   const out: RoofCdLine[] = [];
   for (const s of linePositions(f.run, spacing, edge)) {
-    for (const [t0, t1] of faceSpans(f, s)) {
+    for (const [t0, t1] of faceSpans(f, s, pieces ?? f.pieces)) {
       const end0 = edgeKindAt(f, faceToPlan(f, t0, s));
       const end1 = edgeKindAt(f, faceToPlan(f, t1, s));
-      out.push({ s, t0, t1, end0, end1, fix: segmentFixes(f.rafters, t0, t1, maxFix, every) });
+      out.push({ s, t0, t1, end0, end1, fix: pieces ? [] : segmentFixes(f.rafters, t0, t1, maxFix, every) });
     }
   }
   return out;
 }
 
-/** Odcinki krokwi (kulawych) na płaszczyźnie w układzie (t, s0–s1) */
-export function faceRafterSpans(f: RoofFace): { t: number; s0: number; s1: number }[] {
+/** Odcinki krokwi (kulawych) na płaszczyźnie w układzie (t, s0–s1); `ts` – inne osie wzdłuż `e` niż krokwie */
+export function faceRafterSpans(f: RoofFace, ts: number[] = f.rafters, pieces: P2[][] = f.pieces): { t: number; s0: number; s1: number }[] {
   const out: { t: number; s0: number; s1: number }[] = [];
-  for (const t of f.rafters) {
+  for (const t of ts) {
     const ss: number[] = [];
-    for (const pc of f.pieces)
+    for (const pc of pieces)
       for (let i = 0; i < pc.length; i++) {
         const p = pc[i];
         const q = pc[(i + 1) % pc.length];
@@ -563,6 +567,61 @@ export function faceRafterSpans(f: RoofFace): { t: number; s0: number; s1: numbe
     if (ss.length >= 2) out.push({ t, s0: Math.min(...ss), s1: Math.max(...ss) });
   }
   return out;
+}
+
+/** Czy odcinek p–q leży na brzegu wielokąta */
+function onBoundary(pc: P2[], p: P2, q: P2): boolean {
+  const m = { u: (p.u + q.u) / 2, v: (p.v + q.v) / 2 };
+  for (let i = 0; i < pc.length; i++) {
+    const a = pc[i];
+    const b = pc[(i + 1) % pc.length];
+    const dx = b.u - a.u;
+    const dy = b.v - a.v;
+    const L2 = dx * dx + dy * dy;
+    if (L2 < 1e-9) continue;
+    const k = ((m.u - a.u) * dx + (m.v - a.v) * dy) / L2;
+    if (k < -0.01 || k > 1.01) continue;
+    if (Math.hypot(m.u - a.u - dx * k, m.v - a.v - dy * k) < 0.5) return true;
+  }
+  return false;
+}
+
+/**
+ * Więźba widoczna: części płaszczyzny między krokwiami (pola) – bez pasów krokwi (oś ± `rafterWidth`/2)
+ * i bez pasa krokwi narożnej / koszowej wzdłuż linii narożnika i kosza (w rzucie, `rafterWidth`/2 od linii).
+ */
+export function faceBays(f: RoofFace, rafterWidth: number): P2[][] {
+  const half = rafterWidth / 2;
+  const edges = [-1e9, ...f.rafters.flatMap((r) => [r - half, r + half]), 1e9];
+  const strips: [number, number][] = [];
+  for (let i = 0; i < edges.length; i += 2) if (edges[i + 1] - edges[i] > 1) strips.push([edges[i], edges[i + 1]]);
+  const out: P2[][] = [];
+  for (const pc of f.pieces) {
+    // krawędzie kawałka przy krokwi narożnej / koszowej: półpłaszczyzna odsunięta w głąb kawałka
+    const cx = pc.reduce((t, p) => t + p.u, 0) / pc.length;
+    const cy = pc.reduce((t, p) => t + p.v, 0) / pc.length;
+    const cuts: Half[] = [];
+    for (const e of f.edges) {
+      if ((e.kind !== 'hip' && e.kind !== 'valley') || !onBoundary(pc, e.p, e.q)) continue;
+      const L = Math.hypot(e.q.u - e.p.u, e.q.v - e.p.v);
+      let n = { u: -(e.q.v - e.p.v) / L, v: (e.q.u - e.p.u) / L };
+      if ((cx - e.p.u) * n.u + (cy - e.p.v) * n.v < 0) n = { u: -n.u, v: -n.v };
+      // n·(x − p) ≥ half
+      cuts.push({ nu: -n.u, nv: -n.v, k: n.u * e.p.u + n.v * e.p.v + half });
+    }
+    for (const [lo, hi] of strips) {
+      let poly = clip(pc, { nu: -f.e.u, nv: -f.e.v, k: lo });
+      if (poly.length) poly = clip(poly, { nu: f.e.u, nv: f.e.v, k: -hi });
+      for (const h of cuts) if (poly.length) poly = clip(poly, h);
+      if (poly.length && Math.abs(polyArea(poly)) > 10) out.push(poly);
+    }
+  }
+  return out;
+}
+
+/** Pole części płaszczyzny w przestrzeni, m² */
+export function piecesAreaM2(f: RoofFace, pieces: P2[][]): number {
+  return pieces.reduce((s, pc) => s + Math.abs(polyArea(pc)), 0) / f.cos / 10000;
 }
 
 const key2 = (p: P2) => `${Math.round(p.u * 100)}:${Math.round(p.v * 100)}`;

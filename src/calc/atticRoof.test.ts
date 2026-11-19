@@ -81,11 +81,72 @@ describe('zestawienie poddasza z narożnikami i koszami', () => {
     expect(r.areaM2).toBeCloseTo(104 / Math.cos(Math.PI / 4), 1);
     expect(r.assumptions.some((x) => x.includes('kosz'))).toBe(true);
   });
-  it('system z widoczną więźbą: narożniki pominięte z ostrzeżeniem', () => {
-    const sys = allCeilingSystems().find((s) => s.atticFrame?.mount === 'between')!;
-    const r = atticRequirement(createAttic({ ...base, ends: ['hip', 'gable'], systemId: sys.id, woolUnder: 0 }), sys);
-    expect(r.grid.roof).toBeUndefined();
-    expect(r.warnings.some((w) => w.startsWith('Narożniki dachu i kosze nie są liczone'))).toBe(true);
+});
+
+describe('ruszt krzyżowy przy narożnikach i koszach', () => {
+  const sys = allCeilingSystems().find((s) => s.atticFrame?.carrier?.cross)!;
+  const carrier = sys.atticFrame!.carrier!;
+  const wing = { id: 'w', side: 'left' as const, at: 500, width: 600, length: 400, end: 'gable' as const };
+  const r = atticRequirement(createAttic({ ...base, ends: ['hip', 'gable'], wings: [wing], systemId: sys.id, woolUnder: 0 }), sys);
+  const roof = r.grid.roof!;
+  it('liczy dach z koszami zamiast ostrzeżenia', () => {
+    expect(roof).toBeDefined();
+    expect(r.warnings.some((w) => w.startsWith('Narożniki dachu i kosze nie są liczone'))).toBe(false);
+    expect(r.assumptions.some((x) => x.startsWith('Ruszt krzyżowy przy narożnikach'))).toBe(true);
+  });
+  it('profil nośny pod każdą krokwią kulawą, skrócony do narożnika / kosza', () => {
+    const hip = roof.faces.find((g) => g.face.key === 'hip0')!;
+    expect(hip.carriers!.length).toBe(hip.face.rafters.length);
+    const lens = hip.carriers!.map((c) => c.s1 - c.s0);
+    // krokiew środkowa w osi kalenicy najdłuższa, skrajne krótsze
+    expect(Math.max(...lens)).toBeGreaterThan(lens[0] + 50);
+    for (const c of hip.carriers!) {
+      expect(c.fix.length).toBeGreaterThanOrEqual(1);
+      for (const x of c.fix) expect(x >= c.s0 - 0.1 && x <= c.s1 + 0.1).toBe(true);
+    }
+  });
+  it('ilości: nośne, wieszaki tylko na nośnych, łącznik na skrzyżowaniach i końcach', () => {
+    const carriers = roof.faces.flatMap((g) => g.carriers ?? []);
+    const lines = roof.lineProfiles;
+    const cdM = roof.faces.flatMap((g) => g.cd).reduce((s, l) => s + l.t1 - l.t0, 0) / 100;
+    const same = carrier.product === r.grid.profile;
+    const carrierM = carriers.reduce((s, c) => s + (c.s1 - c.s0), 0) / 100 + lines.reduce((s, l) => s + l.line.len, 0) / 100 + (same ? cdM : 0);
+    const got = (r.req.pieces[carrier.product] ?? []).reduce((s, x) => s + x, 0);
+    expect(got).toBeCloseTo(carrierM, 1);
+    const hangers = carriers.reduce((s, c) => s + c.fix.length, 0) + lines.reduce((s, l) => s + l.fix.length, 0);
+    expect(r.hangers).toBe(hangers);
+    const cd = roof.faces.flatMap((g) => g.cd);
+    const crossings = cd.reduce((s, l) => s + l.fix.length + [l.end0, l.end1].filter((k) => k === 'hip' || k === 'valley').length, 0);
+    expect(r.req.counts[carrier.cross!]).toBe(crossings);
+    // profile pod płyty krzyżują się z każdą krokwią w swoim zakresie
+    for (const g of roof.faces) for (const l of g.cd) expect(l.fix.length).toBe(g.face.rafters.filter((t) => t > l.t0 + 1 && t < l.t1 - 1).length);
+  });
+});
+
+describe('więźba widoczna przy narożnikach i koszach', () => {
+  const sys = allCeilingSystems().find((s) => s.atticFrame?.mount === 'between')!;
+  const a = createAttic({ ...base, ends: ['hip', 'hip'], systemId: sys.id, woolUnder: 0, woolBetween: 0 });
+  const r = atticRequirement(a, sys);
+  const roof = r.grid.roof!;
+  it('płyty tylko w polach między krokwiami', () => {
+    expect(roof).toBeDefined();
+    expect(r.warnings.some((w) => w.startsWith('Narożniki dachu i kosze nie są liczone'))).toBe(false);
+    const face = roof.faces.reduce((s, g) => s + g.face.areaM2, 0);
+    expect(r.areaM2).toBeLessThan(face * (1 - (a.rafterWidth - 1) / a.rafterSpacing));
+    expect(r.areaM2).toBeGreaterThan(face * 0.75);
+    for (const g of roof.faces) expect(g.boardPieces!.length).toBeGreaterThanOrEqual(g.face.rafters.length);
+  });
+  it('poprzeczki w polach bez mocowań pośrednich, elementy wzdłuż obu boków krokwi', () => {
+    for (const g of roof.faces) {
+      expect(g.sides!.length).toBe(2 * g.face.rafters.length);
+      for (const l of g.cd) {
+        expect(l.fix).toEqual([]);
+        // żadna poprzeczka nie przechodzi przez krokiew
+        for (const t of g.face.rafters) expect(l.t1 <= t - a.rafterWidth / 2 + 0.5 || l.t0 >= t + a.rafterWidth / 2 - 0.5).toBe(true);
+      }
+    }
+    expect(roof.lineProfiles.every((l) => l.fix.length === 0)).toBe(true);
+    expect(r.hangers).toBe(0);
   });
 });
 

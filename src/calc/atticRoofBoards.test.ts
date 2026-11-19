@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { allCeilingSystems, ceilingSystemById } from '../catalog/rigips';
 import { createAttic } from '../model/factory';
-import { atticGrid, roofCornersSupported } from './attic';
+import { atticGrid } from './attic';
 import { atticRequirement } from './atticMaterials';
 import { clipToRect, faceOutline, minusRect, roofBoardLayout, tsArea } from './atticRoofBoards';
 import { ATTIC_STAGGER } from './atticBoards';
@@ -76,7 +76,7 @@ describe('rozkład płyt na połaciach z narożnikami i koszami', () => {
   });
 
   it('dwie warstwy: druga przesunięta o pół arkusza, styki omijają pierwszą', () => {
-    const sys = allCeilingSystems().find((x) => x.atticFrame && x.layers === 2 && roofCornersSupported(x))!;
+    const sys = allCeilingSystems().find((x) => x.atticFrame && x.layers === 2 && x.atticFrame.mount !== 'between' && !x.atticFrame.carrier)!;
     expect(sys).toBeDefined();
     const a = createAttic({ ...base, ends: ['hip', 'hip'], systemId: sys.id, boardId: sys.defaultBoard });
     const { r } = layout(a);
