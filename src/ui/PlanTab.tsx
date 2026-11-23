@@ -33,7 +33,7 @@ const TOOLS: { id: Tool; label: string; hint: string; icon: React.ReactNode }[] 
   {
     id: 'select',
     label: 'Wybierz',
-    hint: 'Dotknij ściany, otworu lub sufitu, aby go edytować. Przeciągnij punkt, aby zmienić kształt, albo zaznaczoną ścianę, aby ją przesunąć – przyciąga do osi innych ścian i kątów prostych.',
+    hint: 'Dotknij ściany, otworu lub sufitu, aby go edytować. Przeciągnij punkt, aby zmienić kształt, albo zaznaczoną ścianę, aby ją przesunąć (na telefonie wystarczy przytrzymać ścianę i przeciągnąć) – przyciąga do osi innych ścian i kątów prostych.',
     icon: <path d="M6 3l12 9-5.5 1L15 20l-2.5 1-2.5-7L6 18z" />,
   },
   {
@@ -400,6 +400,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           onMessage={onMessage}
           onEditLength={setLengthWallId}
           onContextMenu={setMenu}
+          onDragStart={() => setExpanded(false)}
         />
 
         {menu && (
@@ -493,7 +494,11 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           </button>
         </div>
 
-        <div className={`plan-top${wide || panelOnPhone ? '' : hasSel ? ' above-sheet' : ' above-bar'}`}>
+        <div
+          className={`plan-top${wide || panelOnPhone ? '' : hasSel ? ' above-sheet' : ' above-bar'}`}
+          // nad zwiniętym panelem zostaje więcej miejsca
+          style={!wide && hasSel && sheetH ? { bottom: sheetH + 8 } : undefined}
+        >
           <div className="plan-layer" role="radiogroup" aria-label="Co rysujesz">
             {LAYERS.map((l) => (
               <button
@@ -602,6 +607,17 @@ function SummaryBar({ calc, onShowList }: { calc: ProjectCalc; onShowList: () =>
   );
 }
 
+/** Zwija panel do samego nagłówka (plan widać prawie cały) i rozwija go z powrotem */
+function CollapseButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  return (
+    <button className="icon-btn" onClick={onToggle} aria-expanded={expanded} aria-label={expanded ? 'Zwiń ustawienia' : 'Rozwiń ustawienia'} title={expanded ? 'Zwiń ustawienia' : 'Rozwiń ustawienia'}>
+      <svg viewBox="0 0 24 24" aria-hidden>
+        <path d={expanded ? 'M6 9l6 6 6-6' : 'M6 15l6-6 6 6'} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
 const fmtQty = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ','));
 
 function Inspector({
@@ -675,6 +691,7 @@ function Inspector({
               <span className="muted small">{multiSummary(project, multiIds)}</span>
             </div>
           )}
+          {collapsible && <CollapseButton expanded={expanded} onToggle={onToggle} />}
           <button className="icon-btn danger" onClick={onDelete} aria-label="Usuń zaznaczone ściany">
             <svg viewBox="0 0 24 24" aria-hidden>
               <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -808,7 +825,8 @@ function Inspector({
             <span className="muted small">{subtitle}</span>
           </div>
         )}
-        <button className="icon-btn danger" onClick={onDelete} aria-label={opening ? 'Usuń otwór' : 'Usuń element'}>
+        {collapsible && <CollapseButton expanded={expanded} onToggle={onToggle} />}
+          <button className="icon-btn danger" onClick={onDelete} aria-label={opening ? 'Usuń otwór' : 'Usuń element'}>
           <svg viewBox="0 0 24 24" aria-hidden>
             <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

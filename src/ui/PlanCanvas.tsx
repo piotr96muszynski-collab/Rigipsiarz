@@ -57,6 +57,8 @@ interface Props {
   onEditLength?: (wallId: string) => void;
   /** Menu kontekstowe: prawy przycisk myszy albo przytrzymanie palca (narzędzie Wybierz) */
   onContextMenu?: (r: MenuRequest & { touch: boolean }) => void;
+  /** Zaczęło się przeciąganie elementu – na telefonie panel ustawień zwija się, żeby nie zasłaniał planu */
+  onDragStart?: () => void;
 }
 
 interface View {
@@ -81,6 +83,10 @@ type Gesture =
       guides: Guide[];
       tapTarget: string;
       additive: boolean;
+      /** przesuwane ściany (podświetlone, zanim ruszy palec) */
+      wallIds: string[];
+      /** chwycona przytrzymaniem palca: puszczenie bez ruchu otwiera menu, ruch przesuwa (i zaznacza) ścianę */
+      armed?: boolean;
     }
   | { kind: 'vertex'; ceilingId: string; index: number; moved: boolean; startScreen: Point }
   | { kind: 'attic'; id: string; orig: Point; grab: Point; startScreen: Point; moved: boolean }
@@ -88,11 +94,11 @@ type Gesture =
 
 const HANDLE_PX = 16;
 const DRAG_PX = 7;
-/** Przytrzymanie palca bez ruchu tak długo otwiera menu kontekstowe */
+/** Przytrzymanie palca tak długo chwyta ścianę: przeciągnięcie ją przesuwa, puszczenie bez ruchu otwiera menu kontekstowe */
 export const LONG_PRESS_MS = 500;
 
 export function PlanCanvas(props: Props) {
-  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new', multi = false, onEditLength, onContextMenu } = props;
+  const { project, update, commit, tool, selection, setSelection, fitSignal, zoom, onMessage, insetBottom = 0, layer = 'new', multi = false, onEditLength, onContextMenu, onDragStart } = props;
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View>({ ox: -100, oy: -100, z: 1.2 });
@@ -110,6 +116,9 @@ export function PlanCanvas(props: Props) {
   const [chain, setChain] = useState<Point | null>(null);
   const [hover, setHover] = useState<Snap | null>(null);
   const selIds = selectedWallIds(selection);
+  // ściana chwycona przytrzymaniem palca jest podświetlona jak zaznaczona
+  const g0 = gesture.current;
+  const hiIds = g0?.kind === 'move' && g0.armed ? [...selIds, ...g0.wallIds] : selIds;
   // poddasza na rzucie: położenie, obrys, kalenica, krokwie, załamania
   const atticShapes = useMemo(() => {
     const spots = atticPlacements(project);
@@ -333,9 +342,21 @@ export function PlanCanvas(props: Props) {
     onContextMenu?.({ target: targetAt(s, w), world: w, screen: s, touch });
   };
 
+  /** Chwyt ściany do przesunięcia: ściana z zaznaczenia kilku ciągnie całe zaznaczenie */
+  const grabWall = (id: string, s: Point): Extract<Gesture, { kind: 'move' }> => {
+    const wallIds = selIds.includes(id) ? selIds : [id];
+    const ids = new Set(project.walls.filter((x) => wallIds.includes(x.id)).flatMap((x) => [x.a, x.b]));
+    const orig = new Map(project.nodes.filter((x) => ids.has(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
+    return { kind: 'move', orig, grab: toWorld(s.x, s.y), startScreen: s, moved: false, guides: [], tapTarget: id, additive: false, wallIds };
+  };
+  /** pierwszy ruch przeciąganego elementu */
+  const dragStarted = () => onDragStart?.();
+
   // --------- obsługa wskaźnika ---------
   const onPointerDown = (e: React.PointerEvent) => {
     svgRef.current?.setPointerCapture?.(e.pointerId);
+    // dotyk nie daje kliknięcia (onTouchEnd), więc pole w panelu trzeba odfokusować samemu – zapisuje wpisaną wartość
+    if (e.pointerType !== 'mouse' && document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const s = local(e);
     pointers.current.set(e.pointerId, s);
     cancelPress();
@@ -356,16 +377,23 @@ export function PlanCanvas(props: Props) {
       gesture.current = { kind: 'pan', sx: s.x, sy: s.y, ox: view.ox, oy: view.oy, moved: false, tapTarget: selection, additive: false, menu: e.button === 2 };
       return;
     }
-    // przytrzymanie palca (bez ruchu) otwiera menu kontekstowe; ruch, drugi palec albo puszczenie je anuluje
+    // przytrzymanie palca: na ścianie chwyta ją do przesunięcia (puszczenie bez ruchu otwiera menu),
+    // gdzie indziej od razu otwiera menu kontekstowe; ruch przed czasem, drugi palec albo puszczenie je anuluje
     if (tool === 'select' && e.pointerType !== 'mouse' && onContextMenu) {
       const timer = setTimeout(() => {
         press.current = null;
         if (pointers.current.size !== 1) return;
         const g0 = gesture.current;
         if (g0 && 'moved' in g0 && g0.moved) return;
-        gesture.current = null;
         navigator.vibrate?.(15);
-        openMenu(s, true);
+        const grab = g0?.kind === 'move' ? g0 : g0?.kind === 'pan' && !g0.menu && g0.tapTarget?.type === 'wall' ? grabWall(g0.tapTarget.id, s) : null;
+        if (grab) {
+          grab.armed = true;
+          gesture.current = grab;
+        } else {
+          gesture.current = null;
+          openMenu(s, true);
+        }
         rerender();
       }, LONG_PRESS_MS);
       press.current = { timer, at: s };
@@ -403,9 +431,7 @@ export function PlanCanvas(props: Props) {
       const hw = hitWall(project, w, Math.max(tolCm, 12));
       // przeciągnięcie zaznaczonej ściany przesuwa ją (razem z pozostałymi zaznaczonymi)
       if (hw && selIds.includes(hw.id)) {
-        const ids = new Set(project.walls.filter((x) => selIds.includes(x.id)).flatMap((x) => [x.a, x.b]));
-        const orig = new Map(project.nodes.filter((x) => ids.has(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
-        gesture.current = { kind: 'move', orig, grab: w, startScreen: s, moved: false, guides: [], tapTarget: hw.id, additive };
+        gesture.current = { ...grabWall(hw.id, s), additive };
         return;
       }
       const hc = hw || additive ? null : hitCeiling(w);
@@ -507,6 +533,7 @@ export function PlanCanvas(props: Props) {
     if (g.kind === 'node') {
       // drobne drgnięcie palca nie przesuwa węzła (przytrzymanie otwiera menu)
       if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
+      if (!g.moved) dragStarted();
       g.moved = true;
       const moved = new Set([g.id]);
       const sp = snapGuided(project, w, tolCm, { anchors: anchorsOf(project, g.id, moved), moved, grid });
@@ -525,6 +552,7 @@ export function PlanCanvas(props: Props) {
     }
     if (g.kind === 'attic') {
       if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
+      if (!g.moved) dragStarted();
       g.moved = true;
       const step = Math.max(1, grid);
       const nx = Math.round((g.orig.x + w.x - g.grab.x) / step) * step;
@@ -540,6 +568,7 @@ export function PlanCanvas(props: Props) {
     }
     if (g.kind === 'vertex') {
       if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
+      if (!g.moved) dragStarted();
       g.moved = true;
       const sp = snapDraw(w);
       update(
@@ -553,6 +582,11 @@ export function PlanCanvas(props: Props) {
     }
     if (g.kind === 'move') {
       if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
+      if (!g.moved) {
+        // ściana chwycona przytrzymaniem zostaje zaznaczona – widać, co się przesuwa
+        if (g.armed && !g.wallIds.every((id) => selIds.includes(id))) setSelection({ type: 'wall', id: g.tapTarget });
+        dragStarted();
+      }
       g.moved = true;
       const sm = snapMove(project, new Set(g.orig.keys()), { x: w.x - g.grab.x, y: w.y - g.grab.y }, tolCm, grid);
       g.guides = sm.guides;
@@ -571,6 +605,7 @@ export function PlanCanvas(props: Props) {
     }
     if (g.kind === 'opening') {
       if (!g.moved && dist(s, g.startScreen) <= DRAG_PX) return;
+      if (!g.moved) dragStarted();
       g.moved = true;
       update(
         (d) => {
@@ -623,7 +658,8 @@ export function PlanCanvas(props: Props) {
         );
         commit();
         if (findOverlaps(project).length) onMessage('Pominięto odcinki ścian nałożone na istniejące');
-      } else if (g.additive) setSelection(toggleWall(selection, g.tapTarget));
+      } else if (g.armed) openMenu(g.startScreen, true);
+      else if (g.additive) setSelection(toggleWall(selection, g.tapTarget));
       else setSelection({ type: 'wall', id: g.tapTarget });
     } else if (g.kind === 'draw') {
       if (g.moved || chain) {
@@ -798,6 +834,11 @@ export function PlanCanvas(props: Props) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        // dotknięcie planu nie wywołuje potem kliknięcia: panel, który właśnie się pokazał pod palcem
+        // (np. przycisk „Usuń” po zaznaczeniu ściany), nie dostaje kliknięcia-widma
+        onTouchEnd={(e) => {
+          if (e.cancelable) e.preventDefault();
+        }}
         onPointerLeave={() => setHover(null)}
         onWheel={onWheel}
         onContextMenu={(e) => e.preventDefault()}
@@ -869,7 +910,7 @@ export function PlanCanvas(props: Props) {
           {project.walls.map((w) => {
             const poly = outlines.get(w.id);
             if (!poly || wallThickness(w) * view.z < 3) return null;
-            const sel = selIds.includes(w.id);
+            const sel = hiIds.includes(w.id);
             return (
               <g key={`edge-${w.id}`} className={(tool === 'wall' || tool === 'room') && layer === 'existing' ? 'faded' : ''}>
                 {sel && <polygon points={poly} className="wall-halo" strokeWidth={10 / view.z} />}
@@ -884,7 +925,7 @@ export function PlanCanvas(props: Props) {
             if (!a0 || !b0) return null;
             const L = dist(a0, b0);
             const t = wallThickness(w);
-            const sel = selIds.includes(w.id);
+            const sel = hiIds.includes(w.id);
             const ux = (b0.x - a0.x) / (L || 1);
             const uy = (b0.y - a0.y) / (L || 1);
             const nx = -uy;
