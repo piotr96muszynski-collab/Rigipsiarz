@@ -378,6 +378,8 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
     />
   );
   const showDefaults = layered && layer === 'new';
+  // na telefonie otwarty panel ustawień nowych ścian zajmuje miejsce paska podsumowania (żeby nic go nie zasłaniało)
+  const panelOnPhone = !wide && !hasSel && showDefaults && defaultsOpen;
 
   return (
     <div className={`plan-layout ${wide ? 'wide' : ''}`}>
@@ -491,7 +493,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           </button>
         </div>
 
-        <div className="plan-top">
+        <div className={`plan-top${wide || panelOnPhone ? '' : hasSel ? ' above-sheet' : ' above-bar'}`}>
           <div className="plan-layer" role="radiogroup" aria-label="Co rysujesz">
             {LAYERS.map((l) => (
               <button
@@ -569,7 +571,7 @@ export function PlanTab({ project, calc, update, commit, wide, onShowList, fulls
           </div>
         )}
 
-        {!wide && (hasSel ? <div className="plan-sheet" ref={sheetRef}>{inspector}</div> : <SummaryBar calc={calc} onShowList={onShowList} />)}
+        {!wide && (hasSel ? <div className="plan-sheet" ref={sheetRef}>{inspector}</div> : !panelOnPhone && <SummaryBar calc={calc} onShowList={onShowList} />)}
       </div>
       {wide && <aside className="plan-side">{inspector}</aside>}
     </div>
