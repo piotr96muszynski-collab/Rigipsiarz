@@ -8,8 +8,14 @@ export type BoardLengthPref = 'auto' | (typeof BOARD_LENGTH_CHOICES)[number];
 /** Najwęższa dostawka, której jeszcze nie skracamy kosztem pełnego arkusza, m */
 export const MIN_STRIP_M = 0.3;
 
+/** Długość arkusza wybrana dla jednej płyty na liście zakupów: 'auto' albo długość z katalogu tej płyty, cm */
+export type BoardSheetPref = 'auto' | number;
+/** Ustawienie projektu: id płyty (RB12.5, RF12.5…) → długość arkusza; brak = jak w projekcie / aplikacji */
+export type ProjectBoardLengths = Record<string, BoardSheetPref>;
+
 let appPref: BoardLengthPref = 'auto';
 let projectPref: BoardLengthPref | undefined;
+let perBoard: ProjectBoardLengths = {};
 
 /** Ustawienie globalne aplikacji (zapisywane w IndexedDB, klucz `boardLength`) */
 export function setAppBoardLength(p: BoardLengthPref | undefined) {
@@ -20,12 +26,31 @@ export const appBoardLength = () => appPref;
 export function setProjectBoardLength(p: BoardLengthPref | undefined) {
   projectPref = isBoardLengthPref(p) ? p : undefined;
 }
-export const activeBoardLength = (): BoardLengthPref => projectPref ?? appPref;
+/** Długość wspólna dla wszystkich płyt projektu (bez wyboru pojedynczej płyty) */
+export const baseBoardLength = (): BoardLengthPref => projectPref ?? appPref;
+
+/** Długości arkuszy, które można kupić dla tej płyty (rosnąco, z katalogu) */
+export function boardLengthChoices(boardId: string): number[] {
+  return [...boardById(boardId).lengths].sort((a, b) => a - b);
+}
+export const isBoardSheetPref = (boardId: string, v: unknown): v is BoardSheetPref =>
+  v === 'auto' || (typeof v === 'number' && boardLengthChoices(boardId).includes(v));
+
+/** Wybory długości pojedynczych płyt w otwartym projekcie (`settings.boardLengths`, lista zakupów) */
+export function setProjectBoardLengths(p: ProjectBoardLengths | undefined) {
+  const out: ProjectBoardLengths = {};
+  for (const [k, v] of Object.entries(p ?? {})) if (isBoardSheetPref(k, v)) out[k] = v;
+  perBoard = out;
+}
+
+/** Obowiązująca długość arkusza: wybór tej płyty → projekt → aplikacja */
+export const activeBoardLength = (boardId?: string): BoardSheetPref =>
+  (boardId !== undefined ? perBoard[boardId] : undefined) ?? baseBoardLength();
 
 export const isBoardLengthPref = (v: unknown): v is BoardLengthPref =>
   v === 'auto' || (BOARD_LENGTH_CHOICES as readonly unknown[]).includes(v);
 
-export const boardLengthLabel = (p: BoardLengthPref) =>
+export const boardLengthLabel = (p: BoardSheetPref) =>
   p === 'auto' ? 'dopasowana do wysokości' : `${(p / 100).toFixed(1).replace('.', ',')} m`;
 
 /**
@@ -33,7 +58,7 @@ export const boardLengthLabel = (p: BoardLengthPref) =>
  * Przy wybranej długości: ta długość, a gdy płyty w niej nie ma – najbliższa krótsza z katalogu
  * (dłuższej nie wniesiesz, skoro wybrano krótszą), w ostateczności najkrótsza dostępna.
  */
-export function pickBoardLengthCm(boardId: string, needCm: number, pref: BoardLengthPref = activeBoardLength()): number {
+export function pickBoardLengthCm(boardId: string, needCm: number, pref: BoardSheetPref = activeBoardLength(boardId)): number {
   const lens = [...boardById(boardId).lengths].sort((a, b) => a - b);
   if (pref === 'auto') return lens.find((l) => l >= needCm) ?? lens[lens.length - 1];
   if (lens.includes(pref)) return pref;

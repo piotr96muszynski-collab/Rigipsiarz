@@ -3,6 +3,7 @@ import { materialsToCsv, type MaterialLine } from '../calc/materials';
 import { formatPLN, priceLines, storeSearchUrl, type PriceBook } from '../model/prices';
 import type { Project } from '../model/types';
 import { appProfileLength, profileLengthLabel, type ProfileLengthPref } from '../calc/profileLength';
+import { baseBoardLength, type BoardSheetPref } from '../calc/boardLength';
 
 interface Props {
   project: Project;
@@ -37,6 +38,40 @@ function ProfileLengthSelect({ pid, pref, choices, update }: { pid: string; pref
         {choices.map((c) => (
           <option key={c} value={String(c)}>
             {profileLengthLabel(c)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+const fmtSheet = (cm: number) => `${(cm / 100).toFixed(cm % 10 ? 2 : 1).replace('.', ',')} m`;
+
+/** Wybór długości arkusza płyty – zapis w projekcie, rozkład płyt i ilości przeliczają się z projektu */
+function BoardLengthSelect({ bid, pref, choices, update }: { bid: string; pref: BoardSheetPref; choices: number[]; update: Props['update'] }) {
+  const base = baseBoardLength();
+  return (
+    <label className="item-len">
+      <span className="muted">Kupuję po</span>
+      <select
+        value={String(pref)}
+        onChange={(e) => {
+          const v: BoardSheetPref = e.target.value === 'auto' ? 'auto' : Number(e.target.value);
+          update((d) => {
+            const next = { ...(d.settings.boardLengths ?? {}) };
+            // jak w ustawieniach projektu = bez osobnego wyboru dla tej płyty
+            if (v === base) delete next[bid];
+            else next[bid] = v;
+            if (Object.keys(next).length) d.settings.boardLengths = next;
+            else delete d.settings.boardLengths;
+          });
+        }}
+        aria-label={`Długość płyt: ${bid}`}
+      >
+        <option value="auto">Auto (do wysokości)</option>
+        {choices.map((c) => (
+          <option key={c} value={String(c)}>
+            {fmtSheet(c)}
           </option>
         ))}
       </select>
@@ -153,6 +188,7 @@ export function ShoppingList({ project, lines, prices, setPrice, update }: Props
                       {l.note}
                     </span>
                   )}
+                  {l.board?.first && <BoardLengthSelect {...l.board} update={update} />}
                   {l.profile?.first && <ProfileLengthSelect {...l.profile} update={update} />}
                   {showPrices && (
                     <span className="item-price">
@@ -210,7 +246,8 @@ export function ShoppingList({ project, lines, prices, setPrice, update }: Props
       </div>
       <p className="muted small disclaimer">
         Ilości wyliczone wg typowych wytycznych montażu systemów Rigips i ATLAS M-System 3G (rozstawy profili i łączników, zużycie wkrętów i masy). Profile
-        policzone z rozkroju na długości handlowe – długość każdego profilu możesz zmienić („Kupuję po”), ilości, przedłużenia i łączniki przeliczą się z projektu. Przed zamówieniem sprawdź wymagania karty technicznej systemu.
+        policzone z rozkroju na długości handlowe – długość każdej płyty i każdego profilu możesz zmienić („Kupuję po”): rozkład płyt, ilości, przedłużenia
+        i łączniki przeliczą się z projektu. Przed zamówieniem sprawdź wymagania karty technicznej systemu.
       </p>
     </div>
   );

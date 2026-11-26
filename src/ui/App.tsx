@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculateProject } from '../calc/materials';
-import { appBoardLength, isBoardLengthPref, setAppBoardLength, setProjectBoardLength, type BoardLengthPref } from '../calc/boardLength';
+import { appBoardLength, isBoardLengthPref, setAppBoardLength, setProjectBoardLength, setProjectBoardLengths, type BoardLengthPref } from '../calc/boardLength';
 import { BoardLengthField } from './BoardLengthField';
 import { ProfileLengthsField } from './ProfileLengthsField';
 import { appProfileLengths, setAppProfileLengths, setProjectProfileLengths, type AppProfileLengths } from '../calc/profileLength';
@@ -345,11 +345,13 @@ function ProjectView({
   // catalogVersion: przelicz po zmianie systemów własnych
   // długość płyt tego projektu – wyliczenia, rysunki i 3D biorą ją z modułu boardLength
   setProjectBoardLength(project.settings.boardLength);
+  setProjectBoardLengths(project.settings.boardLengths);
   // długości profili tego projektu (rozkrój, łączniki wzdłużne na rysunkach i w 3D)
   setProjectProfileLengths(project.settings.profileLengths);
   useEffect(
     () => () => {
       setProjectBoardLength(undefined);
+      setProjectBoardLengths(undefined);
       setProjectProfileLengths(undefined);
     },
     [],
@@ -545,6 +547,7 @@ function ProjectView({
               label="Długość płyt w tym projekcie"
               value={project.settings.boardLength}
               inherit={appBoardLen}
+              hint="Długość każdej płyty możesz też zmienić osobno na liście zakupów („Kupuję po”)."
               onChange={(v) =>
                 update((d) => {
                   if (v === undefined) delete d.settings.boardLength;

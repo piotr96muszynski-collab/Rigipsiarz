@@ -19,7 +19,7 @@ import {
   type WallSystem,
   type Unit,
 } from '../catalog/rigips';
-import { pickBoardLengthCm } from './boardLength';
+import { activeBoardLength, boardLengthChoices, pickBoardLengthCm, type BoardSheetPref } from './boardLength';
 import { activeProfileLength, joinsFor, profileLengthChoices, profileMaxStock, profileOverlap, profileStocks, type ProfileLengthPref } from './profileLength';
 import { FIXERS } from '../catalog/atlas';
 import {
@@ -1080,6 +1080,8 @@ export interface MaterialLine {
   note?: string;
   /** Profil z wyborem długości handlowej (lista zakupów); `first` – pierwsza linia tego profilu */
   profile?: { pid: string; pref: ProfileLengthPref; choices: number[]; first: boolean };
+  /** Płyta z wyborem długości arkusza (lista zakupów); `first` – pierwsza linia tej płyty */
+  board?: { bid: string; pref: BoardSheetPref; choices: number[]; first: boolean };
 }
 
 const GROUP_ORDER: Product['group'][] = ['Płyty', 'Profile', 'Akcesoria do sufitów', 'Mocowanie', 'Izolacja', 'Wykończenie'];
@@ -1154,6 +1156,9 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
       unit: 'szt.',
       note: boardNote(area, merged.boardCutWaste?.[key] ?? 0),
     });
+    const choices = boardLengthChoices(boardId);
+    // `first` ustawiane po posortowaniu listy
+    if (choices.length > 1) lines[lines.length - 1].board = { bid: boardId, pref: activeBoardLength(boardId), choices, first: false };
   }
 
   // profile i narożniki – rozkrój (długości wg ustawienia profilu w projekcie / aplikacji)
@@ -1214,9 +1219,14 @@ export function summarize(reqs: Requirement[], wastePct: number, opts: Summarize
     else lines.push(withPacks(pid, Math.ceil(v * waste * 10 - 1e-9) / 10, 'm²'));
   }
 
-  return lines.sort(
-    (a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || a.name.localeCompare(b.name, 'pl'),
-  );
+  lines.sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || a.name.localeCompare(b.name, 'pl'));
+  const seenBoards = new Set<string>();
+  for (const l of lines)
+    if (l.board) {
+      l.board.first = !seenBoards.has(l.board.bid);
+      seenBoards.add(l.board.bid);
+    }
+  return lines;
 }
 
 export interface LiningResult {
